@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "othavi0.omanotes",
+  "name": "Omanotes",
+  "version": "1.0.0",
+  "author": "othavi0",
+  "description": "Omanotes: short notes + todo list manager + history tab, keyboard-driven, SQLite-backed with file-watcher auto-refresh",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omanotes",
+    "category": "Productivity",
+    "allowMultiple": false
+  }
+}
