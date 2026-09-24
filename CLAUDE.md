@@ -31,7 +31,7 @@ Issues live in GitHub Issues on othavi0/omanotes, used through `gh`. See `docs/a
 
 ### Triage labels
 
-The five default triage labels. Only `wontfix` exists on GitHub so far, so create the other four before the first triage. See `docs/agents/triage-labels.md`.
+The five default triage labels, all created on GitHub. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
