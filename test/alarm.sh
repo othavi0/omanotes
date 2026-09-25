@@ -180,6 +180,15 @@ ShellRoot {
     }
     function tabState(n: int): string { return sr.editorState(n) }
     function clearToastOf(n: int): void { sr.alarmsTab(n).toast.text = "" }
+    function scrollAlarms(n: int, y: int): string {
+      var list = sr.find(sr.alarmsTab(n), "QQuickListView")[0]
+      list.contentY = list.originY + y
+      return String(list.contentY - list.originY)
+    }
+    function alarmsScroll(n: int): string {
+      var list = sr.find(sr.alarmsTab(n), "QQuickListView")[0]
+      return String(list.contentY - list.originY)
+    }
     function toggleDay(day: int): string { sr.editor().toggleDay(day); return sr.editorState(1) + "|dirty:" + sr.editor().dirty }
     function itemsState(): string {
       var w = monitors.instances[0].widget
@@ -553,6 +562,18 @@ replies "at the limit a draft left again still stays open" \
 ipc discard > /dev/null
 ipc closePanel 1
 replies "the database holds exactly 50 alarms" "$(sql "SELECT COUNT(*) FROM alarms")" "50"
+
+replies "the panel of widget 1 opens on the Alarms tab for the scroll" "$(ipc openAlarms)" "ok"
+ipc pickAlarm "$(sql "SELECT MAX(id) FROM alarms")" > /dev/null
+replies "the list of 50 alarms scrolls" "$(ipc scrollAlarms 1 300)" "300"
+reads_before="$(alarm_reads)"
+sql "UPDATE alarms SET label = 'Moved' WHERE id = (SELECT MAX(id) FROM alarms)"
+for _ in $(seq 50); do (( $(alarm_reads) > reads_before )) && break; sleep 0.1; done
+sleep 0.5
+replies "a reload after an outside write keeps the list where it was scrolled" "$(ipc alarmsScroll 1)" "300"
+ipc toggleRow "$(sql "SELECT MAX(id) FROM alarms")" > /dev/null
+replies "and so does a switch flipped in the list" "$(ipc alarmsScroll 1)" "300"
+ipc closePanel 1
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true

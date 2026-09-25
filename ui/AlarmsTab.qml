@@ -170,7 +170,15 @@ FocusScope {
         if (refill) root.refillEditor()
     }
 
-    onAlarmListChanged: root.onAlarmsSynced()
+    // As in the Items tab, a new model array would send the ListView back
+    // to the top, and every write and reload makes one, so the model is set
+    // here with the scroll kept.
+    onAlarmListChanged: {
+        var y = listView.contentY - listView.originY
+        listView.model = root.alarmList
+        listView.contentY = listView.originY + Math.min(y, Math.max(0, listView.contentHeight - listView.height))
+        root.onAlarmsSynced()
+    }
 
     Item {
         id: focusSink
@@ -208,7 +216,7 @@ FocusScope {
                 boundsBehavior: Flickable.StopAtBounds
                 keyNavigationEnabled: false
                 spacing: Style.spacing.xxs
-                model: root.alarmList
+                Component.onCompleted: listView.model = root.alarmList
 
                 delegate: AlarmRow {
                     required property var modelData
