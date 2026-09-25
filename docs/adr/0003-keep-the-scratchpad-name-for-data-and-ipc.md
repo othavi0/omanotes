@@ -4,5 +4,5 @@ Omanotes started as a copy of omatodolist, which stored everything in `scratchpa
 
 ## Consequences
 
-- The name belongs only to the database file and the IPC target. Everything else calls the product and the data layer Omanotes. Some comments and the `scratchpad db:` log prefix still use the old name.
+- The name belongs only to the database file and the IPC target. Everything else calls the product and the data layer Omanotes, including code comments and the `omanotes db:` log prefix.
 - Omanotes and omatodolist cannot be enabled together: they would register the same IPC target and write the same database.

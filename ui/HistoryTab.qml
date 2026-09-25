@@ -6,17 +6,18 @@ import qs.Commons
 import "Icons.js" as Icons
 import "Item.js" as ItemJs
 
-// "History" tab: a read-only mutation log rendered as a table of
+// "History" tab: the log Db writes on every action (added, edited, completed,
+// reopened, converted, deleted), rendered as a table of
 // `type | title | action | timestamp` rows (newest-first, from db.history).
-// Title and row count live in Panel's tab Segment, not here. The Toast is
-// owned by Panel.qml and injected here.
+// Entries are never edited; the user can only delete one or clear them all.
+// Title and row count live in PanelHeader's tab Segment, not here. The Toast
+// is owned by Panel.qml and injected here.
 Item {
     id: root
 
     property QtObject db: null              // Panel's Data.Db instance
     property var toast: null                // ui/Toast instance (Panel-owned)
     property color foreground: Color.foreground
-    property color accent: Color.accent
 
     signal closeRequested()                 // Esc in the list closes the panel
 
@@ -50,7 +51,7 @@ Item {
     function actionColor(action) {
         var a = String(action || "")
         if (a === "deleted") return Color.urgent
-        if (a === "completed") return root.accent
+        if (a === "completed") return Color.accent
         return Util.alpha(root.foreground, 0.75)
     }
 
@@ -183,7 +184,7 @@ Item {
                     height: rowRow.implicitHeight + Style.space(10)
                     radius: Style.cornerRadius
                     color: Number(modelData.id) === root.selectedId
-                        ? Style.selectedFillFor(root.foreground, root.accent)
+                        ? Style.selectedFillFor(root.foreground, Color.accent)
                         : "transparent"
 
                     RowLayout {
@@ -199,7 +200,7 @@ Item {
                             Layout.preferredWidth: root.colTypeW
                             text: modelData.type === "todo" ? Icons.boxOff : Icons.note
                             color: Number(modelData.id) === root.selectedId
-                                ? Style.selectedStateColor(root.foreground, root.accent)
+                                ? Style.selectedStateColor(root.foreground, Color.accent)
                                 : Util.alpha(root.foreground, 0.75)
                             font.family: Style.font.family
                             font.pixelSize: Style.font.icon
@@ -210,7 +211,7 @@ Item {
                             text: modelData.title
                             elide: Text.ElideRight
                             color: Number(modelData.id) === root.selectedId
-                                ? Style.selectedStateColor(root.foreground, root.accent)
+                                ? Style.selectedStateColor(root.foreground, Color.accent)
                                 : root.foreground
                             font.family: Style.font.family
                             font.pixelSize: Style.font.body
@@ -273,7 +274,6 @@ Item {
                 enabled: root.clearButtonEnabled
                 opacity: root.clearButtonEnabled ? 1 : 0.5
                 foreground: root.foreground
-                accent: root.accent
                 onClicked: { root.clearHistory(); root.focusList() }
             }
         }

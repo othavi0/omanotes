@@ -83,7 +83,7 @@ BarWidget {
     onSettingsChanged: injectPanel()
 
     // Owns sqlite3 access, the db file watcher, and the cached counts the bar
-    // badge binds to. The panel keeps its own instance — the db file is the
+    // tooltip binds to. The panel keeps its own instance — the db file is the
     // source of truth, and each watcher keeps its view fresh.
     Data.Db {
         id: db

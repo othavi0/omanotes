@@ -1,9 +1,9 @@
 .pragma library
 
-// Scratchpad SQL builders + result parsers. Deliberately Quickshell-free (no
+// Omanotes SQL builders + result parsers. Deliberately Quickshell-free (no
 // `Quickshell.*`, no QML types) so it's exercised directly under Node (see
-// test/db.test.mjs). Owns all SQL for the plugin — views and Db.qml call
-// these builders instead of building SQL ad hoc.
+// test/db.test.mjs). Owns all SQL for the plugin — Db.qml calls these
+// builders instead of building SQL ad hoc.
 
 // Quote a JS string as a single-quoted SQL literal, doubling embedded quotes.
 function q(value) {
@@ -22,7 +22,7 @@ function now() {
 }
 
 // Unified list. filterType is "all"|"note"|"todo";
-// query is an optional case-insensitive substring match on title.
+// query is an optional case-insensitive substring match on title or body.
 // Sort order: pending (unread/in-progress, status 0) always on top, then
 // recency — `status ASC, updated_at DESC`.
 function listSql(filterType, query) {
@@ -43,7 +43,7 @@ function listSql(filterType, query) {
   return sql
 }
 
-// Pending counts for the bar badge and the panel header: unread notes /
+// Pending counts for the bar tooltip and the panel header: unread notes /
 // in-progress todos, plus unfiltered totals per type for the filter segment.
 function countsSql() {
   return "SELECT "

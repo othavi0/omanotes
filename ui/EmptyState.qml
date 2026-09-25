@@ -2,14 +2,14 @@ import QtQuick
 import qs.Commons
 import "Icons.js" as Icons
 
-// Right-hand-side-less list state. Unfiltered: "Nothing here yet" with
-// New note / New todo (each opens a draft already in that type). Filtered
-// or searched down to nothing: "No matches" with a Clear search action.
+// Shown over the list when it has no rows. Unfiltered: "Nothing here yet"
+// with New note / New todo (each opens a draft already in that type).
+// Filtered or searched down to nothing: "No matches" with a Clear search
+// action, which MainTab uses to clear both the search and the type filter.
 Column {
     id: root
     property bool filtered: false
     property color foreground: Color.foreground
-    property color accent: Color.accent
 
     signal newNote()
     signal newTodo()
@@ -55,7 +55,6 @@ Column {
             iconText: Icons.plus
             text: "New note"
             foreground: root.foreground
-            accent: root.accent
             onClicked: root.newNote()
         }
         ActionButton {
@@ -63,7 +62,6 @@ Column {
             iconText: Icons.plus
             text: "New todo"
             foreground: root.foreground
-            accent: root.accent
             onClicked: root.newTodo()
         }
     }
@@ -74,7 +72,6 @@ Column {
         bordered: true
         text: "Clear search"
         foreground: root.foreground
-        accent: root.accent
         onClicked: root.clearSearch()
     }
 }

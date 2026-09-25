@@ -3,7 +3,7 @@ import Quickshell
 import Quickshell.Io
 import "Db.js" as Db
 
-// Scratchpad data layer: the single entry point for all database access.
+// Omanotes data layer: the single entry point for all database access.
 // Views call this component's methods instead of building SQL or touching
 // sqlite3 directly. Writes are serialized through one Process (one at a
 // time); each read (counts/list/history) uses its own dedicated Process so
@@ -20,7 +20,6 @@ QtObject {
     readonly property string dbPath: root.dataDir + "/scratchpad.db"
 
     property bool ready: false                 // init() completed
-    property string lastError: ""
 
     // Cached rows (populated by reads; the UI binds to these).
     property var items: []                     // list() results
@@ -51,8 +50,7 @@ QtObject {
     // Central failure path: surfaces in the journal (console.error) so data-layer
     // errors are visible in the shell logs even before the UI handles them.
     function fail(message) {
-        root.lastError = message
-        console.error("scratchpad db: " + message)
+        console.error("omanotes db: " + message)
         root.failed(message)
     }
 
@@ -211,7 +209,8 @@ QtObject {
         root.countsProcess.running = true
     }
 
-    // Unified list. filterType: "all"|"note"|"todo"; query: title substring.
+    // Unified list. filterType: "all"|"note"|"todo"; query: substring of the
+    // title or the body.
     function list(filterType, query) {
         root.listFilter = String(filterType || "all")
         root.listQuery = String(query || "")
