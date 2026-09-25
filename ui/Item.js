@@ -22,7 +22,7 @@ function statusLabel(item) {
 // Label for the button that flips status.
 function toggleVerb(item) {
   if (!item) return ""
-  if (isTodo(item)) return isReadOrCompleted(item) ? "Reopen" : "Complete"
+  if (isTodo(item)) return isReadOrCompleted(item) ? "Mark pending" : "Complete"
   return isReadOrCompleted(item) ? "Mark unread" : "Mark read"
 }
 

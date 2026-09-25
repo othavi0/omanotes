@@ -32,7 +32,7 @@ test("toggleVerb", () => {
   assert.equal(Item.toggleVerb(noteUnread), "Mark read")
   assert.equal(Item.toggleVerb(noteRead), "Mark unread")
   assert.equal(Item.toggleVerb(todoPending), "Complete")
-  assert.equal(Item.toggleVerb(todoCompleted), "Reopen")
+  assert.equal(Item.toggleVerb(todoCompleted), "Mark pending")
 })
 
 test("statusToast", () => {

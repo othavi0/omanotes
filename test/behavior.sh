@@ -607,7 +607,8 @@ sqlite3 "$db" "INSERT INTO items (id, type, title, body, status, created_at, upd
   (205, 'note', 'Fails on close', '', 0, $now, $now),
   (206, 'note', 'Fails behind a draft', '', 0, $now, $now),
   (207, 'note', 'Hidden when it fails', '', 0, $now, $now),
-  (208, 'note', 'Removed behind a draft', '', 0, $now, $now);
+  (208, 'note', 'Removed behind a draft', '', 0, $now, $now),
+  (209, 'todo', 'Toggled back by its button', '', 1, $now, $now);
 CREATE TRIGGER fail_add BEFORE INSERT ON items WHEN NEW.title LIKE 'FAIL-%'
   BEGIN SELECT RAISE(ABORT, 'forced failure'); END;
 CREATE TRIGGER fail_edit BEFORE UPDATE OF title ON items WHEN NEW.title LIKE 'FAIL-%'
@@ -641,6 +642,15 @@ ShellRoot {
   function otherId() { return itemsTab.itemList[0].id === 203 ? itemsTab.itemList[1].id : itemsTab.itemList[0].id }
 
   readonly property var steps: [
+    function() { itemsTab.pickItem(209) },
+    function() {
+      var button = sr.findByText(editor, "Mark pending")
+      console.log("TOGGLE-BUTTON " + (button !== null))
+      sr.toasts = []
+      if (button) sr.click(button)
+    },
+    function() { console.log("TOGGLE-TOAST [" + sr.toasts.join("|") + "]") },
+
     function() { itemsTab.pickItem(201); itemsTab.focusEditor() },
     function() { itemsTab.editorTitle = "DIRTY-DELETE"; sr.toasts = []; sr.click(sr.findByText(editor, "Delete")) },
     function() { sr.click(sr.findByText(editor, "Confirm")) },
@@ -829,6 +839,9 @@ QML
 log_file="$cfg_dir/qs-writes.log"
 run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
 
+logged "a completed todo's toggle button says Mark pending" "TOGGLE-BUTTON true$"
+logged "its toast repeats the button's words" "TOGGLE-TOAST \[Marked pending — Toggled back by its button\]$"
+expect "the button sets the todo back to pending" "SELECT status FROM items WHERE id = 209" "0"
 logged "deleting a dirty item with the mouse shows Deleted, never Saved or an error" \
   "DELETE-DIRTY saved=false error=false added=false removed=false deleted=true$"
 logged "an item removed by a script while being edited shows Item removed elsewhere and returns to the list" \

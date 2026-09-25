@@ -29,12 +29,13 @@ import qs.Commons
 import qs.Ui
 import "data" as Data
 import "ui" as Ui
+import "ui/Tabs.js" as Tabs
 
 ShellRoot {
   id: sr
   property int readyCount: 0
   property bool started: false            // guards the initial-load wait from firing again
-  property int activeTab: 0
+  property int activeTab: Tabs.items
   property bool failed: false
   property string currentScene: ""
   property int sceneIndex: 0
@@ -135,7 +136,7 @@ ShellRoot {
     itemsTab.searchText = ""
     itemsTab.focusList()
     toast.hide()
-    sr.activeTab = (name === "history" || name === "historyblank") ? 1 : 0
+    sr.activeTab = (name === "history" || name === "historyblank") ? Tabs.history : Tabs.items
     if (name === "draft") itemsTab.startNew("todo")
     else if (name === "empty") itemsTab.searchText = "zzz_no_match_xyz"
     else if (name === "toast") toast.show("Deleted — " + sr.longTitle)
