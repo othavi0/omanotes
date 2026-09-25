@@ -461,5 +461,55 @@ expect "c c clears the history" \
 logged "a failed write shows one error toast" "ERROR-TOASTS 1$"
 logged "no write was rejected during the whole run" "WRITE-FAILURES 0$"
 
+# The first qs run has no time left under its timeout, so the history count
+# gets its own run against a log longer than the 500 rows historySql() reads.
+sqlite3 "$db" "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 600)
+  INSERT INTO history (type, title, action, ts) SELECT 'todo', 'Bulk ' || i, 'added', $now - 200000 - i FROM n"
+history_total="$(sqlite3 "$db" "SELECT COUNT(*) FROM history")"
+cat > "$cfg_dir/shell.qml" <<'QML'
+import QtQuick
+import Quickshell
+import "data" as Data
+
+ShellRoot {
+  id: sr
+  property bool countsSeen: false
+  property bool historySeen: false
+
+  function findByText(item, text) {
+    if (item.text === text) return item
+    for (var i = 0; i < item.children.length; ++i) {
+      var hit = sr.findByText(item.children[i], text)
+      if (hit) return hit
+    }
+    return null
+  }
+  function report() {
+    if (!sr.countsSeen || !sr.historySeen) return
+    var label = sr.findByText(header.item, "History")
+    console.log("HISTORY-COUNT " + label.parent.children[2].text)
+    Qt.exit(0)
+  }
+
+  Data.Db {
+    id: countDb
+    Component.onCompleted: countDb.init()
+    onCountsUpdated: { sr.countsSeen = true; Qt.callLater(sr.report) }
+    onHistoryUpdated: { sr.historySeen = true; Qt.callLater(sr.report) }
+  }
+  Loader {
+    id: header
+    source: Qt.resolvedUrl("ui/PanelHeader.qml")
+    onLoaded: item.db = countDb
+  }
+}
+QML
+run_qs > "$cfg_dir/qs-count.log" 2>&1 || { cat "$cfg_dir/qs-count.log"; echo "qs exited non-zero"; exit 2; }
+if (( history_total > 500 )) && grep -qE "HISTORY-COUNT $history_total$" "$cfg_dir/qs-count.log"; then
+  pass "the History tab counts all $history_total entries, past the 500 it lists"
+else
+  fail "the History tab count: want $history_total, got '$(grep -oE 'HISTORY-COUNT.*' "$cfg_dir/qs-count.log" | head -1)'"
+fi
+
 echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))

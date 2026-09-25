@@ -19,7 +19,7 @@ RowLayout {
         Layout.preferredWidth: Style.space(260)
         options: [
             { value: "0", label: "Items", icon: Icons.all, count: root.db ? root.db.totalNotes + root.db.totalTodos : 0 },
-            { value: "1", label: "History", icon: Icons.history, count: root.db ? root.db.history.length : 0 }
+            { value: "1", label: "History", icon: Icons.history, count: root.db ? root.db.totalHistory : 0 }
         ]
         value: String(root.activeTab)
         foreground: root.foreground
