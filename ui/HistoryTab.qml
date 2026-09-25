@@ -95,7 +95,9 @@ Item {
     }
 
     function onKey(event) {
-        var text = event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier) ? "" : event.text
+        var mods = event.modifiers
+        var text = mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier) ? ""
+            : mods & Qt.ShiftModifier ? event.text : event.text.toLowerCase()
         if (event.key === Qt.Key_Down || text === "j") {
             root.moveSelection(1); event.accepted = true
         } else if (event.key === Qt.Key_Up || text === "k") {

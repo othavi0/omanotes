@@ -14,7 +14,7 @@ import "Item.js" as ItemJs
 //           · Esc closes the panel · letters ignore Ctrl, Alt and Meta
 //   editor: fields own printable keys · Enter/Tab title→body, body→save+list
 //           · Esc saves (auto-save on leaving) · Shift+Esc discards
-//           · Ctrl+T toggles a draft's note/todo
+//           · Ctrl+T sets a draft's type to the other of note/todo
 //   search: Enter/Tab/Shift+Tab return to the list, Esc clears and returns;
 //           with a draft open they return to its title instead
 Item {
@@ -229,8 +229,11 @@ Item {
 
     function onListKey(event) {
         // Shift is left alone: it already turns "j" into "J", and some
-        // layouts need it to type "/".
-        var text = event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier) ? "" : event.text
+        // layouts need it to type "/". Caps Lock sends "J" with no
+        // modifier at all, so that text is lowered.
+        var mods = event.modifiers
+        var text = mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier) ? ""
+            : mods & Qt.ShiftModifier ? event.text : event.text.toLowerCase()
         if (event.key === Qt.Key_Down || text === "j") {
             root.moveSelection(1); event.accepted = true
         } else if (event.key === Qt.Key_Up || text === "k") {

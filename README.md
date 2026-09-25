@@ -40,7 +40,7 @@ Items tab, list:
 | `f` | Cycle the filter: all, notes, todos |
 | `Esc` | Cancel an armed delete, or close the panel |
 
-Letter shortcuts do nothing while `Ctrl`, `Alt` or `Super` is held, so `Ctrl+C` in the list does not toggle the selected item.
+Letter shortcuts do nothing while `Ctrl`, `Alt` or `Super` is held, so `Ctrl+C` in the list does not toggle the selected item. They still work with Caps Lock on.
 
 Items tab, editor:
 
