@@ -48,51 +48,61 @@ ShellRoot {
     }
     return null
   }
+  function findText(obj, part) {
+    if (!obj) return null
+    if (typeof obj.text === "string" && obj.text.indexOf(part) >= 0) return obj
+    var kids = obj.data || []
+    for (var i = 0; i < kids.length; ++i) {
+      var hit = sr.findText(kids[i], part)
+      if (hit) return hit
+    }
+    return null
+  }
 
   FloatingWindow {
     implicitWidth: 40; implicitHeight: 40
     Loader { id: widget; anchors.fill: parent; source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml" }
   }
 
-  // Typing into the editor has no IPC, so the test reaches the panel's MainTab.
+  // Typing into the editor has no IPC, so the test reaches the panel's ItemsTab.
   IpcHandler {
     target: "omanotes-test"
     function typeDraft(title: string): string {
-      var mainTab = sr.find(widget.item.panelItem, "MainTab")
-      if (!mainTab) return "no MainTab"
-      mainTab.startNew("note")
-      mainTab.editorTitle = title
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      if (!itemsTab) return "no ItemsTab"
+      itemsTab.startNew("note")
+      itemsTab.editorTitle = title
       return "ok"
     }
     function filterPanel(type: string, query: string): string {
-      var mainTab = sr.find(widget.item.panelItem, "MainTab")
-      if (!mainTab) return "no MainTab"
-      mainTab.filterType = type
-      mainTab.searchText = query
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      if (!itemsTab) return "no ItemsTab"
+      itemsTab.filterType = type
+      itemsTab.searchText = query
       return "ok"
     }
     function panelRows(): int {
-      var mainTab = sr.find(widget.item.panelItem, "MainTab")
-      return mainTab ? mainTab.itemList.length : -1
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      return itemsTab ? itemsTab.itemList.length : -1
     }
     function editItem(id: int, title: string): string {
-      var mainTab = sr.find(widget.item.panelItem, "MainTab")
-      if (!mainTab) return "no MainTab"
-      mainTab.pickItem(id)
-      mainTab.editorTitle = title
-      mainTab.toast.text = ""
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      if (!itemsTab) return "no ItemsTab"
+      itemsTab.pickItem(id)
+      itemsTab.editorTitle = title
+      itemsTab.toast.text = ""
       return "ok"
     }
     function editorState(): string {
-      var mainTab = sr.find(widget.item.panelItem, "MainTab")
-      if (!mainTab) return "no MainTab"
-      return mainTab.selectedId + "|" + mainTab.editorTitle + "|toast:" + mainTab.toast.text
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      if (!itemsTab) return "no ItemsTab"
+      return itemsTab.selectedId + "|" + itemsTab.editorTitle + "|toast:" + itemsTab.toast.text
     }
     // Writes as the panel's user makes them, so a failure reaches the toast.
     function userWrite(method: string, id: string): string {
-      var mainTab = sr.find(widget.item.panelItem, "MainTab")
-      if (!mainTab) return "no MainTab"
-      mainTab.toast.text = ""
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      if (!itemsTab) return "no ItemsTab"
+      itemsTab.toast.text = ""
       var db = widget.item.panelItem.db
       if (method === "setStatus") db.setStatus(id, 1)
       else if (method === "update") db.update(id, "USER-WRITE", "")
@@ -103,9 +113,14 @@ ShellRoot {
       var db = widget.item.panelItem.db
       return db.totalNotes + "|" + db.totalHistory + "|" + (db.history.length ? db.history[0].title : "")
     }
+    function countLabels(): string {
+      var button = sr.find(widget.item, "BarIconButton")
+      var header = sr.findText(sr.find(widget.item.panelItem, "PanelHeader"), " unread · ")
+      return (button ? button.tooltipText : "no BarIconButton") + "|" + (header ? header.text : "no count")
+    }
     function toast(): string {
-      var mainTab = sr.find(widget.item.panelItem, "MainTab")
-      return mainTab ? mainTab.toast.text : "no MainTab"
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      return itemsTab ? itemsTab.toast.text : "no ItemsTab"
     }
     function quit(): void { Qt.exit(0) }
   }
@@ -148,6 +163,15 @@ all_of() {
 }
 
 replies "ping answers JSON" "$(ipc scratchpad ping)" '{"ok":true}'
+
+want_counts="Omanotes: 1 unread · 2 pending|1 unread · 2 pending"
+counts=""
+for _ in $(seq 50); do
+  counts="$(ipc omanotes-test countLabels)"
+  [[ "$counts" == "$want_counts" ]] && break
+  sleep 0.2
+done
+replies "the bar tooltip and the panel header count unread notes and pending todos" "$counts" "$want_counts"
 
 replies "addNote answers ok" "$(ipc scratchpad addNote "IPC-NOTE" "ipc body")" '{"ok":true}'
 expect "addNote writes the note" \

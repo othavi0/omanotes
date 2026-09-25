@@ -29,7 +29,7 @@ QtObject {
     property bool allItemsLoaded: false
     property var history: []                   // historyList() results
     property int unreadNotes: 0                // notes with status 0
-    property int inProgressTodos: 0            // todos with status 0
+    property int pendingTodos: 0               // todos with status 0
     property int totalNotes: 0                 // all notes, unfiltered
     property int totalTodos: 0                 // all todos, unfiltered
     property int totalHistory: 0               // all history, past historyList()'s limit
@@ -122,7 +122,7 @@ QtObject {
             }
             if (c === null) return
             root.unreadNotes = c.unreadNotes
-            root.inProgressTodos = c.inProgressTodos
+            root.pendingTodos = c.pendingTodos
             root.totalNotes = c.notes
             root.totalTodos = c.todos
             root.totalHistory = c.history
@@ -147,7 +147,7 @@ QtObject {
             }
             if (rows === null) return
             root.items = rows
-            if (root.allItemsProcess.running || root._allItemsStale) root._itemsPending = true
+            if (root.allItemsProcess.running || root._allItemsStale) root._itemsUpdateHeld = true
             else root.itemsUpdated(rows)
         }
     }
@@ -155,7 +155,7 @@ QtObject {
     // itemsUpdated waits for the allItems read of the same reload, so the
     // panel never judges a row missing from a filtered list against allItems
     // from before the change.
-    property bool _itemsPending: false
+    property bool _itemsUpdateHeld: false
     property Process allItemsProcess: Process {
         stdout: StdioCollector {
             id: allItemsStdout
@@ -175,8 +175,8 @@ QtObject {
                 root.allItems = rows
                 root.allItemsLoaded = true
             }
-            if (!root._itemsPending) return
-            root._itemsPending = false
+            if (!root._itemsUpdateHeld) return
+            root._itemsUpdateHeld = false
             root.itemsUpdated(root.items)
         }
     }

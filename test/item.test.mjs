@@ -3,42 +3,43 @@ import assert from "node:assert/strict"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const Item = loadQmlLib(new URL("../ui/Item.js", import.meta.url), [
-  "isTodo", "isDone", "statusLabel", "toggleVerb", "statusToast", "relativeAge", "indexOfId",
+  "isTodo", "isReadOrCompleted", "statusLabel", "toggleVerb", "statusToast", "relativeAge", "indexOfId",
   "historyLabel", "neighbourId", "isRemoved"
 ])
 
 const noteUnread = { type: "note", status: 0, title: "Ideas" }
 const noteRead = { type: "note", status: 1, title: "Ideas" }
-const todoOpen = { type: "todo", status: 0, title: "Buy milk" }
-const todoDone = { type: "todo", status: 1, title: "Buy milk" }
+const todoPending = { type: "todo", status: 0, title: "Buy milk" }
+const todoCompleted = { type: "todo", status: 1, title: "Buy milk" }
 
-test("isTodo / isDone", () => {
+test("isTodo / isReadOrCompleted", () => {
   assert.equal(Item.isTodo(noteUnread), false)
-  assert.equal(Item.isTodo(todoOpen), true)
-  assert.equal(Item.isDone(noteUnread), false)
-  assert.equal(Item.isDone(noteRead), true)
-  assert.equal(Item.isDone(todoDone), true)
+  assert.equal(Item.isTodo(todoPending), true)
+  assert.equal(Item.isReadOrCompleted(noteUnread), false)
+  assert.equal(Item.isReadOrCompleted(noteRead), true)
+  assert.equal(Item.isReadOrCompleted(todoPending), false)
+  assert.equal(Item.isReadOrCompleted(todoCompleted), true)
 })
 
 test("statusLabel", () => {
   assert.equal(Item.statusLabel(noteUnread), "unread")
   assert.equal(Item.statusLabel(noteRead), "read")
-  assert.equal(Item.statusLabel(todoOpen), "open")
-  assert.equal(Item.statusLabel(todoDone), "done")
+  assert.equal(Item.statusLabel(todoPending), "pending")
+  assert.equal(Item.statusLabel(todoCompleted), "completed")
 })
 
 test("toggleVerb", () => {
   assert.equal(Item.toggleVerb(noteUnread), "Mark read")
   assert.equal(Item.toggleVerb(noteRead), "Mark unread")
-  assert.equal(Item.toggleVerb(todoOpen), "Complete")
-  assert.equal(Item.toggleVerb(todoDone), "Reopen")
+  assert.equal(Item.toggleVerb(todoPending), "Complete")
+  assert.equal(Item.toggleVerb(todoCompleted), "Mark pending")
 })
 
 test("statusToast", () => {
   assert.equal(Item.statusToast(noteUnread, 1), "Marked read — Ideas")
   assert.equal(Item.statusToast(noteRead, 0), "Marked unread — Ideas")
-  assert.equal(Item.statusToast(todoOpen, 1), "Completed — Buy milk")
-  assert.equal(Item.statusToast(todoDone, 0), "Reopened — Buy milk")
+  assert.equal(Item.statusToast(todoPending, 1), "Completed — Buy milk")
+  assert.equal(Item.statusToast(todoCompleted, 0), "Marked pending — Buy milk")
 })
 
 test("relativeAge: under a minute", () => {

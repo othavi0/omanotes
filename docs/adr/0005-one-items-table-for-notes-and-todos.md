@@ -8,5 +8,5 @@ Notes and todos have the same fields and the user can convert one into the other
 
 ## Consequences
 
-- The per-type wording of status lives in `ui/Item.js`. `CONTEXT.md` names the todo states pending and completed, while `Item.js` and the panel header still say open and done, and `Db.qml` counts `inProgressTodos`.
+- The per-type wording of status lives in `ui/Item.js`.
 - Ids use `AUTOINCREMENT`, so a deleted id is never reused and the UI can keep ids across reloads.

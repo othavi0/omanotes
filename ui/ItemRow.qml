@@ -6,7 +6,7 @@ import "Tone.js" as Tone
 
 // One row of the unified list: a checkbox (todo) or note glyph, an unread
 // dot on unread notes, the title (bold when an unread note, struck through
-// and dimmed when a done todo), and the age since updated_at on the right.
+// and dimmed when a completed todo), and the age since updated_at on the right.
 // Clicking the glyph toggles status; clicking the rest of the row selects.
 Rectangle {
     id: root
@@ -19,7 +19,7 @@ Rectangle {
     signal picked()
     signal toggled()
 
-    readonly property bool done: ItemJs.isDone(root.item)
+    readonly property bool readOrCompleted: ItemJs.isReadOrCompleted(root.item)
     readonly property bool todo: ItemJs.isTodo(root.item)
 
     height: Style.space(30)
@@ -39,8 +39,8 @@ Rectangle {
         id: glyph
         x: Style.space(10)
         y: (root.height - height) / 2
-        text: root.todo ? (root.done ? Icons.boxOn : Icons.boxOff) : Icons.note
-        color: root.done ? Util.alpha(root.foreground, Tone.muted) : (root.todo ? root.foreground : Color.accent)
+        text: root.todo ? (root.readOrCompleted ? Icons.boxOn : Icons.boxOff) : Icons.note
+        color: root.readOrCompleted ? Util.alpha(root.foreground, Tone.muted) : (root.todo ? root.foreground : Color.accent)
         font.family: Style.font.family
         font.pixelSize: Style.font.icon
 
@@ -54,7 +54,7 @@ Rectangle {
     }
 
     Rectangle {
-        visible: !root.todo && !root.done
+        visible: !root.todo && !root.readOrCompleted
         width: Style.space(6)
         height: width
         radius: width / 2
@@ -72,10 +72,10 @@ Rectangle {
         y: (root.height - height) / 2
         text: root.item.title || ""
         elide: Text.ElideRight
-        color: root.done ? Util.alpha(root.foreground, Tone.muted)
+        color: root.readOrCompleted ? Util.alpha(root.foreground, Tone.muted)
             : root.selected ? Style.selectedStateColor(root.foreground, Color.accent) : root.foreground
-        font.strikeout: root.todo && root.done
-        font.bold: !root.done && !root.todo
+        font.strikeout: root.todo && root.readOrCompleted
+        font.bold: !root.readOrCompleted && !root.todo
         font.family: Style.font.family
         font.pixelSize: Style.font.body
     }

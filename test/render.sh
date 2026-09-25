@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Renders PanelHeader, MainTab, HistoryTab and Toast against
+# Renders PanelHeader, ItemsTab, HistoryTab and Toast against
 # a real, seeded sqlite db, offscreen, and checks that every ActionButton,
 # Field, SearchField and Segment is exactly Style.spacing.controlHeight tall
 # (the dev's hard rule: a button with an icon must never be taller than a
@@ -29,12 +29,13 @@ import qs.Commons
 import qs.Ui
 import "data" as Data
 import "ui" as Ui
+import "ui/Tabs.js" as Tabs
 
 ShellRoot {
   id: sr
   property int readyCount: 0
   property bool started: false            // guards the initial-load wait from firing again
-  property int activeTab: 0
+  property int activeTab: Tabs.items
   property bool failed: false
   property string currentScene: ""
   property int sceneIndex: 0
@@ -92,7 +93,7 @@ ShellRoot {
       sr.expect(sceneName, toast.width <= maxWidth, "toast width " + Math.round(toast.width) + " <= " + maxWidth)
       sr.expect(sceneName, label.lineCount >= 2, "long title wraps to " + label.lineCount + " lines")
     } else if (sceneName === "empty") {
-      var labels = sr.find(mainTab, /^ActionButton$/).map(function(b) { return b.item.text })
+      var labels = sr.find(itemsTab, /^ActionButton$/).map(function(b) { return b.item.text })
       sr.expect(sceneName, labels.indexOf("Clear search and filter") >= 0, "buttons [" + labels.join(", ") + "] name what they clear")
     } else if (sceneName === "history") {
       sr.expect(sceneName, sr.find(historyTab, /^PanelSeparator$/).length === 2, "History uses the kit PanelSeparator")
@@ -131,13 +132,13 @@ ShellRoot {
     // Reset to a clean base so a scene never inherits the previous one's
     // draft, search text, or keyboard focus (an async focusTitle() queued
     // by the previous scene can otherwise still land here).
-    mainTab.draftNew = false
-    mainTab.searchText = ""
-    mainTab.focusList()
+    itemsTab.draftNew = false
+    itemsTab.searchText = ""
+    itemsTab.focusList()
     toast.hide()
-    sr.activeTab = (name === "history" || name === "historyblank") ? 1 : 0
-    if (name === "draft") mainTab.startNew("todo")
-    else if (name === "empty") mainTab.searchText = "zzz_no_match_xyz"
+    sr.activeTab = (name === "history" || name === "historyblank") ? Tabs.history : Tabs.items
+    if (name === "draft") itemsTab.startNew("todo")
+    else if (name === "empty") itemsTab.searchText = "zzz_no_match_xyz"
     else if (name === "toast") toast.show("Deleted — " + sr.longTitle)
     settleTimer.restart()
   }
@@ -185,8 +186,8 @@ ShellRoot {
           Layout.fillHeight: true
           currentIndex: sr.activeTab
 
-          Ui.MainTab {
-            id: mainTab
+          Ui.ItemsTab {
+            id: itemsTab
             db: db
           }
           Ui.HistoryTab {
