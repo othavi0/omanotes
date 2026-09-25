@@ -387,7 +387,7 @@ Item {
                 nowSeconds: root.nowSeconds
                 foreground: root.foreground
                 onLeaveRequested: root.commitEditor(true)
-                onToggleDraftTypeRequested: function(v) { root.draftType = v }
+                onConvertDraftRequested: function(type) { root.draftType = type }
                 onToggleRequested: root.toggleStatus()
                 onConvertRequested: root.convertSelected()
                 onCopyRequested: root.copySelected()

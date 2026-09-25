@@ -52,7 +52,7 @@ Items tab, editor:
 | `Shift+Tab` | Save and return to the list | Move to the title |
 | `Esc` | Save and return to the list | Save and return to the list |
 | `Shift+Esc` | Discard and return to the list | Discard and return to the list |
-| `Ctrl+T` | On a draft, switch between note and todo | On a draft, switch between note and todo |
+| `Ctrl+T` | On a draft, convert between note and todo | On a draft, convert between note and todo |
 
 A draft with a body and no title can't be saved. It stays open with the warning "New item needs a title" until you type a title or discard it.
 

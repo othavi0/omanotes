@@ -33,7 +33,7 @@ ColumnLayout {
     readonly property bool unsaved: root.draft || root.dirty
 
     signal leaveRequested()               // Esc/Backtab from title, Esc/Tab/Enter from body — autosave and back to the list
-    signal toggleDraftTypeRequested(string v)
+    signal convertDraftRequested(string type)
     signal toggleRequested()
     signal convertRequested()
     signal copyRequested()
@@ -69,8 +69,8 @@ ColumnLayout {
     function isDraftTypeKey(event) {
         return root.draft && event.key === Qt.Key_T && event.modifiers === Qt.ControlModifier
     }
-    function switchDraftType() {
-        root.toggleDraftTypeRequested(root.draftType === "todo" ? "note" : "todo")
+    function convertDraft() {
+        root.convertDraftRequested(root.draftType === "todo" ? "note" : "todo")
     }
 
     spacing: Style.spacing.lg
@@ -88,7 +88,7 @@ ColumnLayout {
             ]
             value: root.draftType
             foreground: root.foreground
-            onPicked: function(v) { root.toggleDraftTypeRequested(v) }
+            onPicked: function(v) { root.convertDraftRequested(v) }
         }
 
         Row {
@@ -164,7 +164,7 @@ ColumnLayout {
             } else if (event.key === Qt.Key_Backtab || event.key === Qt.Key_Escape) {
                 root.leaveRequested(); event.accepted = true
             } else if (root.isDraftTypeKey(event)) {
-                root.switchDraftType(); event.accepted = true
+                root.convertDraft(); event.accepted = true
             }
         }
     }
@@ -202,7 +202,7 @@ ColumnLayout {
             } else if (event.key === Qt.Key_Escape) {
                 root.leaveRequested(); event.accepted = true
             } else if (root.isDraftTypeKey(event)) {
-                root.switchDraftType(); event.accepted = true
+                root.convertDraft(); event.accepted = true
             }
         }
     }

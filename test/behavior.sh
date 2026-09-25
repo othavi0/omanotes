@@ -389,10 +389,10 @@ logged "the title hints of an item show Enter and Tab moving to the body" \
 logged "the body hints of an item show Enter and Tab saving and going back" \
   "EDITOR-BODY-HINTS Enter/Tab save and back,Shift\+Enter new line,Shift\+Tab to title,Esc save and back,Shift\+Esc discard$"
 logged "a draft title starting with t keeps the t and the type" "DRAFT-TYPED \[tomar\] note$"
-logged "Ctrl+T in the draft title switches it to todo and types nothing" "DRAFT-AFTER-CTRL-T-IN-TITLE \[tomar\] todo$"
+logged "Ctrl+T in the draft title converts it to todo and types nothing" "DRAFT-AFTER-CTRL-T-IN-TITLE \[tomar\] todo$"
 logged "the draft title hints offer Ctrl+T" \
   "DRAFT-TITLE-HINTS Enter/Tab to body,Esc save and back,Shift\+Esc discard,Ctrl\+T note/todo$"
-logged "Ctrl+T in the draft body switches it back to note and types nothing" "DRAFT-AFTER-CTRL-T-IN-BODY \[\] note$"
+logged "Ctrl+T in the draft body converts it back to note and types nothing" "DRAFT-AFTER-CTRL-T-IN-BODY \[\] note$"
 logged "the draft body hints offer Ctrl+T" \
   "DRAFT-BODY-HINTS Enter/Tab save and back,Shift\+Enter new line,Shift\+Tab to title,Esc save and back,Shift\+Esc discard,Ctrl\+T note/todo$"
 logged "f cycles the type filter and the list follows" "FILTER-AFTER-F note rows=0$"
