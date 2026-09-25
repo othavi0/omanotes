@@ -61,13 +61,20 @@ test("relativeAge: exactly 30 days stays relative", () => {
   assert.equal(Item.relativeAge(0, 30 * 86400), "30d")
 })
 
-test("relativeAge: past 30 days falls back to a date", () => {
-  const ts = 0
-  const now = 31 * 86400
-  const d = new Date(ts * 1000)
-  const pad = (n) => (n < 10 ? "0" : "") + n
-  const expected = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
-  assert.equal(Item.relativeAge(ts, now), expected)
+test("relativeAge: past 30 days falls back to the local date", (t) => {
+  const realTz = process.env.TZ
+  t.after(() => {
+    if (realTz === undefined) delete process.env.TZ
+    else process.env.TZ = realTz
+  })
+  const ts = Date.UTC(2023, 10, 14, 22, 13) / 1000
+  const now = ts + 31 * 86400
+  process.env.TZ = "UTC"
+  assert.equal(Item.relativeAge(ts, now), "2023-11-14")
+  process.env.TZ = "America/Sao_Paulo"
+  assert.equal(Item.relativeAge(ts, now), "2023-11-14")
+  process.env.TZ = "Asia/Tokyo"
+  assert.equal(Item.relativeAge(ts, now), "2023-11-15")
 })
 
 test("indexOfId finds a row by id, comparing numbers and numeric strings alike", () => {
