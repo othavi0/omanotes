@@ -40,6 +40,8 @@ Items tab, list:
 | `f` | Cycle the filter: all, notes, todos |
 | `Esc` | Cancel an armed delete, or close the panel |
 
+Letter shortcuts do nothing while `Ctrl`, `Alt` or `Super` is held, so `Ctrl+C` in the list does not toggle the selected item.
+
 Items tab, editor:
 
 | Key | Title field | Body |
@@ -50,13 +52,13 @@ Items tab, editor:
 | `Shift+Tab` | Save and return to the list | Move to the title |
 | `Esc` | Save and return to the list | Save and return to the list |
 | `Shift+Esc` | Discard and return to the list | Discard and return to the list |
-| `t` | On an empty draft title, switch between note and todo | |
+| `Ctrl+T` | On a draft, switch between note and todo | On a draft, switch between note and todo |
 
 A draft with a body and no title can't be saved. It stays open with the warning "New item needs a title" until you type a title or discard it.
 
 Search field: `Enter`, `Tab` or `Shift+Tab` return to the list, `Esc` clears the search and returns. While a draft is open, they return to the draft's title instead.
 
-History tab: `j` / `k` move, `d` `d` deletes an entry, `c` clears the whole history at once, `Esc` cancels an armed delete or closes the panel.
+History tab: `j` / `k` move, `d` `d` deletes an entry, `c` clears the whole history at once, `Esc` cancels an armed delete or closes the panel. As in the list, these letters do nothing with `Ctrl`, `Alt` or `Super` held.
 
 ## IPC
 

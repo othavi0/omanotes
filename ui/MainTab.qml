@@ -11,10 +11,10 @@ import "Item.js" as ItemJs
 //   list:   j/k or ↑/↓ move · Enter/l/→/Tab edit the selected item
 //           · n new draft · space/c toggle status · d delete (double-press
 //           to confirm) · / focus search · f cycles All/Notes/Todos
-//           · Esc closes the panel
-//   editor: fields own printable keys · Tab title→body, body→save+list
-//           · Enter in body saves · Esc saves (auto-save on leaving)
-//           · Shift+Esc discards · `t` on an empty draft title toggles note/todo
+//           · Esc closes the panel · letters ignore Ctrl, Alt and Meta
+//   editor: fields own printable keys · Enter/Tab title→body, body→save+list
+//           · Esc saves (auto-save on leaving) · Shift+Esc discards
+//           · Ctrl+T toggles a draft's note/todo
 //   search: Enter/Tab/Shift+Tab return to the list, Esc clears and returns;
 //           with a draft open they return to its title instead
 Item {
@@ -62,16 +62,24 @@ Item {
             ["d d", "delete"], ["/", "search"], ["f", "filter"], ["Esc", "close"]],
         search: [["Enter", "to list"], ["Esc", "clear"]],
         searchWithDraft: [["Enter", "to draft"], ["Esc", "clear"]],
-        editor: [["Tab", "next field"], ["Enter", "save"], ["Shift+Enter", "new line"], ["Esc", "save and back"], ["Shift+Esc", "discard"]],
-        draft: [["Tab", "next field"], ["Enter", "save"], ["Shift+Enter", "new line"], ["Esc", "save and back"], ["Shift+Esc", "discard"], ["t", "note/todo"]],
-        draftNeedsTitle: [["Tab", "next field"], ["Shift+Enter", "new line"], ["Shift+Esc", "discard"], ["t", "note/todo"]],
+        title: [["Enter/Tab", "to body"], ["Esc", "save and back"], ["Shift+Esc", "discard"]],
+        body: [["Enter/Tab", "save and back"], ["Shift+Enter", "new line"], ["Shift+Tab", "to title"],
+            ["Esc", "save and back"], ["Shift+Esc", "discard"]],
+        untitledDraft: {
+            title: [["Enter/Tab", "to body"], ["Shift+Esc", "discard"]],
+            body: [["Shift+Enter", "new line"], ["Shift+Tab", "to title"], ["Shift+Esc", "discard"]]
+        },
+        draftType: [["Ctrl+T", "note/todo"]],
         deleteArmed: [["d", "press again to delete"]]
     })
     readonly property var hints: {
         if (root.deleteArmed) return root.hintSets.deleteArmed
-        if (root.focusContext === "draft" && root.draftNeedsTitle) return root.hintSets.draftNeedsTitle
-        if (root.focusContext === "search" && root.draftNew) return root.hintSets.searchWithDraft
-        return root.hintSets[root.focusContext]
+        if (root.focusContext === "search") return root.draftNew ? root.hintSets.searchWithDraft : root.hintSets.search
+        if (root.focusContext === "list") return root.hintSets.list
+        var field = editorPane.bodyFocused ? "body" : "title"
+        if (!root.draftNew) return root.hintSets[field]
+        var fieldHints = root.draftNeedsTitle ? root.hintSets.untitledDraft[field] : root.hintSets[field]
+        return fieldHints.concat(root.hintSets.draftType)
     }
 
     onSelectedIdChanged: {
@@ -220,24 +228,25 @@ Item {
     }
 
     function onListKey(event) {
-        if (event.key === Qt.Key_Down || event.key === Qt.Key_J || event.text === "j") {
+        // Shift is left alone: it already turns "j" into "J", and some
+        // layouts need it to type "/".
+        var text = event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier) ? "" : event.text
+        if (event.key === Qt.Key_Down || text === "j") {
             root.moveSelection(1); event.accepted = true
-        } else if (event.key === Qt.Key_Up || event.key === Qt.Key_K || event.text === "k") {
+        } else if (event.key === Qt.Key_Up || text === "k") {
             root.moveSelection(-1); event.accepted = true
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-            || event.key === Qt.Key_Right || event.key === Qt.Key_Tab
-            || event.key === Qt.Key_L || event.text === "l") {
+            || event.key === Qt.Key_Right || event.key === Qt.Key_Tab || text === "l") {
             root.focusEditor(); event.accepted = true
-        } else if (event.key === Qt.Key_Space || event.text === " "
-            || event.key === Qt.Key_C || event.text === "c") {
+        } else if (event.key === Qt.Key_Space || text === "c") {
             root.toggleStatus(); event.accepted = true
-        } else if (event.text === "d") {
+        } else if (text === "d") {
             root.armDelete(); event.accepted = true
-        } else if (event.text === "n" || event.text === "a") {
+        } else if (text === "n" || text === "a") {
             root.startNew("note"); event.accepted = true
-        } else if (event.text === "/") {
+        } else if (text === "/") {
             root.focusSearch(); event.accepted = true
-        } else if (event.text === "f") {
+        } else if (text === "f") {
             root.cycleFilter(); event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
             if (root.deleteArmed) { root.deleteArmId = -1; deleteArmTimer.stop(); event.accepted = true }
