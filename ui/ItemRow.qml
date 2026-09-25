@@ -8,22 +8,31 @@ import "Tone.js" as Tone
 // dot on unread notes, the title (bold when an unread note, struck through
 // and dimmed when a completed todo), and the age since updated_at on the right.
 // Clicking the glyph toggles status; clicking the rest of the row selects.
+// When draggable, a press that moves 6 px becomes a drag and no longer
+// selects on release.
 Rectangle {
     id: root
 
     property var item: ({})
     property bool selected: false
+    property bool draggable: false
+    property bool lifted: false
     property color foreground: Color.foreground
     property int nowSeconds: 0
 
     signal picked()
     signal toggled()
+    // Positions are in this row's coordinates.
+    signal dragMoved(real x, real y)
+    signal dropped()
+    signal dragCanceled()
 
     readonly property bool readOrCompleted: ItemJs.isReadOrCompleted(root.item)
     readonly property bool todo: ItemJs.isTodo(root.item)
 
     height: Style.space(30)
     radius: Style.cornerRadius
+    opacity: root.lifted ? Tone.lifted : 1
     color: root.selected
         ? Style.selectedFillFor(root.foreground, Color.accent)
         : (rowMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent")
@@ -32,7 +41,31 @@ Rectangle {
         id: rowMouse
         anchors.fill: parent
         hoverEnabled: true
-        onClicked: root.picked()
+        // The list would otherwise take a vertical drag as a flick.
+        preventStealing: true
+
+        property point pressedAt
+        property bool dragging: false
+
+        onPressed: function(mouse) {
+            rowMouse.pressedAt = Qt.point(mouse.x, mouse.y)
+            rowMouse.dragging = false
+        }
+        onPositionChanged: function(mouse) {
+            if (!rowMouse.pressed) return
+            if (!rowMouse.dragging) {
+                if (!root.draggable || Math.hypot(mouse.x - rowMouse.pressedAt.x, mouse.y - rowMouse.pressedAt.y) < 6) return
+                rowMouse.dragging = true
+            }
+            root.dragMoved(mouse.x, mouse.y)
+        }
+        onReleased: if (rowMouse.dragging) root.dropped()
+        onCanceled: {
+            if (!rowMouse.dragging) return
+            rowMouse.dragging = false
+            root.dragCanceled()
+        }
+        onClicked: if (!rowMouse.dragging) root.picked()
     }
 
     Text {

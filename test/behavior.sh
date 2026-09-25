@@ -1006,5 +1006,245 @@ logged "an edit that fails behind a draft waits there with its error shown" \
 logged "a failed edit whose item a script removes while it waits behind a draft shows Item removed elsewhere" \
   "REMOVED-BEHIND-DRAFT false \[DRAFT-OVER-REMOVAL\] \[\] dirty=false saved=false error=false added=true removed=true"
 
+# A fourth run drags real rows with the mouse. It starts from a fresh database
+# whose rows went through every migration, so the order starts as the list
+# showed it before items had a position: pending 301-304, then read or
+# completed 305-306.
+rm -f "$db"
+run_db_js v0
+sqlite3 "$db" "INSERT INTO items (id, type, title, body, status, created_at, updated_at) VALUES
+  (301, 'note', 'Alpha note', '', 0, $now - 10, $now - 10),
+  (302, 'todo', 'Bravo todo', '', 0, $now - 20, $now - 20),
+  (303, 'note', 'Charlie note', '', 0, $now - 30, $now - 30),
+  (304, 'todo', 'Delta todo', '', 0, $now - 40, $now - 40),
+  (305, 'note', 'Echo read', '', 1, $now - 50, $now - 50),
+  (306, 'todo', 'Foxtrot done', '', 1, $now - 60, $now - 60);"
+run_db_js migrate
+cat > "$cfg_dir/shell.qml" <<'QML'
+import QtQuick
+import QtTest
+import Quickshell
+import "data" as Data
+
+ShellRoot {
+  id: sr
+  property int stepIndex: 0
+  property bool started: false
+  property int writeFailures: 0
+  property var panel: null
+  property var itemsTab: null
+  property point at
+  readonly property var db: sr.itemsTab ? sr.itemsTab.db : null
+
+  function listView() { return sr.findType(itemsTab, "QQuickListView") }
+  function rowOf(id) {
+    var rows = sr.listView().contentItem.children
+    for (var i = 0; i < rows.length; ++i)
+      if (String(rows[i]).indexOf("ItemRow") === 0 && rows[i].item && Number(rows[i].item.id) === id) return rows[i]
+    return null
+  }
+  // A point `fy` of the way down row `id`, in the list's coordinates.
+  function pointIn(id, fy) {
+    var row = sr.rowOf(id)
+    return row.mapToItem(sr.listView(), row.width / 2, row.height * fy)
+  }
+  function press(id) {
+    sr.at = sr.pointIn(id, 0.5)
+    keys.mousePress(sr.listView(), sr.at.x, sr.at.y, Qt.LeftButton, Qt.NoModifier, -1)
+  }
+  function moveTo(y) {
+    sr.at = Qt.point(sr.at.x, y)
+    keys.mouseMove(sr.listView(), sr.at.x, y, -1, Qt.LeftButton, Qt.NoModifier)
+  }
+  // Presses row `id` and moves in steps to `y`, holding the button.
+  function drag(id, y) {
+    sr.press(id)
+    var from = sr.at.y
+    sr.moveTo(from + 3)
+    sr.moveTo((from + y) / 2)
+    sr.moveTo(y)
+  }
+  function release() { keys.mouseRelease(sr.listView(), sr.at.x, sr.at.y, Qt.LeftButton, Qt.NoModifier, -1) }
+  function named(name) { return sr.findWhere(itemsTab, function(it) { return it.objectName === name }) }
+  function floatText() {
+    var f = sr.named("dragFloat")
+    return f && f.visible ? sr.findType(f, "ItemRow").item.title : "none"
+  }
+  // Whether the drop line sits in the gap between rows `above` and `below`
+  // (-1 for the list's edge).
+  function lineBetween(above, below) {
+    var line = sr.named("dropLine")
+    if (!line || !line.visible) return false
+    var y = line.mapToItem(sr.listView(), 0, line.height / 2).y
+    var top = above >= 0 ? sr.pointIn(above, 1).y : -4
+    var bottom = below >= 0 ? sr.pointIn(below, 0).y : sr.listView().height + 4
+    return y >= top - 1 && y <= bottom + 1
+  }
+  function lifted(id) { var row = sr.rowOf(id); return !!row && row.opacity < 1 }
+  function order() { return itemsTab.itemList.map(function(i) { return i.id }).join(",") }
+  function allOrder() { return db.allItems.map(function(i) { return i.id }).join(",") }
+  function lastPending() {
+    var rows = itemsTab.itemList.filter(function(i) { return Number(i.status) === 0 })
+    return rows[rows.length - 1].id
+  }
+  function firstDone() { return itemsTab.itemList.filter(function(i) { return Number(i.status) === 1 })[0].id }
+
+  readonly property var steps: [
+    function() {
+      console.log("START " + sr.order())
+      sr.drag(304, sr.pointIn(302, 0.25).y)
+    },
+    function() {
+      console.log("DRAG-MID float=" + sr.floatText() + " line=" + sr.lineBetween(301, 302) + " lifted=" + sr.lifted(304)
+        + " others=" + sr.lifted(302))
+      sr.release()
+    },
+    function() { console.log("AFTER-DRAG " + sr.order() + " selected=" + itemsTab.selectedId + " float=" + sr.floatText()) },
+
+    function() { sr.press(303); sr.release() },
+    function() {
+      console.log("CLICK " + sr.order() + " selected=" + itemsTab.selectedId + " float=" + sr.floatText())
+      sr.press(302); sr.moveTo(sr.at.y + 4); sr.release()
+    },
+    function() { console.log("SHORT-MOVE " + sr.order() + " selected=" + itemsTab.selectedId + " write=[" + db._writeKind + "]") },
+
+    function() { sr.drag(306, 1) },
+    function() {
+      console.log("UP-PAST-BLOCK line=" + sr.lineBetween(sr.lastPending(), sr.firstDone()) + " edge=" + sr.lineBetween(-1, 301))
+      sr.release()
+    },
+    function() { console.log("AFTER-UP-PAST-BLOCK " + sr.order()) },
+    function() { sr.drag(301, sr.listView().height - 2) },
+    function() {
+      console.log("DOWN-PAST-BLOCK line=" + sr.lineBetween(sr.lastPending(), sr.firstDone()))
+      sr.release()
+    },
+    function() { console.log("AFTER-DOWN-PAST-BLOCK " + sr.order()) },
+
+    function() { sr.click(sr.findByText(itemsTab, "Notes")) },
+    function() {
+      console.log("NOTES " + sr.order())
+      sr.drag(303, sr.pointIn(301, 0.75).y + 2)
+    },
+    function() { sr.release() },
+    function() { console.log("NOTES-AFTER-END-DROP " + sr.order() + " all=" + sr.allOrder()) },
+    function() { sr.drag(303, sr.pointIn(301, 0.25).y) },
+    function() { sr.release() },
+    function() {
+      console.log("NOTES-AFTER-DROP " + sr.order() + " all=" + sr.allOrder())
+      sr.click(sr.findByText(itemsTab, "All"))
+    },
+
+    function() { itemsTab.searchText = "o" },
+    function() {
+      console.log("SEARCH " + sr.order())
+      sr.drag(302, sr.listView().height - 2)
+    },
+    function() { console.log("SEARCH-DRAG float=" + sr.floatText() + " line=" + sr.named("dropLine").visible); sr.release() },
+    function() { console.log("AFTER-SEARCH-DRAG " + sr.order() + " write=[" + db._writeKind + "]"); itemsTab.searchText = "" },
+
+    function() { panel.close() },
+    function() { panel.open() },
+    function() { console.log("REOPEN " + sr.order()) }
+  ]
+
+  function click(item) {
+    keys.mouseClick(item, item.width / 2, item.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
+  }
+  function findWhere(item, match) {
+    if (!item) return null
+    if (match(item)) return item
+    for (var i = 0; i < item.children.length; ++i) {
+      var hit = sr.findWhere(item.children[i], match)
+      if (hit) return hit
+    }
+    return null
+  }
+  function findType(item, prefix) { return sr.findWhere(item, function(it) { return String(it).indexOf(prefix) === 0 }) }
+  function findByText(item, text) { return sr.findWhere(item, function(it) { return it.text === text }) }
+
+  Data.Db {
+    id: testDb
+    Component.onCompleted: testDb.init()
+  }
+  Loader {
+    source: Qt.resolvedUrl("Panel.qml")
+    onLoaded: {
+      item.db = testDb
+      sr.panel = item
+      var content = null
+      for (var i = 0; i < item.data.length; ++i)
+        if (String(item.data[i]).indexOf("KeyboardPanel") === 0) content = item.data[i].contentItem
+      sr.itemsTab = sr.findType(content, "ItemsTab")
+      item.open()
+    }
+  }
+  Connections {
+    target: sr.db
+    function onItemsUpdated() { if (!sr.started) { sr.started = true; stepTimer.start() } }
+    function onFailed(message) { sr.writeFailures++; console.log("DB-FAILED " + message) }
+  }
+  Timer {
+    id: stepTimer
+    interval: 600
+    repeat: true
+    onTriggered: {
+      if (sr.stepIndex >= sr.steps.length) { console.log("WRITE-FAILURES " + sr.writeFailures); Qt.exit(0); return }
+      sr.steps[sr.stepIndex++]()
+    }
+  }
+  TestEvent { id: keys }
+}
+QML
+log_file="$cfg_dir/qs-drag.log"
+run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
+
+logged "the list starts in the order it showed before items had a position" "START 301,302,303,304,305,306$"
+logged "a row pressed and moved 6 px drags: a floating copy follows, a line marks the drop and the row fades" \
+  "DRAG-MID float=Delta todo line=true lifted=true others=false$"
+logged "dropping it puts it there, selects it and removes the floating copy" \
+  "AFTER-DRAG 301,304,302,303,305,306 selected=304 float=none$"
+logged "a click without movement opens the row and moves nothing" "CLICK 301,304,302,303,305,306 selected=303 float=none$"
+logged "a press that moves under 6 px is still a click" "SHORT-MOVE 301,304,302,303,305,306 selected=302 write=\[\]$"
+logged "dragging a completed row above the list keeps the line inside its block" "UP-PAST-BLOCK line=true edge=false$"
+logged "and drops it at the top of its block" "AFTER-UP-PAST-BLOCK 301,304,302,303,306,305$"
+logged "dragging a pending row below the list keeps the line inside its block" "DOWN-PAST-BLOCK line=true$"
+logged "and drops it at the bottom of its block" "AFTER-DOWN-PAST-BLOCK 304,302,303,301,306,305$"
+logged "the Notes filter shows the notes in the same order" "NOTES 303,301,305$"
+logged "a note dropped below the last visible note lands right after it, and the todos stay in place" \
+  "NOTES-AFTER-END-DROP 301,303,305 all=304,302,301,303,306,305$"
+logged "a note dropped above another lands right before it, and the todos stay in place" \
+  "NOTES-AFTER-DROP 303,301,305 all=304,302,303,301,306,305$"
+logged "the search lists every row here" "SEARCH 304,302,303,301,306,305$"
+logged "while the search has text, a row does not drag" "SEARCH-DRAG float=none line=false$"
+logged "and nothing moves" "AFTER-SEARCH-DRAG 304,302,303,301,306,305 write=\[\]$"
+logged "the order survives closing and reopening the panel" "REOPEN 304,302,303,301,306,305$"
+logged "no write was rejected during the drag run" "WRITE-FAILURES 0$"
+expect "the order is stored in the database" \
+  "SELECT group_concat(id) FROM (SELECT id FROM items ORDER BY status, position, id DESC)" "304,302,303,301,306,305"
+expect "moves write no history and leave updated_at alone" \
+  "SELECT (SELECT COUNT(*) FROM history) || '|' || (SELECT COUNT(*) FROM items WHERE updated_at <> created_at)" "0|0"
+
+# A restart: a new shell reads the order back from the file.
+cat > "$cfg_dir/shell.qml" <<'QML'
+import QtQuick
+import Quickshell
+import "data" as Data
+
+ShellRoot {
+  Data.Db {
+    id: restartDb
+    Component.onCompleted: restartDb.init()
+    onItemsUpdated: {
+      console.log("RESTART " + restartDb.allItems.map(function(i) { return i.id }).join(","))
+      Qt.exit(0)
+    }
+  }
+}
+QML
+log_file="$cfg_dir/qs-restart.log"
+run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
+logged "the order survives a shell restart" "RESTART 304,302,303,301,306,305$"
+
 echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))

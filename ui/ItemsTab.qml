@@ -53,6 +53,52 @@ FocusScope {
     readonly property var selectedItem: root.selectedIndex >= 0 ? root.itemList[root.selectedIndex] : null
     readonly property bool _filtered: root.filterType !== "all" || root.searchText.trim() !== ""
 
+    // Order (CONTEXT.md): rows drag inside their block, never while the
+    // search has text or the list still shows a search's results.
+    readonly property bool canDrag: root.searchText === "" && !!root.db && root.db.listQuery === ""
+    property int dragId: -1
+    property int dropSlot: -1
+    property point dragPoint
+    readonly property var dragItem: root.dragId >= 0 ? root.itemList[ItemJs.indexOfId(root.itemList, root.dragId)] : null
+    readonly property real rowStride: listView.count > 0 ? (listView.contentHeight + listView.spacing) / listView.count : 0
+
+    // `y` is in listArea's coordinates. The slot counts the rows of the
+    // dragged row's block from 0, and stays inside that block.
+    function dragTo(item, x, y) {
+        root.dragId = Number(item.id)
+        root.dragPoint = Qt.point(x, y)
+        var done = ItemJs.isReadOrCompleted(item)
+        var start = -1
+        var end = 0
+        for (var i = 0; i < root.itemList.length; ++i) {
+            if (ItemJs.isReadOrCompleted(root.itemList[i]) !== done) continue
+            if (start < 0) start = i
+            end = i + 1
+        }
+        var contentY = y - listView.y + listView.contentY - listView.originY
+        var half = (root.rowStride - listView.spacing) / 2
+        var slot = end - start
+        for (var j = start; j < end; ++j) {
+            if (contentY < j * root.rowStride + half) { slot = j - start; break }
+        }
+        root.dropSlot = slot
+        dropLine.contentY = (start + slot) * root.rowStride - listView.spacing / 2
+    }
+
+    function endDrag() {
+        root.dragId = -1
+        root.dropSlot = -1
+    }
+
+    function drop() {
+        var id = root.dragId
+        var move = ItemJs.dropMove(root.itemList, id, root.dropSlot)
+        root.endDrag()
+        if (id < 0) return
+        if (move && root.db) root.db.move(id, move.anchorId, move.after)
+        root.selectItem(id)
+    }
+
     function toggleStatus() {
         if (!root.db || !root.selectedItem) return
         root.db.setStatus(root.selectedItem.id, ItemJs.isReadOrCompleted(root.selectedItem) ? 0 : 1)
@@ -88,11 +134,15 @@ FocusScope {
         root.focusList()
     }
 
-    function pickItem(id) {
+    function selectItem(id) {
         root._selectAfterReload = -1
         root.selectedId = id
         root.commitIfDirty()
         root.focusList()
+    }
+
+    function pickItem(id) {
+        root.selectItem(id)
         listView.positionViewAtIndex(root.selectedIndex, ListView.Center)
     }
 
@@ -243,6 +293,7 @@ FocusScope {
             }
 
             Item {
+                id: listArea
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
@@ -256,16 +307,62 @@ FocusScope {
                     model: root.itemList
 
                     delegate: ItemRow {
+                        id: row
                         required property var modelData
                         width: listView.width
                         item: modelData
                         selected: Number(modelData.id) === root.selectedId && !root.draftNew
+                        draggable: root.canDrag
+                        lifted: Number(modelData.id) === root.dragId
                         foreground: root.foreground
                         nowSeconds: root.nowSeconds
                         onPicked: root.pickItem(modelData.id)
                         onToggled: {
                             if (root.db) root.db.setStatus(modelData.id, ItemJs.isReadOrCompleted(modelData) ? 0 : 1)
                         }
+                        onDragMoved: function(x, y) {
+                            var p = row.mapToItem(listArea, x, y)
+                            root.dragTo(row.modelData, p.x, p.y)
+                        }
+                        // The drop can reorder the model, which destroys this
+                        // row, so it runs after the row's release handler.
+                        onDropped: Qt.callLater(root.drop)
+                        onDragCanceled: root.endDrag()
+                    }
+                }
+
+                Rectangle {
+                    id: dropLine
+                    objectName: "dropLine"
+                    property real contentY: 0
+                    visible: root.dragId >= 0 && root.dropSlot >= 0
+                    x: listView.x + Style.space(8)
+                    y: listView.y + dropLine.contentY - listView.contentY + listView.originY - height / 2
+                    width: listView.width - Style.space(16)
+                    height: 2
+                    color: Color.accent
+                }
+
+                Rectangle {
+                    objectName: "dragFloat"
+                    visible: !!root.dragItem
+                    enabled: false
+                    x: root.dragPoint.x - Style.space(20)
+                    y: root.dragPoint.y - height / 2
+                    width: listView.width
+                    height: floatRow.height
+                    radius: Style.cornerRadius
+                    color: Color.popups.background
+                    border.width: 1
+                    border.color: Style.selectedBorderFor(root.foreground, Color.accent)
+
+                    ItemRow {
+                        id: floatRow
+                        width: parent.width
+                        item: root.dragItem || ({})
+                        selected: !!root.dragItem
+                        foreground: root.foreground
+                        nowSeconds: root.nowSeconds
                     }
                 }
 
@@ -354,7 +451,9 @@ FocusScope {
 
     Connections {
         target: root.db
+        // A reload rebuilds every row, so the row that held the drag is gone.
         function onItemsUpdated() {
+            root.endDrag()
             root.onItemsSynced()
             root.restoreFailed()
         }

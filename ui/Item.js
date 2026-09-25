@@ -67,6 +67,23 @@ function neighbourId(rows, id) {
   return idx > 0 ? rows[idx - 1].id : -1
 }
 
+// Where row `id`, dropped at `slot` of its block, lands, as Db.move takes it:
+// before the block's visible row at that slot, or after the block's last
+// visible row past it. `slot` counts the block's visible rows, the dragged one
+// included, and is clamped to the block, so a drop never leaves it. null when
+// the row would stay where it is.
+function dropMove(rows, id, slot) {
+  var idx = indexOfId(rows, id)
+  if (idx < 0) return null
+  var done = isReadOrCompleted(rows[idx])
+  var block = rows.filter(function(row) { return isReadOrCompleted(row) === done })
+  var from = indexOfId(block, id)
+  var at = Math.max(0, Math.min(block.length, slot))
+  if (at === from || at === from + 1) return null
+  if (at < block.length) return { anchorId: block[at].id, after: false }
+  return { anchorId: block[block.length - 1].id, after: true }
+}
+
 // Whether the row `id` is gone from the database, judged by a reload.
 // `listed` misses the rows a filter hides, so when it is filtered only
 // `allRows`, the unfiltered rows or null until they load, can tell.
