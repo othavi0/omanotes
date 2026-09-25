@@ -494,14 +494,15 @@ ShellRoot {
   function findByText(item, text) {
     return sr.findWhere(item, function(it) { return it.text === text })
   }
-  // Rows and editable fields show the user's data, so only the panel's own
-  // texts are searched. A legend can be one text or a keycap per text.
+  // Item and history rows and editable fields show the user's data, so only
+  // the panel's own texts are searched. A legend can be one text or a keycap
+  // per text, and keycaps can come from a Repeater.
   function keyLegend(item) {
     var keyToken = /(^|\W)(Esc|Enter|Return|Tab|Space|Del|Backspace|PgUp|PgDn)(\W|$)|[←↑→↓⏎⇥⇧⌃⌫]|\b(Ctrl|Alt|Shift|Super|Meta)\s*\+|^[a-z]( [a-z])?$|(^|\s)\w\/\w(\s|$)/
     var found = []
     function walk(it) {
       if (!it.visible) return
-      if (it.modelData !== undefined || String(it).indexOf("ItemRow") === 0) return
+      if (it.modelData && it.modelData.title !== undefined) return
       if (it.cursorPosition === undefined && typeof it.text === "string" && keyToken.test(it.text)) found.push(it.text)
       for (var i = 0; i < it.children.length; ++i) walk(it.children[i])
     }
