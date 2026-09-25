@@ -214,7 +214,52 @@ ShellRoot {
     },
 
     function() { mainTab.cycleFilter() },
-    function() { console.log("FILTER-AFTER-F " + mainTab.filterType + " rows=" + db.items.filter(function(i) { return i.type !== "note" }).length) }
+    function() { console.log("FILTER-AFTER-F " + mainTab.filterType + " rows=" + db.items.filter(function(i) { return i.type !== "note" }).length) },
+
+    // qs runs under a 60 s timeout, so these three steps check what they can
+    // in the same tick. An empty db._writeKind means no write was started.
+    function() {
+      sr.keepId = mainTab.itemList[0].id; mainTab.pickItem(sr.keepId); sr.type("dj")
+      var armedAfterMove = mainTab.deleteArmed; sr.type("kd")
+      console.log("ITEMS-ARMED-AFTER-MOVE " + armedAfterMove + " " + mainTab.deleteArmed)
+      db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
+      sr.click(sr.findByText(header, "History"))
+      historyTab.selectedId = historyTab.rowList[0].id; sr.type("dj")
+      armedAfterMove = historyTab.deleteArmed; sr.type("kd")
+      console.log("HISTORY-ARMED-AFTER-MOVE " + armedAfterMove + " " + historyTab.deleteArmed)
+      keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+      historyTab.selectedId = historyTab.rowList[1].id; sr.probeId = historyTab.rowList[2].id; sr.type("dd")
+    },
+    function() {
+      console.log("ITEMS-D-AFTER-MOVING-BACK " + (sr.titleOf(sr.keepId) === "missing" ? "deleted" : "kept"))
+      console.log("HISTORY-AFTER-MIDDLE-DELETE " + (historyTab.selectedId === sr.probeId ? "next-row" : "other:" + historyTab.selectedId))
+      console.log("HISTORY-NOTE-LABELS " + ["read", "unread", "completed", "reopened"].map(function(label) { return !!sr.findByText(historyTab, label) }).join(" "))
+      var button = sr.findType(historyTab, "ActionButton")
+      sr.click(button)
+      console.log("HISTORY-AFTER-ONE-CLEAR-CLICK " + (db._writeKind === "") + " " + button.text)
+      // The checks after qs exits still read the log, so it is kept aside and
+      // put back after c c, only if c c left the table empty.
+      db._write("test", "CREATE TABLE kept_history AS SELECT * FROM history", null)
+      sr.click(button)
+      db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
+    },
+    function() {
+      console.log("HISTORY-AFTER-TWO-CLEAR-CLICKS " + historyTab.rowList.length)
+      sr.type("c")
+      var hints = sr.findType(historyTab, "HintBar").hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
+      console.log("HISTORY-AFTER-ONE-C " + (db._writeKind === "") + " " + hints)
+      sr.type("c")
+      db._write("test", "INSERT INTO history SELECT * FROM kept_history WHERE NOT EXISTS (SELECT 1 FROM history)", null)
+
+      var shown = []
+      var counting = { show: function(message) { shown.push(message) } }
+      mainTab.toast = counting; historyTab.toast = counting
+      db.update(1, "", "")
+      mainTab.toast = toast; historyTab.toast = toast
+      // The failure is forced here, so it is not one of the run's write failures.
+      sr.writeFailures--
+      console.log("ERROR-TOASTS " + shown.filter(function(m) { return m.indexOf("Error") === 0 }).length)
+    }
   ]
 
   function ctrl(keyList) {
@@ -394,6 +439,20 @@ logged "Ctrl+T in the draft body converts it back to note and types nothing" "DR
 logged "the draft body hints offer Ctrl+T" \
   "DRAFT-BODY-HINTS Enter/Tab save and back,Shift\+Enter new line,Shift\+Tab to title,Esc save and back,Shift\+Esc discard,Ctrl\+T note/todo$"
 logged "f cycles the type filter and the list follows" "FILTER-AFTER-F note rows=0$"
+logged "moving the list selection cancels an armed delete, and d on the item again arms it" \
+  "ITEMS-ARMED-AFTER-MOVE false true$"
+logged "that d does not delete the item" "ITEMS-D-AFTER-MOVING-BACK kept$"
+logged "moving the History selection cancels an armed delete and its red hint, and d arms again" \
+  "HISTORY-ARMED-AFTER-MOVE false true$"
+logged "deleting a middle History entry selects the next one" "HISTORY-AFTER-MIDDLE-DELETE next-row$"
+logged "a note marked read or unread shows read and unread in History, never completed or reopened" \
+  "HISTORY-NOTE-LABELS true true false false$"
+logged "one click on Clear history only arms it" "HISTORY-AFTER-ONE-CLEAR-CLICK true Confirm$"
+logged "a second click on Clear history clears it" "HISTORY-AFTER-TWO-CLEAR-CLICKS 2$"
+logged "one c only arms the clear, with its hint" "HISTORY-AFTER-ONE-C true c press again to clear$"
+expect "c c clears the history" \
+  "SELECT COUNT(*) FROM (SELECT id FROM history EXCEPT SELECT id FROM kept_history)" "0"
+logged "a failed write shows one error toast" "ERROR-TOASTS 1$"
 logged "no write was rejected during the whole run" "WRITE-FAILURES 0$"
 
 echo "behavior: $checks checks, $failures failed"

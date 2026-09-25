@@ -57,3 +57,23 @@ function indexOfId(rows, id) {
     if (Number(list[i].id) === Number(id)) return i
   return -1
 }
+
+// The row to select once `id` is deleted: the next one, or the previous one
+// when `id` is last. -1 when no other row is left.
+function neighbourId(rows, id) {
+  var idx = indexOfId(rows, id)
+  if (idx < 0) return -1
+  if (idx + 1 < rows.length) return rows[idx + 1].id
+  return idx > 0 ? rows[idx - 1].id : -1
+}
+
+// The action a history entry shows. A note's toggle is stored as completed or
+// reopened, like a todo's, so it reads as read or unread here.
+function historyLabel(entry) {
+  if (!entry) return ""
+  var action = String(entry.action || "")
+  if (isTodo(entry)) return action
+  if (action === "completed") return "read"
+  if (action === "reopened") return "unread"
+  return action
+}

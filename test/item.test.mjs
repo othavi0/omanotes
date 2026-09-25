@@ -3,7 +3,8 @@ import assert from "node:assert/strict"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const Item = loadQmlLib(new URL("../ui/Item.js", import.meta.url), [
-  "isTodo", "isDone", "statusLabel", "toggleVerb", "statusToast", "relativeAge", "indexOfId"
+  "isTodo", "isDone", "statusLabel", "toggleVerb", "statusToast", "relativeAge", "indexOfId",
+  "historyLabel", "neighbourId"
 ])
 
 const noteUnread = { type: "note", status: 0, title: "Ideas" }
@@ -83,4 +84,25 @@ test("indexOfId finds a row by id, comparing numbers and numeric strings alike",
   assert.equal(Item.indexOfId(rows, "3"), 2)
   assert.equal(Item.indexOfId(rows, 99), -1)
   assert.equal(Item.indexOfId(null, 1), -1)
+})
+
+test("historyLabel: a note's status changes read as read and unread", () => {
+  assert.equal(Item.historyLabel({ type: "note", action: "completed" }), "read")
+  assert.equal(Item.historyLabel({ type: "note", action: "reopened" }), "unread")
+  assert.equal(Item.historyLabel({ type: "note", action: "edited" }), "edited")
+})
+
+test("historyLabel: a todo keeps the stored action", () => {
+  assert.equal(Item.historyLabel({ type: "todo", action: "completed" }), "completed")
+  assert.equal(Item.historyLabel({ type: "todo", action: "reopened" }), "reopened")
+  assert.equal(Item.historyLabel({ type: "todo", action: "deleted" }), "deleted")
+})
+
+test("neighbourId: the next row, or the previous one at the end", () => {
+  const rows = [{ id: 7 }, { id: 12 }, { id: 3 }]
+  assert.equal(Item.neighbourId(rows, 12), 3)
+  assert.equal(Item.neighbourId(rows, 7), 12)
+  assert.equal(Item.neighbourId(rows, 3), 12)
+  assert.equal(Item.neighbourId([{ id: 7 }], 7), -1)
+  assert.equal(Item.neighbourId(rows, 99), -1)
 })

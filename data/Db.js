@@ -44,13 +44,15 @@ function listSql(filterType, query) {
 }
 
 // Pending counts for the bar tooltip and the panel header: unread notes /
-// in-progress todos, plus unfiltered totals per type for the filter segment.
+// in-progress todos, unfiltered totals per type for the filter segment, and
+// every history entry, including those past historySql()'s limit.
 function countsSql() {
   return "SELECT "
     + "(SELECT COUNT(*) FROM items WHERE type = 'note' AND status = 0) AS unreadNotes, "
     + "(SELECT COUNT(*) FROM items WHERE type = 'todo' AND status = 0) AS inProgressTodos, "
     + "(SELECT COUNT(*) FROM items WHERE type = 'note') AS notes, "
-    + "(SELECT COUNT(*) FROM items WHERE type = 'todo') AS todos"
+    + "(SELECT COUNT(*) FROM items WHERE type = 'todo') AS todos, "
+    + "(SELECT COUNT(*) FROM history) AS history"
 }
 
 // One argument per statement: the CLI stops at the first failing argument and
@@ -130,7 +132,8 @@ function convertTypeSql(id) {
   ])
 }
 
-// Newest-first history rows. Capped to keep the table light.
+// The newest 500 history rows, for the History tab. The table keeps growing;
+// countsSql() counts all of it.
 function historySql() {
   return "SELECT id, type, title, action, ts FROM history "
     + "ORDER BY ts DESC, id DESC LIMIT 500"
@@ -199,7 +202,7 @@ function parseRows(text) {
   }
 }
 
-// Parse countsSql() output into { unreadNotes, inProgressTodos, notes, todos }.
+// Parse countsSql() output into { unreadNotes, inProgressTodos, notes, todos, history }.
 function parseCounts(text) {
   var rows = parseRows(text)
   var row = rows.length > 0 ? rows[0] : {}
@@ -207,7 +210,8 @@ function parseCounts(text) {
     unreadNotes: Number(row.unreadNotes) || 0,
     inProgressTodos: Number(row.inProgressTodos) || 0,
     notes: Number(row.notes) || 0,
-    todos: Number(row.todos) || 0
+    todos: Number(row.todos) || 0,
+    history: Number(row.history) || 0
   }
 }
 
