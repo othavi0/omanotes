@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Loads the real BarWidget, and the Panel it owns, against a seeded sqlite db,
-# offscreen. Drives it through `qs ipc call` the way a script or keybind does,
-# then asserts the JSON replies and the rows that reached the db.
+# offscreen, without the alarm service, as an older shell would. Drives it
+# through `qs ipc call` the way a script or keybind does, then asserts the
+# JSON replies and the rows that reached the db.
 
 set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
@@ -34,6 +35,7 @@ cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "ui/Icons.js" as Icons
 
 ShellRoot {
   id: sr
@@ -118,6 +120,14 @@ ShellRoot {
       var header = sr.findText(sr.find(widget.item.panelItem, "PanelHeader"), " unread · ")
       return (button ? button.tooltipText : "no WidgetButton") + "|" + (header ? header.text : "no count")
     }
+    // The chip and the Alarms tab without a service.
+    function noService(): string {
+      var button = sr.find(widget.item, "WidgetButton")
+      var alarmsTab = sr.find(widget.item.panelItem, "AlarmsTab")
+      var empty = alarmsTab ? sr.findText(alarmsTab, "Omanotes service") : null
+      return String(widget.item.service) + "|" + (button.text === Icons.noteFilled ? "note glyph" : button.text) + "|" + button.implicitWidth
+        + "|" + (empty ? empty.text : "no empty state")
+    }
     function toast(): string {
       var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
       return itemsTab ? itemsTab.toast.text : "no ItemsTab"
@@ -172,6 +182,8 @@ for _ in $(seq 50); do
   sleep 0.2
 done
 replies "the bar tooltip and the panel header count unread notes and pending todos" "$counts" "$want_counts"
+replies "without a service the chip is the note glyph in the icon slot and the Alarms tab says so" \
+  "$(ipc omanotes-test noService)" "null|note glyph|27|Alarms need the Omanotes service"
 
 # Reopens leave positions under the column default of 0, and a new item that
 # took the default would land below them.

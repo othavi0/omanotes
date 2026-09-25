@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Loads one BarWidget per monitor, as the bar does, against a missing database
-# file, with the first migration failing as a locked database does. Asserts
-# that the IPC refuses calls until the database is ready, that list, toggle and
-# remove keep refusing until the first read of every item lands, that every
-# widget runs one Db that its panel shares, that every Db ends ready at the
-# current schema version while the widgets race to migrate, and that one write
-# reloads each Db once.
+# Loads one BarWidget per monitor and the one Service, as the shell does,
+# against a missing database file, with the first migration failing as a
+# locked database does. Asserts that the IPC refuses calls until the database
+# is ready, that list, toggle and remove keep refusing until the first read of
+# every item lands, that every widget runs one Db that its panel shares and
+# holds no clock or ring window of its own, that every Db ends ready at the
+# current schema version while the widgets and the service race to migrate,
+# and that one write reloads each Db once, the service's alarm store included.
 
 set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
@@ -44,12 +45,19 @@ import Quickshell.Io
 ShellRoot {
   id: sr
 
-  function dbsIn(obj, found) {
+  function typesIn(obj, prefix, found) {
     if (!obj) return found
-    if (String(obj).indexOf("Db") === 0 && found.indexOf(obj) < 0) found.push(obj)
+    if (String(obj).indexOf(prefix) === 0 && found.indexOf(obj) < 0) found.push(obj)
     var kids = obj.data || []
-    for (var i = 0; i < kids.length; ++i) sr.dbsIn(kids[i], found)
+    for (var i = 0; i < kids.length; ++i) sr.typesIn(kids[i], prefix, found)
     return found
+  }
+  function dbsIn(obj, found) { return sr.typesIn(obj, "Db", found) }
+
+  // The service, as the shell mounts it: once, with its own clock.
+  Loader {
+    id: svc
+    source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/Service.qml"
   }
 
   Variants {
@@ -59,7 +67,12 @@ ShellRoot {
       required property var modelData
       readonly property var widget: loader.item
       implicitWidth: 40; implicitHeight: 40
-      Loader { id: loader; anchors.fill: parent; source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml" }
+      Loader {
+        id: loader
+        anchors.fill: parent
+        source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml"
+        onLoaded: item.service = Qt.binding(function() { return svc.item })
+      }
     }
   }
 
@@ -73,9 +86,15 @@ ShellRoot {
         var dbs = sr.dbsIn(w.panelItem, sr.dbsIn(w, []))
         var ready = 0
         for (var j = 0; j < dbs.length; ++j) if (dbs[j].ready) ready++
-        out.push({ dbs: dbs.length, ready: ready, panelShares: dbs.indexOf(w.panelItem.db) >= 0 })
+        var owned = sr.typesIn(w.panelItem, "SystemClock", sr.typesIn(w, "SystemClock", [])).length
+          + sr.typesIn(w.panelItem, "RingWindow", sr.typesIn(w, "RingWindow", [])).length
+        out.push({ dbs: dbs.length, ready: ready, panelShares: dbs.indexOf(w.panelItem.db) >= 0, clocksAndWindows: owned })
       }
       return JSON.stringify(out)
+    }
+    function serviceState(): string {
+      if (!svc.item) return "none"
+      return String(svc.item).split("_QMLTYPE")[0].split("(")[0] + "|" + svc.item.loaded + "|" + sr.dbsIn(svc.item, []).length
     }
     function addNote(title: string): string {
       return monitors.instances[0].widget.ipcAdd("note", title, "")
@@ -121,7 +140,7 @@ replies "every IPC call before the database is ready answers not ready" "$(ipc e
   "$refused $refused $refused $refused $refused $refused"
 touch "$cfg_dir/release"
 
-one='{"dbs":1,"ready":1,"panelShares":true}'
+one='{"dbs":1,"ready":1,"panelShares":true,"clocksAndWindows":0}'
 want="[$one$(printf ",$one%.0s" $(seq 2 $monitors))]"
 state=""
 for _ in $(seq 50); do
@@ -129,7 +148,14 @@ for _ in $(seq 50); do
   [[ "$state" == "$want" ]] && break
   sleep 0.2
 done
-replies "each widget runs one Db, shared with its panel and ready" "$state" "$want"
+replies "each widget runs one Db, shared with its panel and ready, and no clock or ring window" "$state" "$want"
+service_state=""
+for _ in $(seq 50); do
+  service_state="$(ipc serviceState)"
+  [[ "$service_state" == "Service|true|1" ]] && break
+  sleep 0.2
+done
+replies "the service runs, loaded, with one alarm store of its own" "$service_state" "Service|true|1"
 replies "list, toggle and remove answer not ready until the items are read" "$(ipc readCalls)" \
   "$refused $refused $refused $refused"
 touch "$cfg_dir/items-release"
@@ -143,10 +169,10 @@ replies "list, toggle and remove answer from the items once read" "$reads" \
   '{"ok":false,"error":"item not found: 1"} {"ok":false,"error":"item not found: 1"} [] []'
 
 [[ -d "$cfg_dir/init-failed" ]] && pass "the first migration failed" || fail "the first migration failed"
-replies "each widget migrated from version 0 once, the one that lost the race included" \
-  "$(grep -c "CREATE TABLE" "$cfg_dir/sqlite3.log" || true)" "$monitors"
-tables="$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name" 2>&1 | tr '\n' ' ')"
-replies "the missing database file now has both tables" "$tables" "history items "
+replies "each widget and the service migrated from version 0 once, the one that lost the race included" \
+  "$(grep -c "CREATE TABLE" "$cfg_dir/sqlite3.log" || true)" "$(( monitors + 1 ))"
+tables="$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history', 'alarms') ORDER BY name" 2>&1 | tr '\n' ' ')"
+replies "the missing database file now has the three tables" "$tables" "alarms history items "
 current="$(node --input-type=module -e '
   const { loadQmlLib } = await import(process.argv[1])
   process.stdout.write(String(loadQmlLib(process.argv[2], ["MIGRATIONS"]).MIGRATIONS.length))
@@ -163,6 +189,7 @@ sleep 1.5
 replies "the note reached the database" \
   "$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT COUNT(*) FROM items WHERE title = 'ONE-WRITE'")" "1"
 replies "one write reloads each Db once" "$(grep -c "FROM history ORDER BY" "$cfg_dir/sqlite3.log" || true)" "$monitors"
+replies "and the alarm store once" "$(grep -c "FROM alarms ORDER BY" "$cfg_dir/sqlite3.log" || true)" "1"
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
