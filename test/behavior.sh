@@ -613,7 +613,7 @@ logged "New opens a menu with Note and Todo, opens no draft by itself and has no
 logged "Todo in the menu opens a todo draft with its title focused and closes the menu" "NEW-TODO-DRAFT true todo draft menu=false$"
 logged "Note in the menu commits the open draft and opens an empty note draft" "NEW-NOTE-DRAFT true note \[\] draft menu=false$"
 expect "the todo draft opened from the menu is saved as a todo" "SELECT type FROM items WHERE title = 'menu todo'" "todo"
-logged "a click outside the open menu closes it" "MENU-AFTER-OUTSIDE-CLICK false 1$"
+logged "a click outside the open menu closes it" "MENU-AFTER-OUTSIDE-CLICK false 2$"
 logged "Enter in a draft body inserts a new line" "ENTER-IN-DRAFT-BODY true draft$"
 logged "Esc on a draft with a body and no title closes the panel and keeps the draft, with the warning" \
   "UNTITLED-DRAFT-AFTER-ESC false true \[orphan body\] .* toast=New item needs a title$"

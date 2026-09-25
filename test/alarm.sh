@@ -61,7 +61,7 @@ chmod +x "$cfg_dir/bin/"*
 : > "$cfg_dir/sound.log"
 : > "$cfg_dir/notify.log"
 
-sqlite3 "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES
+sqlite3 -cmd ".timeout 5000" "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES
   (1, 7, 30, 'Wake up', 127, 1, $yesterday),
   (2, 6, 0, 'Pills', 0, 1, $yesterday),
   (3, 6, 10, 'Standup', 0, 1, $yesterday),
@@ -73,6 +73,7 @@ import Quickshell
 import Quickshell.Io
 import "ui" as Ui
 import "ui/Icons.js" as Icons
+import "ui/Tabs.js" as Tabs
 
 ShellRoot {
   id: sr
@@ -136,6 +137,15 @@ ShellRoot {
   function chip(n) {
     return sr.find(monitors.instances[n - 1].widget, "WidgetButton")[0]
   }
+  function alarmsTab() {
+    return sr.find(monitors.instances[0].widget.panelItem, "AlarmsTab")[0]
+  }
+  function editorState() {
+    var tab = sr.alarmsTab()
+    var editor = sr.find(tab, "AlarmEditor")[0]
+    var del = sr.find(editor, "ActionButton").filter(function(b) { return b.visible && (b.text === "Delete" || b.text === "Confirm") })
+    return tab.selectedId + "|draft:" + tab.draftNew + "|" + editor.timeText + "|" + (del.length ? del[0].text : "-") + "|toast:" + tab.toast.text
+  }
   // The chip's text with each glyph named, and whether it is painted active.
   function chips() {
     var out = []
@@ -164,6 +174,30 @@ ShellRoot {
       var itemsTab = sr.find(w.panelItem, "ItemsTab")[0]
       return w.panelItem.db.items.length + "|" + w.panelItem.db.totalHistory + "|toast:" + itemsTab.toast.text
     }
+    // The Alarms tab of widget 1, driven as its user does.
+    function openAlarms(): string {
+      var w = monitors.instances[0].widget
+      w.open()
+      w.panelItem.activeTab = Tabs.alarms
+      return sr.alarmsTab() ? "ok" : "no AlarmsTab"
+    }
+    function startNew(): string { sr.alarmsTab().startNew(); return sr.editorState() }
+    function setEditor(time: string, label: string, days: string, snooze: string, ring: string): string {
+      var editor = sr.find(sr.alarmsTab(), "AlarmEditor")[0]
+      editor.timeText = time
+      editor.labelText = label
+      editor.days = days === "" ? [] : days.split(",").map(Number)
+      editor.snoozeText = snooze
+      editor.ringText = ring
+      return sr.editorState()
+    }
+    function leave(): string { sr.alarmsTab().commitIfDirty(); return sr.editorState() }
+    function pickAlarm(id: int): string { sr.alarmsTab().pickAlarm(id); return sr.editorState() }
+    function toggleRow(id: int): string { sr.alarmsTab().toggleAlarm(id); return sr.editorState() }
+    function pressDelete(): string { sr.alarmsTab().armDelete(); return sr.editorState() }
+    function discard(): string { sr.alarmsTab().discardEditor(); return sr.editorState() }
+    function clearToast(): void { sr.alarmsTab().toast.text = "" }
+    function editorState(): string { return sr.editorState() }
     // Clicks the button whose text starts with `label` on the card of screen `n`.
     function click(n: int, label: string): string {
       var win = sr.cards[n - 1]
@@ -212,7 +246,7 @@ contains() {
 expect() {
   local what="$1" sql="$2" want="$3" got=""
   for _ in $(seq 50); do
-    got="$(sqlite3 "$db" "$sql" 2>&1)" && [[ "$got" == "$want" ]] && { pass "$what"; return; }
+    got="$(sqlite3 -cmd ".timeout 5000" "$db" "$sql" 2>&1)" && [[ "$got" == "$want" ]] && { pass "$what"; return; }
     sleep 0.2
   done
   fail "$what: want '$want', got '$got'"
@@ -261,7 +295,7 @@ ringing_wake='"ringing":[1],"cards":3,"soundBroken":false,"title":"Wake up","bar
 # bring the tick's own patches back.
 touch "$cfg_dir/hold-writes" "$cfg_dir/hold-reads"
 reads_before="$(alarm_reads)"
-sqlite3 "$db" "INSERT INTO history (type, title, action, ts) VALUES ('note', 'outside', 'added', 1)"
+sqlite3 -cmd ".timeout 5000" "$db" "INSERT INTO history (type, title, action, ts) VALUES ('note', 'outside', 'added', 1)"
 for _ in $(seq 50); do (( $(alarm_reads) > reads_before )) && break; sleep 0.1; done
 replies "an outside write starts an alarms read, held" "$(( $(alarm_reads) > reads_before ))" "1"
 
@@ -307,7 +341,7 @@ sound_is "and stops the player" 2 2
 expect "and the snooze is consumed" "SELECT snoozed_until_ms FROM alarms WHERE id = 1" "0"
 
 # An alarm nobody answers snoozes itself three times, then stays quiet.
-sqlite3 "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, snooze_minutes, ring_minutes, armed_at_ms) VALUES (5, 8, 30, 'Unanswered', 0, 1, 1, 1, $yesterday)"
+sqlite3 -cmd ".timeout 5000" "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, snooze_minutes, ring_minutes, armed_at_ms) VALUES (5, 8, 30, 'Unanswered', 0, 1, 1, 1, $yesterday)"
 state_has "the service picks up an alarm inserted outside" '"alarms":5'
 t0830="$(ms "$day 08:30")"
 periods=""
@@ -322,7 +356,7 @@ expect "the fourth expiry earns no snooze and leaves the count at three" \
 
 # A player that fails at once is not restarted forever, and the card stays up.
 touch "$cfg_dir/sound-fails"
-sqlite3 "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES (6, 9, 0, 'Silent', 0, 1, $yesterday)"
+sqlite3 -cmd ".timeout 5000" "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES (6, 9, 0, 'Silent', 0, 1, $yesterday)"
 state_has "the service picks up the sixth alarm" '"alarms":6'
 contains "the alarm rings with a broken player" "$(ipc tick "$(ms "$day 09:00")")" '"ringing":[6],"cards":3'
 sleep 3
@@ -334,20 +368,74 @@ state_has "and the cards go down" '"ringing":[],"cards":0'
 rm "$cfg_dir/sound-fails"
 
 # A repeating alarm switched off outside, with sqlite3, leaves the card.
-sqlite3 "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES (7, 9, 30, 'Outside', 127, 1, $yesterday)"
+sqlite3 -cmd ".timeout 5000" "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES (7, 9, 30, 'Outside', 127, 1, $yesterday)"
 state_has "the service picks up the seventh alarm" '"alarms":7'
 contains "the repeating alarm rings" "$(ipc tick "$(ms "$day 09:30")")" '"ringing":[7],"cards":3'
-sqlite3 "$db" "UPDATE alarms SET enabled = 0 WHERE id = 7"
+sqlite3 -cmd ".timeout 5000" "$db" "UPDATE alarms SET enabled = 0 WHERE id = 7"
 state_has "switching it off outside takes the card down" '"ringing":[],"cards":0'
 sound_is "and stops the player" 7 7
 
 sleep 1
-replies "the alarm writes left the Items rows, the History count and the Items toast alone" \
-  "$(ipc itemsState)" "$(sqlite3 "$db" "SELECT COUNT(*) FROM items")|$(sqlite3 "$db" "SELECT COUNT(*) FROM history")|toast:"
+replies "the ticks left the Items rows, the History count and the Items toast alone" \
+  "$(ipc itemsState)" "$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT COUNT(*) FROM items")|$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT COUNT(*) FROM history")|toast:"
+
+# The Alarms tab of widget 1, from "+ Alarm" to Delete, writes through the service.
+replies "the panel of widget 1 opens on the Alarms tab" "$(ipc openAlarms)" "ok"
+contains "+ Alarm opens a draft" "$(ipc startNew)" "|draft:true||-|toast:"
+ipc setEditor "06:45" "Gym" "1,2,3,4,5" "10" "2" > /dev/null
+contains "leaving the draft commits it" "$(ipc leave)" "|draft:false|"
+expect "the new alarm reaches the database with every field" \
+  "SELECT hour || '|' || minute || '|' || label || '|' || days || '|' || enabled || '|' || snooze_minutes || '|' || ring_minutes FROM alarms WHERE label = 'Gym'" \
+  "6|45|Gym|62|1|10|2"
+gym="$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT id FROM alarms WHERE label = 'Gym'")"
+state_editor() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(ipc editorState)"
+    [[ "$got" == "$want" ]] && { pass "$what"; return; }
+    sleep 0.2
+  done
+  fail "$what: want '$want', got '$got'"
+}
+state_editor "the new alarm is selected once the insert lands" "$gym|draft:false|06:45|Delete|toast:Added alarm"
+ipc toggleRow "$gym" > /dev/null
+expect "the row switch turns the alarm off" "SELECT enabled || ':' || snoozed_until_ms FROM alarms WHERE id = $gym" "0:0"
+armed_before="$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT armed_at_ms FROM alarms WHERE id = $gym")"
+ipc toggleRow "$gym" > /dev/null
+expect "and back on, armed at the last tick" "SELECT enabled || ':' || armed_at_ms FROM alarms WHERE id = $gym" "1:$(ms "$day 09:30")"
+ipc setEditor "06:50" "Gym" "1,2,3,4,5" "10" "2" > /dev/null
+contains "editing the time saves it" "$(ipc leave)" "$gym|draft:false|06:50|Delete|"
+expect "a changed time re-arms the alarm and switches it on" "SELECT hour || ':' || minute || ':' || enabled FROM alarms WHERE id = $gym" "6:50:1"
+ipc clearToast
+ipc setEditor "06:50" "Gym at the club" "1,2,3,4,5" "10" "2" > /dev/null
+contains "editing the label saves it with a toast" "$(ipc leave)" "|toast:Saved — Gym at the club"
+expect "a label change keeps the alarm as it was" "SELECT label || ':' || enabled FROM alarms WHERE id = $gym" "Gym at the club:1"
+ipc setEditor "" "Gym at the club" "1,2,3,4,5" "10" "2" > /dev/null
+contains "an emptied time keeps the saved one" "$(ipc leave)" "|06:50|Delete|toast:Time can't be read — kept 06:50"
+contains "the first Delete arms" "$(ipc pressDelete)" "|Confirm|toast:Delete again to confirm"
+ipc pressDelete > /dev/null
+expect "the second Delete removes the alarm" "SELECT COUNT(*) FROM alarms WHERE id = $gym" "0"
+ipc clearToast
+ipc startNew > /dev/null
+ipc setEditor "25:00" "Late" "" "9" "5" > /dev/null
+contains "a draft without a readable time stays open with the warning" "$(ipc leave)" "|draft:true|25:00|-|toast:New alarm needs a time like 07:30"
+ipc discard > /dev/null
+ipc clearToast
+touch "$cfg_dir/fail-insert"
+ipc startNew > /dev/null
+ipc setEditor "06:55" "Failing" "" "9" "5" > /dev/null
+ipc leave > /dev/null
+state_editor "a failed insert shows the error and gives the draft back" "$(ipc editorState | cut -d'|' -f1)|draft:true|06:55|-|toast:Error: disk I/O error"
+rm "$cfg_dir/fail-insert"
+ipc clearToast
+ipc leave > /dev/null
+expect "leaving the draft again saves it" "SELECT COUNT(*) FROM alarms WHERE label = 'Failing'" "1"
+ipc closePanel 1
+replies "the alarm edits wrote no history row" "$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT COUNT(*) FROM history")" "5"
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
-replies "no db failure is logged" "$(grep -o "omanotes db: .*" "$cfg_dir/qs.log" | tr '\n' ';' || true)" ""
+replies "only the injected insert failure is logged" "$(grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | tr '\n' ';' || true)" "disk I/O error;"
 replies "the broken player is logged once" "$(grep -c "omanotes: cannot play" "$cfg_dir/qs.log" || true)" "1"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"

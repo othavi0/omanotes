@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Renders PanelHeader, ItemsTab, HistoryTab and Toast against
-# a real, seeded sqlite db, offscreen, and checks that every ActionButton,
-# Field, SearchField and Segment is exactly Style.spacing.controlHeight tall
-# (the dev's hard rule: a button with an icon must never be taller than a
-# plain text button). Some scenes also check their own layout: the toast
-# wraps a long title inside the panel, History draws the kit's separators and
-# section headers and shows the same EmptyState as Items, the no-match
-# button names what it clears, the New menu lists Note and Todo, and an armed
-# History trash reads Confirm. Exits non-zero if any check fails.
+# Renders PanelHeader, ItemsTab, AlarmsTab, HistoryTab, RingCard and Toast
+# against a real, seeded sqlite db, offscreen, and checks that every
+# ActionButton, Field, SearchField and Segment is exactly
+# Style.spacing.controlHeight tall (the dev's hard rule: a button with an
+# icon must never be taller than a plain text button). TimeField is the one
+# control outside that rule (ADR-0008). Some scenes also check their own
+# layout: the toast wraps a long title inside the panel, History draws the
+# kit's separators and section headers and shows the same EmptyState as
+# Items, the no-match button names what it clears, the New menu lists Note,
+# Todo and Alarm, an armed trash or Delete reads Confirm, the day chips run
+# Monday first, the tab Segment has three options, and the ring card names
+# Snooze and Stop. Exits non-zero if any check fails.
 #
 # Usage: test/render.sh [output-dir]
 #
@@ -15,12 +18,31 @@
 # one to keep them for review.
 
 set -euo pipefail
+export TZ=America/Sao_Paulo
 
 source "$(dirname "$0")/lib/harness.sh"
 
 out_dir="${1:-$cfg_dir/shots}"
 mkdir -p "$out_dir"
 out_dir="$(cd "$out_dir" && pwd)"
+
+# The alarms of prototype C, seen at 14:02 today and armed at midnight, so
+# no earlier occurrence is owed. The service's clock is off and every scene
+# ticks NOW_MS. The player and the notification are stubbed away.
+day="$(date +%F)"
+ms() { echo $(( $(date -d "$1" +%s) * 1000 )); }
+now_ms="$(ms "$day 14:02")"
+midnight="$(ms "$day 00:00")"
+sqlite3 "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, snoozed_until_ms, armed_at_ms) VALUES
+  (1, 7, 30, 'Wake up', 65, 1, 0, $midnight),
+  (2, 16, 30, 'Stand-up', 62, 1, 0, $midnight),
+  (3, 22, 0, 'Take the pills', 127, 1, $(ms "$day 14:11"), $midnight),
+  (4, 6, 15, 'Early flight', 0, 0, 0, $midnight);"
+mkdir "$cfg_dir/bin"
+for stub in pw-play omarchy-notification-send; do
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/$stub"
+  chmod +x "$cfg_dir/bin/$stub"
+done
 
 cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
@@ -41,8 +63,10 @@ ShellRoot {
   property string currentScene: ""
   property int sceneIndex: 0
   readonly property var scenes: Quickshell.env("SCENES").split(",")
+  readonly property real nowMs: Number(Quickshell.env("NOW_MS"))
   // A scene that finds fewer controls than this measured nothing.
-  readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3, menu: 11, trash: 4, drag: 9 })
+  readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3, menu: 12, trash: 4, drag: 9,
+    alarms: 14, alarmdraft: 14, alarmconfirm: 14, alarmblank: 3, ringcard: 11 })
   readonly property string longTitle: "Renew the domain before the card on file expires, then move the DNS records to the new registrar, check the MX entries, and write down every step so the next renewal takes five minutes instead of an afternoon"
   readonly property string outDir: Quickshell.env("OUT_DIR")
 
@@ -51,15 +75,32 @@ ShellRoot {
     Component.onCompleted: db.init()
   }
 
+  // The alarm service, with its clock off and no ring window: the card is
+  // rendered inside the frame instead.
+  Component {
+    id: noWindow
+    QtObject { required property var modelData }
+  }
+  Loader {
+    id: svc
+    Component.onCompleted: setSource("file://" + Quickshell.env("OMANOTES_WORKTREE") + "/Service.qml",
+      { clockRunning: false, screens: [], ringWindow: noWindow, soundFile: "/nonexistent/alarm.oga" })
+  }
+  Connections {
+    target: svc.item
+    function onLoadedChanged() { if (svc.item.loaded) sr.markReady() }
+  }
+
   // Every scene after the first also triggers db signals (a search re-list,
-  // a status/history refresh) — only the very first triple-ready should
-  // kick off the scene sequence, or a later signal would race settleTimer
-  // and call nextScene() again mid-sequence.
+  // a status/history refresh) — only the very first ready of every read and
+  // of the service should kick off the scene sequence, or a later signal
+  // would race settleTimer and call nextScene() again mid-sequence.
   function markReady() {
     if (sr.started) return
     sr.readyCount += 1
-    if (sr.readyCount >= 3) {
+    if (sr.readyCount >= 4) {
       sr.started = true
+      svc.item.tick(sr.nowMs)
       Qt.callLater(sr.nextScene)
     }
   }
@@ -103,7 +144,35 @@ ShellRoot {
       sr.expect(sceneName, sr.find(historyTab, /^EmptyState$/).length === 1, "empty History shows EmptyState")
     } else if (sceneName === "menu") {
       var entries = sr.find(frame, /^ActionButton$/).map(function(b) { return b.item.text })
-      sr.expect(sceneName, entries.indexOf("Note") >= 0 && entries.indexOf("Todo") >= 0, "the New menu shows Note and Todo")
+      sr.expect(sceneName, entries.indexOf("Note") >= 0 && entries.indexOf("Todo") >= 0 && entries.indexOf("Alarm") >= 0,
+        "the New menu shows Note, Todo and Alarm")
+    } else if (sceneName === "alarms" || sceneName === "alarmdraft" || sceneName === "alarmconfirm") {
+      var chips = sr.find(alarmsTab, /^ActionButton$/).filter(function(b) { return b.item.objectName === "dayChip" }).map(function(b) { return b.item.text })
+      sr.expect(sceneName, chips.join(" ") === "M T W T F S S", "the day chips read [" + chips.join(" ") + "]")
+      var segment = sr.find(header, /^Segment$/)[0].item
+      sr.expect(sceneName, segment.width === Style.space(360) && segment.options.length === 3,
+        "the tab Segment is 360 wide with three options (" + segment.width + ", " + segment.options.length + ")")
+      var timeField = sr.find(alarmsTab, /^TimeField$/)
+      sr.expect(sceneName, timeField.length === 1 && timeField[0].item.height === timeField[0].item.implicitHeight, "one TimeField takes the height its digits need")
+      if (sceneName === "alarms") {
+        var texts = sr.find(alarmsTab, /^QQuickText$/).map(function(t) { return t.item.text })
+        sr.expect(sceneName, texts.indexOf("weekends · next Sat") >= 0 && texts.indexOf("every day · snoozed to 14:11") >= 0 && texts.indexOf("once · off") >= 0,
+          "the rows read the days and the state")
+        var summary = sr.find(header, /^QQuickText$/).map(function(t) { return t.item.text })
+        sr.expect(sceneName, summary.indexOf("next alarm 14:11") >= 0, "the header names the next alarm [" + summary.join("|") + "]")
+      } else if (sceneName === "alarmconfirm") {
+        var armed = sr.find(alarmsTab, /^ActionButton$/).filter(function(b) { return b.item.text === "Confirm" })
+        sr.expect(sceneName, armed.length === 1, "an armed Delete reads Confirm")
+      }
+    } else if (sceneName === "alarmblank") {
+      var blank = sr.find(alarmsTab, /^EmptyState$/)
+      var action = sr.find(alarmsTab, /^ActionButton$/).map(function(b) { return b.item.text })
+      sr.expect(sceneName, blank.length === 1 && action.indexOf("Alarm") >= 0, "empty Alarms shows EmptyState with + Alarm")
+    } else if (sceneName === "ringcard") {
+      var cardButtons = sr.find(ringCard, /^ActionButton$/).map(function(b) { return b.item.text })
+      sr.expect(sceneName, cardButtons.join("|") === "Snooze 9 min|Stop", "the ring card offers [" + cardButtons.join("|") + "]")
+      var cardTexts = sr.find(ringCard, /^QQuickText$/).map(function(t) { return t.item.text })
+      sr.expect(sceneName, cardTexts.indexOf("14:03") >= 0 && cardTexts.indexOf("Wake up") >= 0, "the ring card shows the clock and the title")
     } else if (sceneName === "drag") {
       var shown = function(name) { return sr.find(itemsTab, /^QQuickRectangle/).filter(function(r) { return r.item.objectName === name }).length }
       var faded = sr.find(itemsTab, /^ItemRow$/).filter(function(r) { return r.item.opacity < 1 })
@@ -132,7 +201,7 @@ ShellRoot {
   }
 
   function checkHeights(sceneName, rootItem) {
-    var found = sr.find(rootItem, /^(ActionButton|Field|SearchField|Segment)$/)
+    var found = sr.find(rootItem, /^(ActionButton|Field|MinutesField|SearchField|Segment)$/)
     var want = Style.spacing.controlHeight
     var parts = []
     for (var i = 0; i < found.length; ++i) {
@@ -163,15 +232,21 @@ ShellRoot {
     itemsTab.draftNew = false
     itemsTab.searchText = ""
     itemsTab.focusList()
+    alarmsTab.discardEditor()
     toast.hide()
     header.closeMenu()
-    sr.activeTab = (name === "history" || name === "historyblank" || name === "trash") ? Tabs.history : Tabs.items
+    sr.activeTab = (name === "history" || name === "historyblank" || name === "trash") ? Tabs.history
+      : name.indexOf("alarm") === 0 ? Tabs.alarms : Tabs.items
     if (name === "draft") itemsTab.startNew("todo")
     else if (name === "empty") itemsTab.searchText = "zzz_no_match_xyz"
     else if (name === "toast") toast.show("Deleted — " + sr.longTitle)
     else if (name === "menu") sr.newButton().clicked()
     else if (name === "trash") historyTab.armDelete(Number(db.history[1].id))
     else if (name === "drag") itemsTab.dragTo(itemsTab.itemList[2], Style.space(60), itemsTab.rowStride * 0.9)
+    else if (name === "alarms") alarmsTab.pickAlarm(1)
+    else if (name === "alarmdraft") alarmsTab.startNew()
+    else if (name === "alarmconfirm") { alarmsTab.pickAlarm(1); alarmsTab.armDelete() }
+    else if (name === "ringcard") svc.item.tick(sr.nowMs + 60000)
     settleTimer.restart()
   }
 
@@ -216,6 +291,7 @@ ShellRoot {
           id: header
           Layout.fillWidth: true
           db: db
+          service: svc.item
           activeTab: sr.activeTab
         }
 
@@ -228,11 +304,26 @@ ShellRoot {
             id: itemsTab
             db: db
           }
+          Ui.AlarmsTab {
+            id: alarmsTab
+            service: svc.item
+          }
           Ui.HistoryTab {
             id: historyTab
             db: db
           }
         }
+      }
+
+      // The ring card as it sits under the bar, over the panel.
+      Ui.RingCard {
+        id: ringCard
+        visible: sr.currentScene === "ringcard"
+        service: svc.item
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: Style.space(10)
+        z: 20
       }
 
       Ui.Toast {
@@ -252,7 +343,12 @@ if [[ -n "${1:-}" ]]; then
   echo "output dir: $out_dir"
 fi
 status=0
-SCENES=browse,draft,empty,toast,history,menu,trash,drag OUT_DIR="$out_dir" run_qs || status=1
-sqlite3 "$db" "DELETE FROM items; DELETE FROM history;"
-SCENES=blank,historyblank OUT_DIR="$out_dir" run_qs || status=1
+export OMANOTES_WORKTREE="$worktree" NOW_MS="$now_ms" PATH="$cfg_dir/bin:$PATH"
+SCENES=browse,draft,empty,toast,history,menu,trash,drag,alarms,alarmdraft,alarmconfirm OUT_DIR="$out_dir" run_qs || status=1
+# A one-shot due one minute after NOW_MS rings in its own run, so the other
+# scenes never see it.
+sqlite3 "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES (5, 14, 3, 'Wake up', 0, 1, $midnight)"
+SCENES=ringcard OUT_DIR="$out_dir" run_qs || status=1
+sqlite3 "$db" "DELETE FROM items; DELETE FROM history; DELETE FROM alarms;"
+SCENES=blank,historyblank,alarmblank OUT_DIR="$out_dir" run_qs || status=1
 exit "$status"

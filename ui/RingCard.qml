@@ -18,7 +18,9 @@ BorderSurface {
     width: Style.space(380)
     implicitHeight: column.implicitHeight + 2 * Style.space(16)
     color: Color.popups.background
-    borderSpec: Border.surfaceSpec("popups", "border", Color.urgent, 1)
+    // The theme's popup border colour would win over a surfaceSpec fallback;
+    // the local colour differs from it, so the border is the urgent colour.
+    borderSpec: Border.localOrSurfaceSpec("popups", "border", Color.urgent, Color.popups.border, 1)
     radius: Style.cornerRadius
 
     ColumnLayout {

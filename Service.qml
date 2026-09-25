@@ -55,6 +55,7 @@ Item {
     }
 
     signal alarmAdded(int id)
+    signal insertFailed(var record)   // the record a failed insert carried, so the tab reopens the draft
     signal failed(string message)
 
     // One clock step: sets nowMs and, once the alarms are loaded, saves every
@@ -174,6 +175,7 @@ Item {
         Component.onCompleted: store.init()
         onAlarmAdded: function(id) { root.alarmAdded(id) }
         onFailed: function(message) { root.failed(message) }
+        onWriteFailed: function(kind, args) { if (kind === "insertAlarm") root.insertFailed(args.record) }
     }
 
     SystemClock {
