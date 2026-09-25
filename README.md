@@ -90,12 +90,12 @@ Writes are asynchronous. `{"ok":true}` means the write is queued. A write that f
 
 ## Data
 
-The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is `SCHEMA` in `data/Db.js`: an `items` table for notes and todos and a `history` table. The plugin applies it at start, and the test harness seeds its database from the same constant.
+The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is the `MIGRATIONS` list in `data/Db.js`: an `items` table for notes and todos, a `history` table, and a folded copy of each title and body for search. At start the plugin runs every migration above the database's `user_version` in one transaction (ADR-0011), and the test harness seeds its database the same way.
 
 ## Development
 
 - `npm run validate` runs `omarchy plugin validate .`.
-- `npm test` runs `node --test test/`, then `test/render.sh`, `test/behavior.sh`, `test/panel.sh` and `test/teardown.sh`. The last four start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
+- `npm test` runs `node --test test/`, then `test/render.sh`, `test/behavior.sh`, `test/panel.sh`, `test/startup.sh` and `test/teardown.sh`. The unit tests need `sqlite3`. The other five start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
 
 Design decisions are in [`docs/adr/`](docs/adr/) and the project vocabulary is in [`CONTEXT.md`](CONTEXT.md).
 
