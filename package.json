@@ -2,7 +2,7 @@
   "name": "omanotes",
   "version": "1.0.0",
   "private": true,
-  "description": "Omanotes Omarchy bar-widget plugin: notes + todos + history, keyboard-driven, SQLite-backed with file-watcher auto-refresh.",
+  "description": "Omanotes Omarchy bar-widget plugin: notes + todos + history, mouse-driven, SQLite-backed with file-watcher auto-refresh.",
   "scripts": {
     "validate": "omarchy plugin validate .",
     "test": "npm run test:unit && npm run test:render && npm run test:behavior && npm run test:panel && npm run test:startup && npm run test:teardown",

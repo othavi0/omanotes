@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Drives the real Panel.qml against a seeded sqlite db, offscreen, then asserts
-# on the rows that reached the db. Covers the editor's save-on-leave contract.
+# on the rows that reached the db. Covers the editor's save-on-leave contract
+# and the on-screen controls that replace the old shortcuts: clicks on the real
+# buttons and rows, and key presses that must do nothing.
 
 set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
@@ -58,9 +60,9 @@ ShellRoot {
   property int lastId: -1
   property int keepId: -1
   property int beforeLastId: -1
-  property int hiddenId: -1
   property int probeId: -1
-  property int probeRows: -1
+  property int armedId: -1
+  property var before: null
   property var panel: null
   property var itemsTab: null
   property var historyTab: null
@@ -73,14 +75,14 @@ ShellRoot {
     return "missing"
   }
   readonly property var steps: [
-    function() { itemsTab.pickItem(2); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(2); sr.clickTitle() },
     function() { itemsTab.editorTitle = "EDITED-RENEW"; itemsTab.pickItem(3) },
     function() { itemsTab.commitIfDirty() },
     function() { console.log("HIGHLIGHTED " + sr.highlighted(itemsTab).join(",")) },
 
-    function() { itemsTab.pickItem(4); itemsTab.focusEditor() },
-    function() { itemsTab.editorTitle = "EDITED-COFFEE"; itemsTab.focusSearch() },
-    function() { console.log("FOCUS-AFTER-SEARCH " + itemsTab.focusContext + " TITLE4 " + sr.titleOf(4)) },
+    function() { itemsTab.pickItem(4); sr.clickTitle() },
+    function() { itemsTab.editorTitle = "EDITED-COFFEE"; sr.clickSearch() },
+    function() { console.log("FOCUS-AFTER-SEARCH " + sr.focusContext() + " TITLE4 " + sr.titleOf(4)) },
     function() { itemsTab.searchText = "panel" },
     function() { itemsTab.searchText = "" },
 
@@ -88,17 +90,17 @@ ShellRoot {
     function() { itemsTab.editorTitle = "DRAFT-ON-CLOSE"; panel.close() },
     function() { panel.open() },
 
-    function() { itemsTab.pickItem(5); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(5); sr.clickTitle() },
     function() { itemsTab.startNew("todo") },
-    function() { itemsTab.editorTitle = "DRAFT-BY-ENTER"; itemsTab.commitEditor() },
+    function() { itemsTab.editorTitle = "DRAFT-BY-SAVE"; sr.click(sr.button(sr.editor(), "Save todo")) },
 
-    function() { itemsTab.pickItem(1); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(1); sr.clickTitle() },
     function() { itemsTab.editorTitle = "DISCARDED"; itemsTab.discardEditor() },
     function() { itemsTab.commitIfDirty() },
 
     function() { itemsTab.pickItem(5); itemsTab.convertSelected() },
 
-    function() { itemsTab.pickItem(3); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(3); sr.clickTitle() },
     function() { itemsTab.editorTitle = ""; itemsTab.editorBody = "BODY-KEPT"; itemsTab.pickItem(1) },
 
     function() { sr.lastId = db.items[db.items.length - 1].id; sr.beforeLastId = db.items[db.items.length - 2].id; itemsTab.pickItem(sr.lastId) },
@@ -112,7 +114,7 @@ ShellRoot {
     function() { itemsTab.commitEditor(true) },
     function() { itemsTab.searchText = "" },
 
-    function() { itemsTab.pickItem(1); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(1); sr.clickTitle() },
     function() { itemsTab.editorBody = "QUEUED-BODY"; itemsTab.pickItem(2); itemsTab.convertSelected(); itemsTab.toggleStatus() },
 
     function() { itemsTab.filterType = "todo"; itemsTab.searchText = "upstream" },
@@ -121,136 +123,220 @@ ShellRoot {
     function() { itemsTab.filterType = "all"; itemsTab.searchText = "" },
     function() { console.log("SELECTION-AFTER-WIDENING " + (itemsTab.selectedId === sr.keepId ? "kept" : "hijacked:" + itemsTab.selectedId)) },
 
-    function() { itemsTab.pickItem(4); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(4); sr.clickTitle() },
     function() { itemsTab.editorBody = "THROWN-AWAY"; itemsTab.discardEditor(); itemsTab.startNew("note") },
     function() { console.log("DRAFT-AFTER-DISCARD " + itemsTab.draftNew); itemsTab.discardEditor() },
 
-    function() { itemsTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1) },
+    function() {
+      console.log("HINT-BARS " + (sr.findType(itemsTab, "HintBar") === null) + " " + (sr.findType(historyTab, "HintBar") === null))
+      var editor = sr.editor()
+      var bottom = editor.mapToItem(itemsTab, 0, editor.height).y
+      console.log("EDITOR-REACHES-BOTTOM " + (Math.abs(itemsTab.height - bottom) <= 1))
+      sr.click(sr.firstRow()); sr.click(sr.newButton())
+    },
+    function() {
+      console.log("NEW-MENU " + sr.menuShown() + " " + !!sr.menuButton("Note") + " " + !!sr.menuButton("Todo")
+        + " draft=" + itemsTab.draftNew + " tooltip=[" + sr.newButton().tooltipText + "]")
+      sr.click(sr.menuButton("Todo"))
+    },
+    function() {
+      console.log("NEW-TODO-DRAFT " + itemsTab.draftNew + " " + itemsTab.draftType + " " + sr.focusContext() + " menu=" + sr.menuShown())
+      sr.type("menu todo"); sr.click(sr.newButton())
+    },
+    function() { sr.click(sr.menuButton("Note")) },
+    function() {
+      console.log("NEW-NOTE-DRAFT " + itemsTab.draftNew + " " + itemsTab.draftType + " [" + itemsTab.editorTitle + "] "
+        + sr.focusContext() + " menu=" + sr.menuShown())
+      sr.click(sr.newButton())
+    },
+    function() { sr.click(sr.findByText(header, "History")) },
+    function() {
+      console.log("MENU-AFTER-OUTSIDE-CLICK " + sr.menuShown() + " " + panel.activeTab)
+      sr.click(sr.findByText(header, "Items"))
+    },
+
+    function() { sr.click(sr.newButton()) },
+    function() { sr.click(sr.menuButton("Note")) },
     function() { keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1); sr.type("orphan body") },
-    function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
-    function() {
-      console.log("UNTITLED-DRAFT-AFTER-ESC " + sr.draftState())
-      console.log("UNTITLED-DRAFT-HINTS " + sr.hintKeys())
-      keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1)
-    },
     function() { keys.keyClick(Qt.Key_Return, Qt.NoModifier, -1) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-ENTER " + sr.draftState()); sr.click(sr.firstRow(itemsTab)) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-ROW-CLICK " + sr.draftState()); panel.close() },
-    function() { panel.open() },
-    function() { console.log("UNTITLED-DRAFT-AFTER-REOPEN " + sr.draftState()); sr.click(sr.findByText(header, "History")) },
+    function() {
+      console.log("ENTER-IN-DRAFT-BODY " + (itemsTab.editorBody === "orphan body\n") + " " + sr.focusContext())
+      keys.keyClick(Qt.Key_Backspace, Qt.NoModifier, -1)
+      toast.text = ""; keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+    },
+    function() { console.log("UNTITLED-DRAFT-AFTER-ESC " + panel.opened + " " + sr.draftState()); panel.open() },
+    function() { console.log("UNTITLED-DRAFT-AFTER-REOPEN " + sr.draftState()); sr.click(sr.firstRow()) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-ROW-CLICK " + sr.draftState()); sr.click(sr.findByText(header, "History")) },
     function() { sr.click(sr.findByText(header, "Items")) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-TAB-SWITCH " + sr.draftState()); sr.click(sr.findByText(header, "New")) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-NEW " + sr.draftState()); sr.clickSearch() },
-    function() { console.log("SEARCH-HINTS-WITH-DRAFT " + sr.hintKeys()); keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-ESC " + sr.draftState()); sr.clickSearch() },
-    function() { keys.keyClick(Qt.Key_Return, Qt.NoModifier, -1) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-ENTER " + sr.draftState()); sr.clickSearch() },
+    function() { console.log("UNTITLED-DRAFT-AFTER-TAB-SWITCH " + sr.draftState()); sr.click(sr.newButton()) },
+    function() { sr.click(sr.menuButton("Todo")) },
+    function() {
+      console.log("UNTITLED-DRAFT-AFTER-NEW " + sr.draftState() + " " + itemsTab.draftType)
+      sr.click(sr.button(sr.editor(), "Discard"))
+    },
+    function() {
+      console.log("UNTITLED-DRAFT-AFTER-DISCARD " + itemsTab.draftNew + " " + sr.focusContext())
+      sr.click(sr.newButton())
+    },
+    function() { sr.click(sr.menuButton("Note")) },
+    function() { toast.text = ""; keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
+    function() {
+      console.log("EMPTY-DRAFT-AFTER-ESC " + panel.opened + " " + itemsTab.draftNew + " toast=[" + toast.text + "]")
+      panel.open()
+    },
+
+    function() { itemsTab.pickItem(1); sr.clickTitle() },
     function() { keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-TAB " + sr.draftState()); sr.hiddenId = itemsTab.selectedId; sr.type("dd") },
+    function() { console.log("TAB-IN-TITLE " + sr.editor().bodyFocused); keys.keyClick(Qt.Key_Backtab, Qt.ShiftModifier, -1) },
+    function() { console.log("SHIFT-TAB-IN-BODY " + sr.editor().titleFocused); keys.keyClick(Qt.Key_Return, Qt.NoModifier, -1) },
     function() {
-      console.log("HIDDEN-ROW-AFTER-DD " + (sr.titleOf(sr.hiddenId) === "missing" ? "deleted" : "kept"))
-      keys.keyClick(Qt.Key_Backspace, Qt.NoModifier, -1); keys.keyClick(Qt.Key_Backspace, Qt.NoModifier, -1)
-    },
-    function() { keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1) },
-    function() {
-      console.log("UNTITLED-DRAFT-AFTER-SHIFT-ESC " + itemsTab.draftNew + " " + itemsTab.focusContext)
-      toast.text = ""; keys.keyClickChar("n", Qt.NoModifier, -1)
-    },
-    function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
-    function() {
-      console.log("EMPTY-DRAFT-AFTER-ESC " + itemsTab.draftNew + " " + itemsTab.focusContext + " toast=[" + toast.text + "]")
-      itemsTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1)
-    },
-    function() { sr.type("first draft") },
-    function() { sr.click(sr.findByText(header, "New")) },
-    function() { console.log("AFTER-NEW-CLICK " + itemsTab.draftNew + " [" + itemsTab.editorTitle + "]") },
-    function() { itemsTab.discardEditor() },
-
-    function() { sr.probeId = itemsTab.itemList[1].id; itemsTab.pickItem(sr.probeId); sr.ctrl([Qt.Key_J]) },
-    function() {
-      console.log("CTRL-J-IN-LIST " + (itemsTab.selectedId === sr.probeId))
-      sr.probeId = itemsTab.selectedId; sr.ctrl([Qt.Key_K])
+      console.log("ENTER-IN-TITLE " + sr.editor().bodyFocused)
+      sr.probeId = itemsTab.selectedId; sr.before = itemsTab.editorBody
+      keys.keyClick(Qt.Key_Return, Qt.NoModifier, -1)
     },
     function() {
-      console.log("CTRL-K-IN-LIST " + (itemsTab.selectedId === sr.probeId))
-      itemsTab.pickItem(1); sr.probeId = itemsTab.selectedId
-      sr.ctrl([Qt.Key_C, Qt.Key_A, Qt.Key_L, Qt.Key_D, Qt.Key_N, Qt.Key_F])
+      var added = itemsTab.editorBody.split("\n").length - sr.before.split("\n").length
+      console.log("ENTER-IN-BODY " + (added === 1) + " " + sr.editor().bodyFocused + " " + sr.editor().dirty)
+      keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
     },
     function() {
-      console.log("CTRL-LETTERS-IN-LIST " + (itemsTab.selectedId === sr.probeId) + " " + itemsTab.focusContext + " "
-        + itemsTab.draftNew + " " + itemsTab.filterType + " " + itemsTab.deleteArmed)
-      keys.keyClickChar("j", Qt.NoModifier, -1)
+      console.log("SHIFT-ESC-IN-EDITOR " + panel.opened + " " + sr.editor().dirty + " " + (itemsTab.selectedId === sr.probeId))
+      sr.click(sr.button(sr.editor(), "Discard"))
     },
+    function() { sr.click(sr.newButton()) },
+    function() { sr.click(sr.menuButton("Note")) },
+    function() { sr.type("tomar"); sr.ctrl([Qt.Key_T]) },
     function() {
-      console.log("PLAIN-J-IN-LIST " + (itemsTab.selectedId !== sr.probeId))
-      sr.probeId = itemsTab.itemList[0].id; itemsTab.pickItem(sr.probeId); keys.keyClickChar("J", Qt.ShiftModifier, -1)
-    },
-    function() { console.log("SHIFT-J-IN-LIST " + (itemsTab.selectedId === sr.probeId)); keys.keyClickChar("J", Qt.NoModifier, -1) },
-    function() { console.log("CAPS-J-IN-LIST " + (itemsTab.selectedId !== sr.probeId)); sr.click(sr.findByText(header, "History")) },
-    function() {
-      historyTab.moveSelection(1); sr.probeRows = historyTab.rowList.length; sr.probeId = historyTab.selectedId
-      sr.ctrl([Qt.Key_J])
-    },
-    function() {
-      console.log("CTRL-J-IN-HISTORY " + (historyTab.selectedId === sr.probeId))
-      sr.probeId = historyTab.selectedId; sr.ctrl([Qt.Key_K])
-    },
-    function() { console.log("CTRL-K-IN-HISTORY " + (historyTab.selectedId === sr.probeId)); sr.ctrl([Qt.Key_D, Qt.Key_C]) },
-    function() {
-      console.log("CTRL-LETTERS-IN-HISTORY " + (historyTab.rowList.length === sr.probeRows) + " "
-        + (historyTab.selectedId === sr.probeId) + " " + historyTab.deleteArmed + " " + historyTab.clearArmed)
-      keys.keyClickChar("j", Qt.NoModifier, -1)
-    },
-    function() {
-      console.log("PLAIN-J-IN-HISTORY " + (historyTab.selectedId !== sr.probeId))
-      sr.probeId = historyTab.selectedId; keys.keyClickChar("J", Qt.NoModifier, -1)
-    },
-    function() { console.log("CAPS-J-IN-HISTORY " + (historyTab.selectedId !== sr.probeId)); sr.click(sr.findByText(header, "Items")) },
-
-    function() { itemsTab.pickItem(1); itemsTab.focusEditor() },
-    function() { console.log("EDITOR-TITLE-HINTS " + sr.hintKeys()); keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1) },
-    function() { console.log("EDITOR-BODY-HINTS " + sr.hintKeys()); keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
-    function() { keys.keyClickChar("n", Qt.NoModifier, -1) },
-    function() { sr.type("tomar") },
-    function() { console.log("DRAFT-TYPED [" + itemsTab.editorTitle + "] " + itemsTab.draftType); sr.ctrl([Qt.Key_T]) },
-    function() {
-      console.log("DRAFT-AFTER-CTRL-T-IN-TITLE [" + itemsTab.editorTitle + "] " + itemsTab.draftType)
-      console.log("DRAFT-TITLE-HINTS " + sr.hintKeys())
+      console.log("CTRL-T-IN-DRAFT-TITLE [" + itemsTab.editorTitle + "] " + itemsTab.draftType)
       keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1)
     },
     function() { sr.ctrl([Qt.Key_T]) },
     function() {
-      console.log("DRAFT-AFTER-CTRL-T-IN-BODY [" + itemsTab.editorBody + "] " + itemsTab.draftType)
-      console.log("DRAFT-BODY-HINTS " + sr.hintKeys())
+      console.log("CTRL-T-IN-DRAFT-BODY [" + itemsTab.editorBody + "] " + itemsTab.draftType)
       keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
     },
-
-    function() { itemsTab.cycleFilter() },
-    function() { console.log("FILTER-AFTER-F " + itemsTab.filterType + " rows=" + db.items.filter(function(i) { return i.type !== "note" }).length) },
-
-    // qs runs under a 60 s timeout, so these three steps check what they can
-    // in the same tick. An empty db._writeKind means no write was started.
     function() {
-      sr.keepId = itemsTab.itemList[0].id; itemsTab.pickItem(sr.keepId); sr.type("dj")
-      var armedAfterMove = itemsTab.deleteArmed; sr.type("kd")
-      console.log("ITEMS-ARMED-AFTER-MOVE " + armedAfterMove + " " + itemsTab.deleteArmed)
-      db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
-      sr.click(sr.findByText(header, "History"))
-      historyTab.selectedId = historyTab.rowList[0].id; sr.type("dj")
-      armedAfterMove = historyTab.deleteArmed; sr.type("kd")
-      console.log("HISTORY-ARMED-AFTER-MOVE " + armedAfterMove + " " + historyTab.deleteArmed)
+      console.log("SHIFT-ESC-IN-DRAFT " + panel.opened + " " + itemsTab.draftNew + " [" + itemsTab.editorTitle + "]")
+      sr.clickTitle()
+    },
+    function() { sr.type("2") },
+    function() {
+      console.log("TWO-IN-TITLE " + panel.activeTab + " [" + itemsTab.editorTitle + "]")
+      sr.click(sr.button(sr.editor(), "Discard"))
+    },
+    function() { sr.clickSearch(); sr.type("1") },
+    function() { console.log("ONE-IN-SEARCH " + panel.activeTab + " [" + itemsTab.searchText + "] " + sr.focusContext()); itemsTab.searchText = "" },
+
+    // Letters go through keyClickChar, since keyClick sends a key code with
+    // no text.
+    function() { if (!panel.opened) panel.open() },
+    function() {
+      sr.click(sr.firstRow())
+      sr.before = sr.listState()
+      sr.type("jklnacdd/f12J")
+      var codes = [Qt.Key_Down, Qt.Key_Up, Qt.Key_Right, Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter, Qt.Key_Tab]
+      for (var i = 0; i < codes.length; ++i) keys.keyClick(codes[i], Qt.NoModifier, -1)
+    },
+    function() { console.log("LIST-KEYS " + sr.sameState(sr.before, sr.listState())); if (!panel.opened) panel.open() },
+    function() { sr.click(sr.findByText(header, "History")) },
+    function() {
+      sr.click(sr.historyRow(historyTab.rowList[1].id))
+      sr.before = sr.historyState()
+      sr.type("jkddcc12")
+      keys.keyClick(Qt.Key_Down, Qt.NoModifier, -1); keys.keyClick(Qt.Key_Up, Qt.NoModifier, -1)
+    },
+    function() { console.log("HISTORY-KEYS " + sr.sameState(sr.before, sr.historyState())) },
+    function() {
+      var mods = [Qt.ControlModifier, Qt.AltModifier, Qt.MetaModifier, Qt.ShiftModifier]
+      for (var i = 0; i < mods.length; ++i) keys.keyClick(Qt.Key_Escape, mods[i], -1)
+      console.log("ESC-WITH-MODIFIER-IN-HISTORY " + panel.opened)
       keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
-      historyTab.selectedId = historyTab.rowList[1].id; sr.probeId = historyTab.rowList[2].id; sr.type("dd")
     },
     function() {
-      console.log("ITEMS-D-AFTER-MOVING-BACK " + (sr.titleOf(sr.keepId) === "missing" ? "deleted" : "kept"))
-      console.log("HISTORY-AFTER-MIDDLE-DELETE " + (historyTab.selectedId === sr.probeId ? "next-row" : "other:" + historyTab.selectedId))
+      console.log("ESC-IN-HISTORY " + panel.opened)
+      panel.open()
+    },
+    function() {
+      sr.click(sr.firstRow())
+      var mods = [Qt.ControlModifier, Qt.AltModifier, Qt.MetaModifier, Qt.ShiftModifier]
+      for (var i = 0; i < mods.length; ++i) keys.keyClick(Qt.Key_Escape, mods[i], -1)
+      console.log("ESC-WITH-MODIFIER-IN-LIST " + panel.opened)
+      keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+    },
+    function() { console.log("ESC-IN-LIST " + panel.opened); panel.open() },
+    function() { sr.clickSearch(); sr.type("cof") },
+    function() {
+      keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+      console.log("ESC-IN-SEARCH " + panel.opened)
+      panel.open(); itemsTab.searchText = ""
+    },
+    function() { itemsTab.pickItem(2); sr.clickTitle() },
+    function() {
+      itemsTab.editorTitle = "ESC-COMMITS"
+      keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+      console.log("ESC-IN-EDITOR " + panel.opened)
+    },
+    function() { panel.open() },
+
+    function() { sr.click(sr.findByText(itemsTab, "Todos")) },
+    function() {
+      console.log("FILTER-AFTER-TODOS-CLICK " + itemsTab.filterType + " notes=" + db.items.filter(function(i) { return i.type !== "todo" }).length)
+      sr.click(sr.findByText(itemsTab, "All"))
+    },
+
+    // The item is a note, so its toggles below log read and unread.
+    function() {
+      sr.keepId = itemsTab.itemList.filter(function(i) { return i.type === "note" })[0].id; itemsTab.pickItem(sr.keepId)
+      sr.click(sr.button(sr.editor(), "Delete"))
+      var armedFirst = itemsTab.deleteArmed
+      itemsTab.pickItem(itemsTab.itemList.filter(function(i) { return i.id !== sr.keepId })[0].id)
+      var armedAfterMove = itemsTab.deleteArmed
+      itemsTab.pickItem(sr.keepId)
+      sr.click(sr.button(sr.editor(), "Delete"))
+      console.log("ITEMS-ARMED-AFTER-MOVE " + armedFirst + " " + armedAfterMove + " " + itemsTab.deleteArmed)
+      db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
+    },
+    function() {
+      console.log("ITEMS-DELETE-AFTER-MOVING-BACK " + (sr.titleOf(sr.keepId) === "missing" ? "deleted" : "kept"))
+      sr.click(sr.findByText(header, "History"))
+    },
+    function() {
+      var rows = historyTab.rowList
+      sr.armedId = rows[0].id
+      sr.hover(sr.historyRow(sr.armedId))
+      console.log("TRASH-ON-HOVER " + sr.trashOf(sr.armedId).visible + " " + sr.trashOf(rows[1].id).visible)
+      sr.click(sr.trashOf(sr.armedId))
+    },
+    function() {
+      var trash = sr.trashOf(sr.armedId)
+      console.log("TRASH-ARMED " + trash.visible + " [" + trash.text + "] rows=" + historyTab.rowList.length)
+      sr.click(sr.historyRow(historyTab.rowList[1].id))
+    },
+    function() {
+      var trash = sr.trashOf(sr.armedId)
+      console.log("TRASH-AFTER-SELECT [" + trash.text + "] " + historyTab.rowList.length)
+      var row = sr.historyRow(sr.armedId)
+      sr.hover(row); sr.click(sr.trashOf(sr.armedId))
+      console.log("TRASH-REARMED [" + sr.trashOf(sr.armedId).text + "]")
+      sr.click(sr.findByText(header, "Items")); sr.click(sr.findByText(header, "History"))
+    },
+    function() {
+      console.log("TRASH-AFTER-TAB-SWITCH [" + sr.trashOf(sr.armedId).text + "] " + historyTab.rowList.length)
+      var rows = historyTab.rowList
+      sr.armedId = rows[1].id; sr.probeId = rows[2].id
+      sr.click(sr.historyRow(sr.armedId))
+      sr.hover(sr.historyRow(sr.armedId)); sr.click(sr.trashOf(sr.armedId))
+    },
+    function() { sr.click(sr.trashOf(sr.armedId)) },
+    function() {
+      console.log("HISTORY-AFTER-MIDDLE-DELETE " + (historyTab.selectedId === sr.probeId ? "next-row" : "other:" + historyTab.selectedId)
+        + " gone=" + (sr.indexIn(historyTab.rowList, sr.armedId) < 0))
       console.log("HISTORY-NOTE-LABELS " + ["read", "unread", "completed", "reopened"].map(function(label) { return !!sr.findByText(historyTab, label) }).join(" "))
-      var button = sr.findType(historyTab, "ActionButton")
+      var button = sr.button(historyTab, "Clear history")
       sr.click(button)
       console.log("HISTORY-AFTER-ONE-CLEAR-CLICK " + (db._writeKind === "") + " " + button.text)
       // The checks after qs exits still read the log, so it is kept aside and
-      // put back after c c, only if c c left the table empty.
+      // put back once the clear and the icon check are done.
       db._write("test", function() { return "CREATE TABLE kept_history AS SELECT * FROM history" }, null)
       sr.click(button)
       db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
@@ -259,11 +345,7 @@ ShellRoot {
     function() {
       console.log("HISTORY-AFTER-TWO-CLEAR-CLICKS " + historyTab.rowList.length)
       console.log("HISTORY-TODO-ICONS " + !!sr.findByText(historyTab, Icons.boxOn) + " " + !!sr.findByText(historyTab, Icons.boxOff))
-      sr.type("c")
-      var hints = sr.findType(historyTab, "HintBar").hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
-      console.log("HISTORY-AFTER-ONE-C " + (db._writeKind === "") + " " + hints)
-      sr.type("c")
-      db._write("test", function() { return "INSERT INTO history SELECT * FROM kept_history WHERE NOT EXISTS (SELECT 1 FROM history)" }, null)
+      db._write("test", function() { return "DELETE FROM history; INSERT INTO history SELECT * FROM kept_history" }, null)
 
       var shown = []
       var counting = { show: function(message) { shown.push(message) } }
@@ -273,105 +355,55 @@ ShellRoot {
       // The failure is forced here, so it is not one of the run's write failures.
       sr.writeFailures--
       console.log("ERROR-TOASTS " + shown.filter(function(m) { return m.indexOf("Error") === 0 }).length)
+      sr.click(sr.findByText(header, "Items"))
     },
+    function() {
+      sr.probeId = itemsTab.selectedId
+      sr.click(sr.button(sr.editor(), "Delete"))
+      sr.click(sr.findByText(header, "History")); sr.click(sr.findByText(header, "Items"))
+      console.log("ITEMS-ARM-AFTER-TAB-SWITCH " + panel.activeTab + " " + itemsTab.deleteArmed + " [" + sr.deleteButtonText() + "]")
+      sr.click(sr.button(sr.editor(), "Delete"))
+      console.log("ITEMS-DELETE-AFTER-TAB-SWITCH " + itemsTab.deleteArmed + " " + (db._writeKind === ""))
+    },
+    function() { console.log("ITEMS-AFTER-TAB-SWITCH " + (sr.titleOf(sr.probeId) === "missing" ? "deleted" : "kept")) },
 
-    // Each burst types within 60 ms of the panel opening, then the next step
-    // types again, so a late focus reset in between shows up.
+    // Each burst clicks and types within 60 ms of the panel opening, then the
+    // next step types again, so a late focus reset in between shows up.
     function() { panel.close() },
     function() {
-      sr.burst([function() { panel.open() }, function() { sr.type("n") },
+      sr.burst([function() { panel.open() }, function() { sr.click(sr.newButton()) }, function() { sr.click(sr.menuButton("Note")) },
         function() { sr.type("ab"); keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1) }, function() { sr.type("cd") }])
     },
     function() {
       sr.type("ef")
-      console.log("DRAFT-TYPED-ON-OPEN [" + itemsTab.editorTitle + "] [" + itemsTab.editorBody + "] " + itemsTab.focusContext)
-      keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
+      console.log("DRAFT-TYPED-ON-OPEN [" + itemsTab.editorTitle + "] [" + itemsTab.editorBody + "] " + sr.focusContext())
+      sr.click(sr.button(sr.editor(), "Discard"))
     },
     function() { itemsTab.showAll(); panel.close() },
-    function() { sr.burst([function() { panel.open() }, function() { sr.type("/") }, function() { sr.type("cof") }]) },
+    function() { sr.burst([function() { panel.open() }, function() { sr.clickSearch() }, function() { sr.type("cof") }]) },
     function() {
       sr.type("fee")
-      console.log("SEARCH-TYPED-ON-OPEN [" + itemsTab.searchText + "] " + itemsTab.focusContext + " " + itemsTab.filterType)
-      keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
-    },
-
-    function() { itemsTab.focusList(); sr.ctrl([Qt.Key_2]) },
-    function() { console.log("CTRL-2-IN-LIST " + panel.activeTab); sr.type("2") },
-    function() {
-      console.log("TWO-IN-LIST " + panel.activeTab + " " + historyTab.activeFocus + " " + sr.historyHints()
-        + " tooltip=[" + sr.newTooltip() + "]")
-      sr.type("1")
-    },
-    function() {
-      console.log("ONE-IN-HISTORY " + panel.activeTab + " " + itemsTab.focusContext + " " + sr.hintKeys() + " tooltip=[" + sr.newTooltip() + "]")
-      itemsTab.focusSearch(); sr.type("1")
-    },
-    function() {
-      console.log("ONE-IN-SEARCH " + panel.activeTab + " [" + itemsTab.searchText + "] " + itemsTab.focusContext)
-      keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1); sr.type("n")
-    },
-    function() { sr.type("2") },
-    function() {
-      console.log("TWO-IN-TITLE " + panel.activeTab + " [" + itemsTab.editorTitle + "] " + itemsTab.focusContext)
-      keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
-    },
-
-    // An empty db._writeKind right after the last d means that d started no delete.
-    function() {
-      sr.type("j"); sr.probeId = itemsTab.selectedId; sr.type("d21")
-      console.log("ITEMS-ARM-AFTER-KEY-SWITCH " + panel.activeTab + " " + itemsTab.deleteArmed + " " + sr.armHintShown())
-      sr.type("d")
-      console.log("ITEMS-D-AFTER-KEY-SWITCH " + itemsTab.deleteArmed + " " + (db._writeKind === ""))
-    },
-    function() {
-      console.log("ITEMS-AFTER-KEY-SWITCH " + (sr.titleOf(sr.probeId) === "missing" ? "deleted" : "kept"))
-      if (itemsTab.deleteArmed) keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
-      sr.probeId = itemsTab.selectedId; sr.type("d")
-      sr.click(sr.findByText(header, "History")); sr.click(sr.findByText(header, "Items"))
-      console.log("ITEMS-ARM-AFTER-CLICK-SWITCH " + panel.activeTab + " " + itemsTab.deleteArmed + " " + sr.armHintShown())
-      sr.type("d")
-      console.log("ITEMS-D-AFTER-CLICK-SWITCH " + itemsTab.deleteArmed + " " + (db._writeKind === ""))
-    },
-    function() {
-      console.log("ITEMS-AFTER-CLICK-SWITCH " + (sr.titleOf(sr.probeId) === "missing" ? "deleted" : "kept"))
-      if (itemsTab.deleteArmed) keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
-      sr.type("2d12")
-      console.log("HISTORY-ARM-AFTER-KEY-SWITCH " + panel.activeTab + " " + historyTab.deleteArmed)
-      sr.type("1")
+      console.log("SEARCH-TYPED-ON-OPEN [" + itemsTab.searchText + "] " + sr.focusContext() + " " + itemsTab.filterType)
+      itemsTab.searchText = ""
     }
-  ].concat(sr.modifierSteps("CTRL", Qt.ControlModifier), sr.modifierSteps("ALT", Qt.AltModifier),
-    sr.modifierSteps("SUPER", Qt.MetaModifier))
+  ]
 
-  // The editor takes focus one turn after Enter, Tab or Right, so each of them
-  // gets its own step, and the list gets focus back before the next key.
-  property var listBefore: null
-  function modifierSteps(name, mods) {
-    function press(key) { itemsTab.focusList(); keys.keyClick(key, mods, -1) }
-    function focusAfter(key) { console.log(name + "-" + key + " " + itemsTab.focusContext + " " + itemsTab.draftNew) }
-    return [
-      function() {
-        itemsTab.focusList()
-        sr.listBefore = { id: itemsTab.selectedId, status: itemsTab.selectedItem.status, history: db.totalHistory }
-        keys.keyClick(Qt.Key_Space, mods, -1); keys.keyClick(Qt.Key_Down, mods, -1)
-        console.log(name + "-SPACE-DOWN " + (itemsTab.selectedId === sr.listBefore.id) + " " + (db._writeKind === ""))
-        press(Qt.Key_Return)
-      },
-      function() {
-        var item = db.items.filter(function(i) { return Number(i.id) === sr.listBefore.id })[0]
-        console.log(name + "-AFTER-SPACE " + (!!item && item.status === sr.listBefore.status) + " "
-          + (db.totalHistory === sr.listBefore.history))
-        focusAfter("RETURN"); press(Qt.Key_Enter)
-      },
-      function() { focusAfter("ENTER"); press(Qt.Key_Tab) },
-      function() { focusAfter("TAB"); press(Qt.Key_Right) },
-      function() {
-        focusAfter("RIGHT"); press(Qt.Key_Escape)
-        console.log(name + "-ESC " + panel.opened)
-        if (!panel.opened) panel.open()
-      }
-    ]
+  function indexIn(rows, id) {
+    for (var i = 0; i < rows.length; ++i) if (Number(rows[i].id) === Number(id)) return i
+    return -1
   }
-  function armHintShown() { return sr.hintKeys().indexOf("press again") >= 0 }
+
+  function listState() {
+    var item = itemsTab.selectedItem
+    return [itemsTab.selectedId, item ? item.status : -1, db.items.length, db.totalHistory, panel.activeTab,
+      itemsTab.filterType, itemsTab.searchText, itemsTab.draftNew, itemsTab.deleteArmed, sr.focusContext(),
+      panel.opened, sr.menuShown()].join("|")
+  }
+  function historyState() {
+    return [historyTab.selectedId, historyTab.rowList.length, db.totalHistory, panel.activeTab,
+      !!sr.button(historyTab, "Confirm"), historyTab.clearArmed, panel.opened].join("|")
+  }
+  function sameState(was, now) { return was === now ? "same" : "changed " + was + " -> " + now }
 
   property var burstSteps: []
   property int burstIndex: 0
@@ -385,10 +417,6 @@ ShellRoot {
       sr.burstSteps[sr.burstIndex++]()
     }
   }
-  function historyHints() {
-    return sr.findType(historyTab, "HintBar").hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
-  }
-  function newTooltip() { return sr.findType(header, "ActionButton").tooltipText }
 
   function ctrl(keyList) {
     for (var i = 0; i < keyList.length; ++i) keys.keyClick(keyList[i], Qt.ControlModifier, -1)
@@ -396,32 +424,71 @@ ShellRoot {
   function type(text) {
     for (var i = 0; i < text.length; ++i) keys.keyClickChar(text[i], Qt.NoModifier, -1)
   }
-  function draftState() {
-    return itemsTab.draftNew + " [" + itemsTab.editorBody + "] " + itemsTab.focusContext + " toast=" + toast.text
+  function focusContext() {
+    if (sr.findType(itemsTab, "SearchField").activeFocus) return "search"
+    if (itemsTab.editorFocused) return itemsTab.draftNew ? "draft" : "editor"
+    return "list"
   }
-  function hintKeys() {
-    return itemsTab.hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
+  function draftState() {
+    return itemsTab.draftNew + " [" + itemsTab.editorBody + "] " + sr.focusContext() + " toast=" + toast.text
   }
   function click(item) {
     keys.mouseClick(item, item.width / 2, item.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
   }
+  function hover(item) { keys.mouseMove(item, item.width / 2, item.height / 2, -1, Qt.NoButton, Qt.NoModifier) }
   function clickSearch() { sr.click(sr.findType(itemsTab, "SearchField")) }
-  function firstRow(item) { return sr.findType(item, "ItemRow") }
-  function findType(item, prefix) {
-    if (String(item).indexOf(prefix) === 0) return item
-    for (var i = 0; i < item.children.length; ++i) {
-      var hit = sr.findType(item.children[i], prefix)
+  function editor() { return sr.findType(itemsTab, "EditorPane") }
+  function clickTitle() { sr.click(sr.findType(sr.editor(), "Field")) }
+  function firstRow() { return sr.findType(itemsTab, "ItemRow") }
+  function button(item, text) {
+    return sr.findWhere(item, function(it) { return String(it).indexOf("ActionButton") === 0 && it.visible && it.text === text })
+  }
+  function deleteButtonText() {
+    var b = sr.findWhere(sr.editor(), function(it) { return String(it).indexOf("ActionButton") === 0 && it.iconText === Icons.trash })
+    return b ? b.text : "none"
+  }
+  function newButton() {
+    return sr.findWhere(header, function(it) { return String(it).indexOf("ActionButton") === 0 && String(it.text).indexOf("New") === 0 })
+  }
+  // A Popup is not an Item child, so it is looked up through `data`.
+  function newMenu(obj) {
+    obj = obj || header
+    if (/^(QQuick)?Popup[_(]/.test(String(obj))) return obj
+    var kids = obj.data || []
+    for (var i = 0; i < kids.length; ++i) {
+      var hit = sr.newMenu(kids[i])
       if (hit) return hit
     }
     return null
   }
-  function findByText(item, text) {
-    if (item.text === text) return item
+  function menuShown() { var menu = sr.newMenu(); return !!menu && menu.opened }
+  function menuButton(label) {
+    var menu = sr.newMenu()
+    return menu && menu.opened ? sr.button(menu.contentItem, label) : null
+  }
+  function historyRow(id) {
+    return sr.findWhere(historyTab, function(it) {
+      return String(it).indexOf("QQuickRectangle") === 0 && !!it.modelData && Number(it.modelData.id) === Number(id)
+    })
+  }
+  function trashOf(id) {
+    var row = sr.historyRow(id)
+    return row ? sr.findWhere(row, function(it) { return String(it).indexOf("ActionButton") === 0 && it.iconText === Icons.trash }) : null
+  }
+  function findWhere(item, match) {
+    if (!item) return null
+    if (match(item)) return item
     for (var i = 0; i < item.children.length; ++i) {
-      var hit = sr.findByText(item.children[i], text)
+      var hit = sr.findWhere(item.children[i], match)
       if (hit) return hit
     }
     return null
+  }
+  function findType(item, prefix) {
+    return sr.findWhere(item, function(it) { return String(it).indexOf(prefix) === 0 })
+  }
+  function findByText(item, text) {
+    return sr.findWhere(item, function(it) { return it.text === text })
   }
 
   function highlighted(item) {
@@ -488,7 +555,7 @@ logged() {
 }
 
 expect "edit is saved to the item it was typed in when another row is clicked" \
-  "SELECT title FROM items WHERE id = 2" "EDITED-RENEW"
+  "SELECT COUNT(*) FROM history WHERE action = 'edited' AND title = 'EDITED-RENEW'" "1"
 expect "the clicked row keeps its own title" \
   "SELECT title FROM items WHERE id = 3" "Reply to upstream PR review"
 logged "only the clicked row is highlighted after the save reloads the list" "HIGHLIGHTED 3$"
@@ -497,8 +564,8 @@ expect "edit is saved when focus moves to the search field" \
 logged "focus stays in the search field, and the edit is already saved before any search" "FOCUS-AFTER-SEARCH search TITLE4 EDITED-COFFEE$"
 expect "committing a draft leaves the previously open item untouched" \
   "SELECT title FROM items WHERE id = 5" "Backup scratchpad.db"
-expect "draft committed from the title field is saved once" \
-  "SELECT COUNT(*) FROM items WHERE title = 'DRAFT-BY-ENTER'" "1"
+expect "a draft committed with its Save button is saved once" \
+  "SELECT COUNT(*) FROM items WHERE title = 'DRAFT-BY-SAVE'" "1"
 expect "draft is saved when the panel closes" \
   "SELECT COUNT(*) FROM items WHERE title = 'DRAFT-ON-CLOSE'" "1"
 expect "discard leaves the item untouched" \
@@ -517,106 +584,72 @@ expect "three writes fired in one tick all land (edit, convert, toggle)" \
   "SELECT (SELECT body FROM items WHERE id = 1) || '|' || (SELECT type || ':' || status FROM items WHERE id = 2)" "QUEUED-BODY|note:1"
 logged "an item added outside the filter does not hijack the selection later" "SELECTION-AFTER-WIDENING kept$"
 logged "a draft opened in the same tick as a discard stays open" "DRAFT-AFTER-DISCARD true$"
-logged "Esc on a draft with a body and no title keeps it open in the title field, with the warning" \
-  "UNTITLED-DRAFT-AFTER-ESC true \[orphan body\] draft toast=New item needs a title$"
-logged "the title hints for that draft offer Shift+Esc to discard and no longer promise save and back" \
-  "UNTITLED-DRAFT-HINTS Enter/Tab to body,Shift\+Esc discard,Ctrl\+T note/todo$"
-logged "Enter in the body of that draft keeps it open too" \
-  "UNTITLED-DRAFT-AFTER-ENTER true \[orphan body\] draft toast=New item needs a title$"
+
+logged "neither tab has a hint bar" "HINT-BARS true true$"
+logged "the editor reaches the bottom of the Items tab" "EDITOR-REACHES-BOTTOM true$"
+logged "New opens a menu with Note and Todo, opens no draft by itself and has no shortcut tooltip" \
+  "NEW-MENU true true true draft=false tooltip=\[\]$"
+logged "Todo in the menu opens a todo draft with its title focused and closes the menu" "NEW-TODO-DRAFT true todo draft menu=false$"
+logged "Note in the menu commits the open draft and opens an empty note draft" "NEW-NOTE-DRAFT true note \[\] draft menu=false$"
+expect "the todo draft opened from the menu is saved as a todo" "SELECT type FROM items WHERE title = 'menu todo'" "todo"
+logged "a click outside the open menu closes it" "MENU-AFTER-OUTSIDE-CLICK false 1$"
+logged "Enter in a draft body inserts a new line" "ENTER-IN-DRAFT-BODY true draft$"
+logged "Esc on a draft with a body and no title closes the panel and keeps the draft, with the warning" \
+  "UNTITLED-DRAFT-AFTER-ESC false true \[orphan body\] .* toast=New item needs a title$"
+logged "reopening the panel shows that draft again, focused" "UNTITLED-DRAFT-AFTER-REOPEN true \[orphan body\] draft"
 logged "clicking a row keeps that draft open and its title focused" \
   "UNTITLED-DRAFT-AFTER-ROW-CLICK true \[orphan body\] draft toast=New item needs a title$"
-logged "closing and reopening the panel shows that draft again, focused" \
-  "UNTITLED-DRAFT-AFTER-REOPEN true \[orphan body\] draft"
 logged "switching to History and back shows that draft again, focused" \
   "UNTITLED-DRAFT-AFTER-TAB-SWITCH true \[orphan body\] draft"
-logged "New on that draft keeps it and its body, focused" \
-  "UNTITLED-DRAFT-AFTER-NEW true \[orphan body\] draft"
-logged "the search hints with that draft open point Enter at the draft, not the list" \
-  "SEARCH-HINTS-WITH-DRAFT Enter to draft,Esc clear$"
-logged "Esc in the search field returns to that draft, not to the list behind it" \
-  "UNTITLED-DRAFT-AFTER-SEARCH-ESC true \[orphan body\] draft"
-logged "Enter in the search field returns to that draft" \
-  "UNTITLED-DRAFT-AFTER-SEARCH-ENTER true \[orphan body\] draft"
-logged "Tab in the search field returns to that draft" \
-  "UNTITLED-DRAFT-AFTER-SEARCH-TAB true \[orphan body\] draft"
-logged "d d typed then does not delete the row hidden behind the draft" "HIDDEN-ROW-AFTER-DD kept$"
-logged "Shift+Esc discards that draft and returns to the list" "UNTITLED-DRAFT-AFTER-SHIFT-ESC false list$"
+logged "Todo in the menu on that draft keeps it and its body, focused, as a todo" \
+  "UNTITLED-DRAFT-AFTER-NEW true \[orphan body\] draft .* todo$"
+logged "the Discard button throws that draft away" "UNTITLED-DRAFT-AFTER-DISCARD false list$"
 expect "a draft without a title never reaches the db" \
-  "SELECT COUNT(*) FROM items WHERE body = 'orphan body'" "0"
-logged "Esc on an empty draft drops it without the warning" "EMPTY-DRAFT-AFTER-ESC false list toast=\[\]$"
-expect "the New button commits the open draft first" \
-  "SELECT COUNT(*) FROM items WHERE title = 'first draft'" "1"
-logged "and then opens an empty draft" "AFTER-NEW-CLICK true \[\]$"
-logged "Ctrl+J does not move the list selection" "CTRL-J-IN-LIST true$"
-logged "Ctrl+K does not move the list selection" "CTRL-K-IN-LIST true$"
-logged "Ctrl plus a list letter does not move, edit, delete, open a draft or filter" \
-  "CTRL-LETTERS-IN-LIST true list false all false$"
-expect "Ctrl+C in the list does not toggle the selected item" "SELECT status FROM items WHERE id = 1" "0"
-logged "plain j still moves the list selection" "PLAIN-J-IN-LIST true$"
-logged "Shift+J does not move the list selection" "SHIFT-J-IN-LIST true$"
-logged "J typed with Caps Lock on moves the list selection" "CAPS-J-IN-LIST true$"
-logged "Ctrl+J does not move the History selection" "CTRL-J-IN-HISTORY true$"
-logged "Ctrl+K does not move the History selection" "CTRL-K-IN-HISTORY true$"
-logged "Ctrl plus a History letter does not clear, move, or arm a delete or a clear" \
-  "CTRL-LETTERS-IN-HISTORY true true false false$"
-expect "Ctrl+C in History leaves the log in the db" "SELECT COUNT(*) > 0 FROM history" "1"
-logged "plain j still moves the History selection" "PLAIN-J-IN-HISTORY true$"
-logged "J typed with Caps Lock on moves the History selection" "CAPS-J-IN-HISTORY true$"
-logged "the title hints of an item show Enter and Tab moving to the body" \
-  "EDITOR-TITLE-HINTS Enter/Tab to body,Esc save and back,Shift\+Esc discard$"
-logged "the body hints of an item show Enter and Tab saving and going back" \
-  "EDITOR-BODY-HINTS Enter/Tab save and back,Shift\+Enter new line,Shift\+Tab to title,Esc save and back,Shift\+Esc discard$"
-logged "a draft title starting with t keeps the t and the type" "DRAFT-TYPED \[tomar\] note$"
-logged "Ctrl+T in the draft title converts it to todo and types nothing" "DRAFT-AFTER-CTRL-T-IN-TITLE \[tomar\] todo$"
-logged "the draft title hints offer Ctrl+T" \
-  "DRAFT-TITLE-HINTS Enter/Tab to body,Esc save and back,Shift\+Esc discard,Ctrl\+T note/todo$"
-logged "Ctrl+T in the draft body converts it back to note and types nothing" "DRAFT-AFTER-CTRL-T-IN-BODY \[\] note$"
-logged "the draft body hints offer Ctrl+T" \
-  "DRAFT-BODY-HINTS Enter/Tab save and back,Shift\+Enter new line,Shift\+Tab to title,Esc save and back,Shift\+Esc discard,Ctrl\+T note/todo$"
-logged "f cycles the type filter and the list follows" "FILTER-AFTER-F note rows=0$"
-logged "moving the list selection cancels an armed delete, and d on the item again arms it" \
-  "ITEMS-ARMED-AFTER-MOVE false true$"
-logged "that d does not delete the item" "ITEMS-D-AFTER-MOVING-BACK kept$"
-logged "moving the History selection cancels an armed delete and its red hint, and d arms again" \
-  "HISTORY-ARMED-AFTER-MOVE false true$"
-logged "deleting a middle History entry selects the next one" "HISTORY-AFTER-MIDDLE-DELETE next-row$"
+  "SELECT COUNT(*) FROM items WHERE body LIKE 'orphan body%'" "0"
+logged "Esc on an empty draft closes the panel and drops it without the warning" "EMPTY-DRAFT-AFTER-ESC false false toast=\[\]$"
+
+logged "Tab in the title moves to the body" "TAB-IN-TITLE true$"
+logged "Shift+Tab in the body moves to the title" "SHIFT-TAB-IN-BODY true$"
+logged "Enter in the title moves to the body" "ENTER-IN-TITLE true$"
+logged "Enter in the body inserts a new line and stays in the body" "ENTER-IN-BODY true true true$"
+logged "Shift+Esc in the editor keeps the panel open and the edit unsaved" "SHIFT-ESC-IN-EDITOR true true true$"
+logged "Ctrl+T in a draft title leaves the title and the type alone" "CTRL-T-IN-DRAFT-TITLE \[tomar\] note$"
+logged "Ctrl+T in a draft body leaves the body and the type alone" "CTRL-T-IN-DRAFT-BODY \[\] note$"
+logged "Shift+Esc in a draft keeps the panel open and the draft" "SHIFT-ESC-IN-DRAFT true true \[tomar\]$"
+logged "2 in a draft title is typed as text" "TWO-IN-TITLE 0 \[tomar2\]$"
+logged "1 in the search field is typed as text" "ONE-IN-SEARCH 0 \[1\] search$"
+
+logged "no list key moves, opens, toggles, deletes, searches, filters or switches tabs" "LIST-KEYS same$"
+logged "no History key moves, arms, deletes, clears or switches tabs" "HISTORY-KEYS same$"
+logged "Esc with Ctrl, Alt, Super or Shift leaves the panel open in History" "ESC-WITH-MODIFIER-IN-HISTORY true$"
+logged "Esc in History closes the panel" "ESC-IN-HISTORY false$"
+logged "Esc with Ctrl, Alt, Super or Shift leaves the panel open in the list" "ESC-WITH-MODIFIER-IN-LIST true$"
+logged "Esc in the list closes the panel" "ESC-IN-LIST false$"
+logged "Esc in the search field closes the panel" "ESC-IN-SEARCH false$"
+logged "Esc in the editor closes the panel" "ESC-IN-EDITOR false$"
+expect "and the close commits the edit" "SELECT title FROM items WHERE id = 2" "ESC-COMMITS"
+logged "clicking Todos filters the list" "FILTER-AFTER-TODOS-CLICK todo notes=0$"
+
+logged "Delete arms on the first click, and selecting another row cancels it" "ITEMS-ARMED-AFTER-MOVE true false true$"
+logged "that click does not delete the item" "ITEMS-DELETE-AFTER-MOVING-BACK kept$"
+logged "the trash shows on the hovered History row only" "TRASH-ON-HOVER true false$"
+logged "the first click on the trash arms it and reads Confirm, deleting nothing" "TRASH-ARMED true \[Confirm\] rows=[0-9]+$"
+logged "selecting another History row cancels the armed trash" "TRASH-AFTER-SELECT \[\] [0-9]+$"
+logged "the trash arms again after that" "TRASH-REARMED \[Confirm\]$"
+logged "switching tabs cancels the armed trash" "TRASH-AFTER-TAB-SWITCH \[\] [0-9]+$"
+logged "a second click on Confirm deletes the entry and selects the next one" "HISTORY-AFTER-MIDDLE-DELETE next-row gone=true$"
 logged "a note marked read or unread shows read and unread in History, never completed or reopened" \
   "HISTORY-NOTE-LABELS true true false false$"
 logged "one click on Clear history only arms it" "HISTORY-AFTER-ONE-CLEAR-CLICK true Confirm$"
 logged "a second click on Clear history clears it" "HISTORY-AFTER-TWO-CLEAR-CLICKS 4$"
 logged "a completed todo shows a checked box in History, a reopened one an empty box" "HISTORY-TODO-ICONS true true$"
-logged "one c only arms the clear, with its hint" "HISTORY-AFTER-ONE-C true c press again to clear$"
-expect "c c clears the history" \
-  "SELECT COUNT(*) FROM (SELECT id FROM history EXCEPT SELECT id FROM kept_history)" "0"
 logged "a failed write shows one error toast" "ERROR-TOASTS 1$"
-logged "a draft typed right after opening keeps its title and body, and focus stays in the body" \
+logged "Delete, then clicking History and Items, leave no delete armed" "ITEMS-ARM-AFTER-TAB-SWITCH 0 false \[Delete\]$"
+logged "a Delete click after coming back only arms the delete again" "ITEMS-DELETE-AFTER-TAB-SWITCH true true$"
+logged "that click leaves the item in place" "ITEMS-AFTER-TAB-SWITCH kept$"
+logged "a draft opened and typed right after opening keeps its title and body, and focus stays in the body" \
   "DRAFT-TYPED-ON-OPEN \[ab\] \[cdef\] draft$"
-logged "a search typed right after opening keeps its text and focus, and no letter reaches the list" \
-  "SEARCH-TYPED-ON-OPEN \[coffee\] search all$"
-logged "Ctrl+2 in the list does not switch tabs" "CTRL-2-IN-LIST 0$"
-logged "2 in the list shows History with focus, History hints list the tab keys, and New has no tooltip there" \
-  "TWO-IN-LIST 1 true j/k move,d d delete,c c clear,1/2 tabs,Esc close tooltip=\[\]$"
-logged "1 in History shows Items with the list focused, the list hints list the tab keys, and New has its tooltip" \
-  "ONE-IN-HISTORY 0 list j/k move,Enter edit,n new,Space toggle,d d delete,/ search,f filter,1/2 tabs,Esc close tooltip=\[New item \(n\)\]$"
-logged "1 in the search field is typed as text" "ONE-IN-SEARCH 0 \[1\] search$"
-logged "2 in a draft title is typed as text" "TWO-IN-TITLE 0 \[2\] draft$"
-logged "d, 2 then 1 leave no delete armed in the list and hide its confirm hint" "ITEMS-ARM-AFTER-KEY-SWITCH 0 false false$"
-logged "a d after coming back with 1 only arms the delete again" "ITEMS-D-AFTER-KEY-SWITCH true true$"
-logged "that d leaves the item in place" "ITEMS-AFTER-KEY-SWITCH kept$"
-logged "d, then clicking History and Items, leave no delete armed in the list and hide its confirm hint" \
-  "ITEMS-ARM-AFTER-CLICK-SWITCH 0 false false$"
-logged "a d after coming back by click only arms the delete again" "ITEMS-D-AFTER-CLICK-SWITCH true true$"
-logged "that d leaves the item in place too" "ITEMS-AFTER-CLICK-SWITCH kept$"
-logged "d in History, 1 then 2 leave no delete armed in History" "HISTORY-ARM-AFTER-KEY-SWITCH 1 false$"
-for mod in CTRL:Ctrl ALT:Alt SUPER:Super; do
-  label="${mod#*:}"; mod="${mod%%:*}"
-  logged "$label+Space and $label+Down keep the selection and start no write" "$mod-SPACE-DOWN true true$"
-  logged "$label+Space leaves the item's status and the history unchanged" "$mod-AFTER-SPACE true true$"
-  for key in RETURN:Return ENTER:Enter TAB:Tab RIGHT:Right; do
-    logged "$label+${key#*:} leaves focus in the list and opens no draft" "$mod-${key%%:*} list false$"
-  done
-  logged "$label+Esc leaves the panel open" "$mod-ESC true$"
-done
+logged "a search typed right after opening keeps its text and focus" "SEARCH-TYPED-ON-OPEN \[coffee\] search all$"
 logged "no write was rejected during the whole run" "WRITE-FAILURES 0$"
 
 # The first qs run has no time left under its timeout, so the history count
@@ -712,7 +745,14 @@ ShellRoot {
   function editorState() {
     return itemsTab.draftNew + " [" + itemsTab.editorTitle + "] [" + itemsTab.editorBody + "] dirty=" + editor.dirty
   }
+  function focusContext() {
+    if (sr.findType(itemsTab, "SearchField").activeFocus) return "search"
+    if (itemsTab.editorFocused) return itemsTab.draftNew ? "draft" : "editor"
+    return "list"
+  }
   function otherId() { return itemsTab.itemList[0].id === 203 ? itemsTab.itemList[1].id : itemsTab.itemList[0].id }
+  function clickTitle() { sr.click(sr.findType(sr.editor, "Field")) }
+  function pickFilter(label) { sr.click(sr.findByText(itemsTab, label)) }
 
   readonly property var steps: [
     function() { itemsTab.pickItem(209) },
@@ -724,19 +764,19 @@ ShellRoot {
     },
     function() { console.log("TOGGLE-TOAST [" + sr.toasts.join("|") + "]") },
 
-    function() { itemsTab.pickItem(201); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(201); sr.clickTitle() },
     function() { itemsTab.editorTitle = "DIRTY-DELETE"; sr.toasts = []; sr.click(sr.findByText(editor, "Delete")) },
     function() { sr.click(sr.findByText(editor, "Confirm")) },
     function() { console.log("DELETE-DIRTY " + sr.toastsSeen("DELETE-DIRTY") + " deleted=" + sr.has("Deleted")) },
 
-    function() { itemsTab.pickItem(202); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(202); sr.clickTitle() },
     function() {
       itemsTab.editorBody = "TYPED-BEFORE-REMOVAL"; sr.toasts = []
       db.fromScript(function() { return db.deleteItem(202) })
     },
     function() {
       console.log("REMOVED-ELSEWHERE " + sr.toastsSeen("REMOVED-ELSEWHERE") + " holds-removed=" + (editor.editingId === 202)
-        + " " + itemsTab.focusContext)
+        + " " + sr.focusContext())
     },
 
     function() { itemsTab.focusList(); itemsTab.startNew("note") },
@@ -746,7 +786,7 @@ ShellRoot {
       console.log("FAILING-ADD-AT-COMMIT " + sr.toastsSeen("FAILING-ADD-AT-COMMIT"))
     },
     function() {
-      console.log("FAILED-ADD " + sr.editorState() + " " + itemsTab.focusContext + " " + sr.toastsSeen("FAILED-ADD"))
+      console.log("FAILED-ADD " + sr.editorState() + " " + sr.focusContext() + " " + sr.toastsSeen("FAILED-ADD"))
       itemsTab.discardEditor()
     },
     function() { itemsTab.startNew("todo") },
@@ -757,7 +797,7 @@ ShellRoot {
     },
     function() { console.log("GOOD-ADD-LATER " + sr.has("Added todo — GOOD-ADD")) },
 
-    function() { itemsTab.pickItem(203); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(203); sr.clickTitle() },
     function() {
       itemsTab.editorTitle = "FAIL-EDIT"; itemsTab.editorBody = "edit body kept"; sr.toasts = []
       itemsTab.pickItem(sr.otherId())
@@ -765,7 +805,7 @@ ShellRoot {
     function() {
       console.log("FAILED-EDIT-AFTER-MOVE " + (itemsTab.selectedId === 203) + " " + sr.editorState() + " "
         + sr.toastsSeen("FAILED-EDIT-AFTER-MOVE"))
-      itemsTab.discardEditor(); itemsTab.focusEditor()
+      itemsTab.discardEditor(); sr.clickTitle()
     },
     function() {
       itemsTab.editorTitle = "FAIL-EDIT-AGAIN"; sr.toasts = []
@@ -774,21 +814,21 @@ ShellRoot {
     function() {
       console.log("FAILED-EDIT-IN-PLACE " + (itemsTab.selectedId === 203) + " " + sr.editorState() + " "
         + sr.toastsSeen("FAILED-EDIT-IN-PLACE"))
-      itemsTab.discardEditor(); itemsTab.cycleFilter()
+      itemsTab.discardEditor(); sr.pickFilter("Notes")
     },
 
-    function() { itemsTab.pickItem(204); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(204); sr.clickTitle() },
     function() {
       itemsTab.editorBody = "TYPED-UNDER-FILTER"; sr.toasts = []
       db.fromScript(function() { return db.deleteItem(204) })
     },
     function() {
       console.log("REMOVED-UNDER-FILTER " + db.listFilter + " " + sr.toastsSeen("REMOVED-UNDER-FILTER") + " "
-        + itemsTab.focusContext)
-      itemsTab.cycleFilter(); itemsTab.cycleFilter()
+        + sr.focusContext())
+      sr.pickFilter("All")
     },
 
-    function() { itemsTab.pickItem(205); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(205); sr.clickTitle() },
     function() {
       itemsTab.editorTitle = "FAIL-ON-CLOSE"; itemsTab.editorBody = "typed before close"; sr.toasts = []
       panel.close()
@@ -800,7 +840,7 @@ ShellRoot {
       itemsTab.discardEditor()
     },
 
-    function() { itemsTab.pickItem(206); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(206); sr.clickTitle() },
     function() {
       itemsTab.editorTitle = "FAIL-BEHIND-DRAFT"; sr.toasts = []
       itemsTab.commitEditor(true); itemsTab.startNew("note"); itemsTab.editorTitle = "DRAFT-OVER-FAILURE"
@@ -815,10 +855,10 @@ ShellRoot {
       itemsTab.discardEditor(); locker.running = true
     },
 
-    function() { itemsTab.pickItem(207); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(207); sr.clickTitle() },
     function() {
       itemsTab.editorTitle = "LOCKED-EDIT"; sr.toasts = []
-      itemsTab.focusSearch(); itemsTab.searchText = "matches no item"
+      sr.click(sr.findType(itemsTab, "SearchField")); itemsTab.searchText = "matches no item"
     },
     function() { console.log("HIDDEN-BEFORE-FAILURE " + itemsTab.itemList.length) },
     function() {}, function() {}, function() {}, function() {}, function() {},
@@ -829,7 +869,7 @@ ShellRoot {
       itemsTab.discardEditor()
     },
 
-    function() { itemsTab.pickItem(208); itemsTab.focusEditor() },
+    function() { itemsTab.pickItem(208); sr.clickTitle() },
     function() {
       itemsTab.editorTitle = "FAIL-REMOVED-BEHIND-DRAFT"
       itemsTab.commitEditor(true); itemsTab.startNew("note"); itemsTab.editorTitle = "DRAFT-OVER-REMOVAL"

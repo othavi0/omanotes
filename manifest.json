@@ -4,7 +4,7 @@
   "name": "Omanotes",
   "version": "1.0.0",
   "author": "othavi0",
-  "description": "Omanotes: short notes + todo list manager + history tab, keyboard-driven, SQLite-backed with file-watcher auto-refresh",
+  "description": "Omanotes: short notes + todo list manager + history tab, mouse-driven, SQLite-backed with file-watcher auto-refresh",
   "kinds": [
     "bar-widget"
   ],

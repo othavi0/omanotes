@@ -33,7 +33,6 @@ ColumnLayout {
     readonly property bool bodyFocused: bodyField.activeFocus
     readonly property bool unsaved: root.draft || root.dirty
 
-    signal leaveRequested()               // Esc/Backtab from title, Esc/Tab/Enter from body — autosave and back to the list
     signal convertDraftRequested(string type)
     signal toggleRequested()
     signal convertRequested()
@@ -73,13 +72,6 @@ ColumnLayout {
 
     function focusTitle() { titleField.forceActiveFocus() }
     function focusBody() { bodyField.forceActiveFocus() }
-
-    function isDraftTypeKey(event) {
-        return root.draft && event.key === Qt.Key_T && event.modifiers === Qt.ControlModifier
-    }
-    function convertDraft() {
-        root.convertDraftRequested(root.draftType === "todo" ? "note" : "todo")
-    }
 
     spacing: Style.spacing.lg
 
@@ -166,17 +158,7 @@ ColumnLayout {
         foreground: root.foreground
         activeFocusOnTab: false
         onAccepted: root.focusBody()
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Tab) {
-                root.focusBody(); event.accepted = true
-            } else if (event.key === Qt.Key_Escape && (event.modifiers & Qt.ShiftModifier)) {
-                root.discardRequested(); event.accepted = true
-            } else if (event.key === Qt.Key_Backtab || event.key === Qt.Key_Escape) {
-                root.leaveRequested(); event.accepted = true
-            } else if (root.isDraftTypeKey(event)) {
-                root.convertDraft(); event.accepted = true
-            }
-        }
+        Keys.onTabPressed: root.focusBody()
     }
 
     QQC.TextArea {
@@ -200,22 +182,7 @@ ColumnLayout {
         }
         selectByMouse: true
         activeFocusOnTab: false
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                if (!(event.modifiers & Qt.ShiftModifier)) { root.leaveRequested(); event.accepted = true }
-                else event.accepted = false          // let Shift+Enter insert a newline
-            } else if (event.key === Qt.Key_Tab) {
-                root.leaveRequested(); event.accepted = true
-            } else if (event.key === Qt.Key_Backtab) {
-                Qt.callLater(function() { root.focusTitle() }); event.accepted = true
-            } else if (event.key === Qt.Key_Escape && (event.modifiers & Qt.ShiftModifier)) {
-                root.discardRequested(); event.accepted = true
-            } else if (event.key === Qt.Key_Escape) {
-                root.leaveRequested(); event.accepted = true
-            } else if (root.isDraftTypeKey(event)) {
-                root.convertDraft(); event.accepted = true
-            }
-        }
+        Keys.onBacktabPressed: Qt.callLater(function() { root.focusTitle() })
     }
 
     RowLayout {

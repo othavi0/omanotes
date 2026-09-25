@@ -8,25 +8,12 @@ import qs.Ui
 import "Item.js" as ItemJs
 import "Tone.js" as Tone
 
-// Keyboard map:
-//   list:   j/k or ↑/↓ move · Enter/l/→/Tab edit the selected item
-//           · n new draft · space/c toggle status · d delete (double-press
-//           to confirm) · / focus search · f cycles All/Notes/Todos
-//           · Esc closes the panel · 1/2 switch tabs (Panel.qml)
-//           · every list key ignores Ctrl, Alt and Meta
-//   editor: fields own printable keys · Enter/Tab title→body, body→save+list
-//           · Esc saves (auto-save on leaving) · Shift+Esc discards
-//           · Ctrl+T sets a draft's type to the other of note/todo
-//   search: Enter/Tab/Shift+Tab return to the list, Esc clears and returns;
-//           with a draft open they return to its title instead
 FocusScope {
     id: root
 
     property QtObject db: null              // Panel's Data.Db instance
     property var toast: null                // ui/Toast instance (Panel-owned)
     property color foreground: Color.foreground
-
-    signal closeRequested()                 // Esc in the list closes the panel
 
     property string filterType: "all"       // all | note | todo
     property int selectedId: -1
@@ -45,11 +32,6 @@ FocusScope {
 
     readonly property bool draftNeedsTitle: root.draftNew && root.editorTitle.trim() === "" && root.editorBody.trim() !== ""
     readonly property bool editorFocused: editorPane.titleFocused || editorPane.bodyFocused
-    readonly property string focusContext: {
-        if (searchField.activeFocus) return "search"
-        if (root.editorFocused) return root.draftNew ? "draft" : "editor"
-        return "list"
-    }
 
     // Focus hops title -> body through a tick with neither focused, so the
     // save waits one turn and re-checks. Nothing is scheduled for a blur that
@@ -57,31 +39,6 @@ FocusScope {
     onEditorFocusedChanged: {
         if (root.editorFocused || !(root.draftNew || editorPane.dirty)) return
         Qt.callLater(function() { if (!root.editorFocused) root.commitIfDirty() })
-    }
-
-    readonly property var hintSets: ({
-        list: [["j/k", "move"], ["Enter", "edit"], ["n", "new"], ["Space", "toggle"],
-            ["d d", "delete"], ["/", "search"], ["f", "filter"], ["1/2", "tabs"], ["Esc", "close"]],
-        search: [["Enter", "to list"], ["Esc", "clear"]],
-        searchWithDraft: [["Enter", "to draft"], ["Esc", "clear"]],
-        title: [["Enter/Tab", "to body"], ["Esc", "save and back"], ["Shift+Esc", "discard"]],
-        body: [["Enter/Tab", "save and back"], ["Shift+Enter", "new line"], ["Shift+Tab", "to title"],
-            ["Esc", "save and back"], ["Shift+Esc", "discard"]],
-        untitledDraft: {
-            title: [["Enter/Tab", "to body"], ["Shift+Esc", "discard"]],
-            body: [["Shift+Enter", "new line"], ["Shift+Tab", "to title"], ["Shift+Esc", "discard"]]
-        },
-        draftType: [["Ctrl+T", "note/todo"]],
-        deleteArmed: [["d", "press again to delete"]]
-    })
-    readonly property var hints: {
-        if (root.deleteArmed) return root.hintSets.deleteArmed
-        if (root.focusContext === "search") return root.draftNew ? root.hintSets.searchWithDraft : root.hintSets.search
-        if (root.focusContext === "list") return root.hintSets.list
-        var field = editorPane.bodyFocused ? "body" : "title"
-        if (!root.draftNew) return root.hintSets[field]
-        var fieldHints = root.draftNeedsTitle ? root.hintSets.untitledDraft[field] : root.hintSets[field]
-        return fieldHints.concat(root.hintSets.draftType)
     }
 
     onSelectedIdChanged: {
@@ -117,12 +74,11 @@ FocusScope {
         else if (root.toast) root.toast.show("Delete again to confirm")
     }
 
-    function focusSearch() { searchField.forceActiveFocus() }
-    // An open draft hides the selected row, and list keys act on that row,
-    // so while a draft is open the list hands focus to the draft's title.
+    // An open draft hides the selected row, so while a draft is open the
+    // list hands focus to the draft's title.
     function focusList() {
         if (root.draftNew) editorPane.focusTitle()
-        else pump.forceActiveFocus()
+        else focusSink.forceActiveFocus()
     }
 
     // Called by Panel.qml when the panel opens or this tab is re-shown.
@@ -139,15 +95,6 @@ FocusScope {
         root.focusList()
         listView.positionViewAtIndex(root.selectedIndex, ListView.Center)
     }
-    function moveSelection(delta) {
-        var items = root.itemList
-        var n = items.length
-        if (n === 0) return
-        var cur = root.selectedIndex
-        var next = Math.max(0, Math.min(n - 1, cur + delta))
-        root.selectedId = items[next].id
-        listView.positionViewAtIndex(next, ListView.Center)
-    }
 
     // Resolved from selectedId + itemList rather than the selectedItem
     // binding, which lags by one step inside onSelectedIdChanged.
@@ -156,22 +103,14 @@ FocusScope {
         editorPane.openItem(idx >= 0 ? root.itemList[idx] : null)
     }
 
-    function focusEditor() {
-        confirm.cancel()
-        if (root.draftNew) { Qt.callLater(function() { editorPane.focusTitle() }); return }
-        if (!root.selectedItem) { root.startNew("note"); return }
-        root.draftNew = false
-        root.refillEditor()
-        Qt.callLater(function() { editorPane.focusTitle() })
-    }
-
+    // A draft that cannot be committed stays open and takes the chosen type.
     function startNew(type) {
         if (!root.db) return
         root.commitIfDirty()
+        root.draftType = type === "todo" ? "todo" : "note"
         if (root.draftNew) { Qt.callLater(function() { editorPane.focusTitle() }); return }
         confirm.cancel()
         root.draftNew = true
-        root.draftType = type === "todo" ? "todo" : "note"
         editorPane.openDraft()
         Qt.callLater(function() { editorPane.focusTitle() })
     }
@@ -185,8 +124,8 @@ FocusScope {
         if (root.toast) root.toast.show("Title can't be empty — kept “" + e.title + "”")
     }
 
-    // Every way out of the editor lands here. Keys and the Save button hand
-    // focus back through focusList; a save caused by focus already having moved
+    // Every way out of the editor lands here. The Save button hands focus
+    // back through focusList; a save caused by focus already having moved
     // (a click into the search field, the panel closing) leaves focus alone.
     function commitEditor(returnFocus) {
         if (root.draftNeedsTitle) {
@@ -228,7 +167,7 @@ FocusScope {
             } else if (root.toast) {
                 root.toast.show("Item removed elsewhere")
             }
-            if (pump.activeFocus) root.focusList()
+            if (focusSink.activeFocus) root.focusList()
         }
     }
 
@@ -247,48 +186,12 @@ FocusScope {
         if (root.draftNew || editorPane.dirty) root.commitEditor(false)
     }
 
-    function cycleFilter() {
-        var order = ["all", "note", "todo"]
-        root.filterType = order[(order.indexOf(root.filterType) + 1) % order.length]
-        filterDebounce.restart()
-    }
-
-    function onListKey(event) {
-        // Shift is left alone: it already turns "j" into "J", and some
-        // layouts need it to type "/". Caps Lock sends "J" with no
-        // modifier at all, so that text is lowered.
-        var mods = event.modifiers
-        if (mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return
-        var text = mods & Qt.ShiftModifier ? event.text : event.text.toLowerCase()
-        if (event.key === Qt.Key_Down || text === "j") {
-            root.moveSelection(1); event.accepted = true
-        } else if (event.key === Qt.Key_Up || text === "k") {
-            root.moveSelection(-1); event.accepted = true
-        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-            || event.key === Qt.Key_Right || event.key === Qt.Key_Tab || text === "l") {
-            root.focusEditor(); event.accepted = true
-        } else if (event.key === Qt.Key_Space || text === "c") {
-            root.toggleStatus(); event.accepted = true
-        } else if (text === "d") {
-            root.armDelete(); event.accepted = true
-        } else if (text === "n" || text === "a") {
-            root.startNew("note"); event.accepted = true
-        } else if (text === "/") {
-            root.focusSearch(); event.accepted = true
-        } else if (text === "f") {
-            root.cycleFilter(); event.accepted = true
-        } else if (event.key === Qt.Key_Escape) {
-            if (confirm.armed) confirm.cancel()
-            else root.closeRequested()
-            event.accepted = true
-        }
-    }
-
+    // Holds focus for the tab when no field has it, so KeyboardPanel's
+    // focusTarget lands inside the tab and Esc reaches Panel.qml.
     Item {
-        id: pump
+        id: focusSink
         anchors.fill: parent
         focus: true
-        Keys.onPressed: function(event) { root.onListKey(event) }
     }
 
     Timer {
@@ -329,14 +232,6 @@ FocusScope {
                     foreground: root.foreground
                     activeFocusOnTab: false
                     onTextChanged: filterDebounce.restart()
-                    onAccepted: root.focusList()
-                    Keys.onPressed: function(event) {
-                        if (event.key === Qt.Key_Escape) {
-                            searchField.text = ""; root.focusList(); event.accepted = true
-                        } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-                            root.focusList(); event.accepted = true
-                        }
-                    }
                 }
 
                 Segment {
@@ -411,7 +306,6 @@ FocusScope {
                 deleteArmed: root.deleteArmed
                 nowSeconds: root.nowSeconds
                 foreground: root.foreground
-                onLeaveRequested: root.commitEditor(true)
                 onConvertDraftRequested: function(type) { root.draftType = type }
                 onToggleRequested: root.toggleStatus()
                 onConvertRequested: root.convertSelected()
@@ -435,18 +329,6 @@ FocusScope {
                     font.pixelSize: Style.font.body
                 }
             }
-        }
-
-        PanelSeparator {
-            Layout.fillWidth: true
-            foreground: root.foreground
-        }
-
-        HintBar {
-            Layout.fillWidth: true
-            hints: root.hints
-            urgent: root.deleteArmed
-            foreground: root.foreground
         }
     }
 
