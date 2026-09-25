@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
 import "ui" as Ui
+import "ui/Tabs.js" as Tabs
 
 Panel {
     id: root
@@ -25,20 +26,20 @@ Panel {
     // once, and KeyboardPanel gives the tab keyboard focus when it maps.
     onOpenedChanged: {
         if (!root.opened) {
-            mainTab.commitIfDirty()
+            itemsTab.commitIfDirty()
             return
         }
         root.db.load()
-        if (root.activeTab === 0) mainTab.resetFocus()
-        else root.activeTab = 0
+        if (root.activeTab === Tabs.items) itemsTab.resetFocus()
+        else root.activeTab = Tabs.items
     }
     onActiveTabChanged: {
-        mainTab.commitIfDirty()
-        if (root.activeTab === 0) mainTab.resetFocus()
+        itemsTab.commitIfDirty()
+        if (root.activeTab === Tabs.items) itemsTab.resetFocus()
         else historyTab.resetFocus()
     }
 
-    property int activeTab: 0
+    property int activeTab: Tabs.items
 
     // The popup card. The kit Panel is only the state machine (open/close/
     // toggle IPC); without a popup window nothing is ever drawn, so the bar
@@ -55,7 +56,7 @@ Panel {
         open: root.opened
         contentWidth: panel.fittedContentWidth(Style.space(760))
         contentHeight: panel.fittedContentHeight(Style.space(520))
-        focusTarget: root.activeTab === 0 ? mainTab : historyTab
+        focusTarget: root.activeTab === Tabs.items ? itemsTab : historyTab
 
         ColumnLayout {
             anchors.fill: parent
@@ -66,8 +67,9 @@ Panel {
             // and 2 as text, so only the lists switch tabs.
             Keys.onPressed: function(event) {
                 if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return
-                if (event.text !== "1" && event.text !== "2") return
-                root.activeTab = Number(event.text) - 1
+                if (event.text === "1") root.activeTab = Tabs.items
+                else if (event.text === "2") root.activeTab = Tabs.history
+                else return
                 event.accepted = true
             }
 
@@ -78,8 +80,8 @@ Panel {
                 foreground: root.barForeground
                 onTabPicked: function(index) { root.activeTab = index }
                 onNewRequested: {
-                    root.activeTab = 0
-                    mainTab.startNew("note")
+                    root.activeTab = Tabs.items
+                    itemsTab.startNew("note")
                 }
             }
 
@@ -88,8 +90,8 @@ Panel {
                 Layout.fillHeight: true
                 currentIndex: root.activeTab
 
-                Ui.MainTab {
-                    id: mainTab
+                Ui.ItemsTab {
+                    id: itemsTab
                     db: root.db
                     toast: toast
                     foreground: root.barForeground

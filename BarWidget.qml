@@ -100,9 +100,6 @@ BarWidget {
         Component.onCompleted: db.init()
     }
 
-    readonly property int unreadNotes: db.unreadNotes
-    readonly property int inProgressTodos: db.inProgressTodos
-
     Loader {
         id: panelLoader
         active: true
@@ -145,7 +142,7 @@ BarWidget {
         anchors.fill: parent
         bar: root.bar
         text: Icons.noteFilled
-        tooltipText: "Omanotes (" + root.unreadNotes + " / " + root.inProgressTodos + ")"
+        tooltipText: "Omanotes: " + db.unreadNotes + " unread · " + db.pendingTodos + " pending"
 
         onPressed: function(b) {
             if (b === Qt.LeftButton) root.togglePanel()

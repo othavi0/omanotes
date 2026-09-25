@@ -38,7 +38,7 @@ function searchText(text) {
 // Unified list. filterType is "all"|"note"|"todo";
 // query is an optional substring match on title or body that ignores case and
 // accents (searchText).
-// Sort order: pending (unread/in-progress, status 0) always on top, then
+// Sort order: status 0 (unread notes, pending todos) always on top, then
 // recency — `status ASC, updated_at DESC`.
 function listSql(filterType, query) {
   var where = []
@@ -58,13 +58,13 @@ function listSql(filterType, query) {
   return sql
 }
 
-// Pending counts for the bar tooltip and the panel header: unread notes /
-// in-progress todos, unfiltered totals per type for the filter segment, and
+// Counts for the bar tooltip and the panel header: unread notes and pending
+// todos, unfiltered totals per type for the filter segment, and
 // every history entry, including those past historySql()'s limit.
 function countsSql() {
   return "SELECT "
     + "(SELECT COUNT(*) FROM items WHERE type = 'note' AND status = 0) AS unreadNotes, "
-    + "(SELECT COUNT(*) FROM items WHERE type = 'todo' AND status = 0) AS inProgressTodos, "
+    + "(SELECT COUNT(*) FROM items WHERE type = 'todo' AND status = 0) AS pendingTodos, "
     + "(SELECT COUNT(*) FROM items WHERE type = 'note') AS notes, "
     + "(SELECT COUNT(*) FROM items WHERE type = 'todo') AS todos, "
     + "(SELECT COUNT(*) FROM history) AS history"
@@ -321,13 +321,13 @@ function parseRows(text) {
   return rows
 }
 
-// Parse countsSql() output into { unreadNotes, inProgressTodos, notes, todos, history }.
+// Parse countsSql() output into { unreadNotes, pendingTodos, notes, todos, history }.
 function parseCounts(text) {
   var rows = parseRows(text)
   var row = rows.length > 0 ? rows[0] : {}
   return {
     unreadNotes: Number(row.unreadNotes) || 0,
-    inProgressTodos: Number(row.inProgressTodos) || 0,
+    pendingTodos: Number(row.pendingTodos) || 0,
     notes: Number(row.notes) || 0,
     todos: Number(row.todos) || 0,
     history: Number(row.history) || 0

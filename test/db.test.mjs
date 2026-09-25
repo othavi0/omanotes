@@ -401,12 +401,12 @@ test("listSql: a quote and LIKE wildcards in the search are matched literally", 
 
 test("countsSql: empty database counts zero", (t) => {
   const db = openDb(t)
-  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 0, inProgressTodos: 0, notes: 0, todos: 0, history: 0 }])
+  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 0, pendingTodos: 0, notes: 0, todos: 0, history: 0 }])
 })
 
 test("countsSql: unread notes, pending todos and totals per type", (t) => {
   const db = seeded(t)
-  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 1, inProgressTodos: 2, notes: 2, todos: 3, history: 3 }])
+  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 1, pendingTodos: 2, notes: 2, todos: 3, history: 3 }])
 })
 
 test("addSql: stores the item, prints its id and logs it as added", (t) => {
@@ -608,7 +608,7 @@ test("errorText: sqlite3's own message, without its argument position", (t) => {
 })
 
 test("parseCounts: empty output counts zero", () => {
-  assert.deepEqual(Db.parseCounts(""), { unreadNotes: 0, inProgressTodos: 0, notes: 0, todos: 0, history: 0 })
+  assert.deepEqual(Db.parseCounts(""), { unreadNotes: 0, pendingTodos: 0, notes: 0, todos: 0, history: 0 })
 })
 
 test("parseId: plain integer output", () => {

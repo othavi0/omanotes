@@ -10,7 +10,7 @@ import "Tone.js" as Tone
 // Owns the edit session: which row the fields belong to, what they opened
 // with, and what they hold now. The three only change together, through
 // openItem(), openDraft(), reopen() and takeEdit(), so the fields can
-// never hold text that belongs to a different row than editingId. MainTab
+// never hold text that belongs to a different row than editingId. ItemsTab
 // decides when to save, never what the fields hold.
 ColumnLayout {
     id: root
@@ -58,7 +58,7 @@ ColumnLayout {
         bodyField.text = body
     }
 
-    // Returns the pending edit and marks it as the new base, or null when
+    // Returns the unsaved edit and marks it as the new base, or null when
     // there is nothing to save. An emptied title falls back to the saved
     // one so the body typed next to it is never thrown away.
     function takeEdit() {
@@ -123,14 +123,14 @@ ColumnLayout {
                 width: statusText.implicitWidth + Style.space(14)
                 height: statusText.implicitHeight + Style.space(6)
                 radius: height / 2
-                color: root.item && ItemJs.isDone(root.item)
+                color: root.item && ItemJs.isReadOrCompleted(root.item)
                     ? Util.alpha(root.foreground, Style.hoverFillAlpha)
                     : Util.alpha(Color.urgent, Style.selectedFillAlpha)
                 Text {
                     id: statusText
                     anchors.centerIn: parent
                     text: root.item ? ItemJs.statusLabel(root.item) : ""
-                    color: root.item && ItemJs.isDone(root.item) ? Util.alpha(root.foreground, Tone.secondary) : Color.urgent
+                    color: root.item && ItemJs.isReadOrCompleted(root.item) ? Util.alpha(root.foreground, Tone.secondary) : Color.urgent
                     font.family: Style.font.family
                     font.pixelSize: Style.font.caption
                 }

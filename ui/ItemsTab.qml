@@ -98,7 +98,7 @@ FocusScope {
 
     function toggleStatus() {
         if (!root.db || !root.selectedItem) return
-        root.db.setStatus(root.selectedItem.id, ItemJs.isDone(root.selectedItem) ? 0 : 1)
+        root.db.setStatus(root.selectedItem.id, ItemJs.isReadOrCompleted(root.selectedItem) ? 0 : 1)
     }
     function convertSelected() {
         if (!root.db || !root.selectedItem) return
@@ -373,7 +373,7 @@ FocusScope {
                             nowSeconds: root.nowSeconds
                             onPicked: root.pickItem(modelData.id)
                             onToggled: {
-                                if (root.db) root.db.setStatus(modelData.id, ItemJs.isDone(modelData) ? 0 : 1)
+                                if (root.db) root.db.setStatus(modelData.id, ItemJs.isReadOrCompleted(modelData) ? 0 : 1)
                             }
                         }
                     }

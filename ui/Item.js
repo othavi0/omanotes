@@ -8,31 +8,31 @@ function isTodo(item) {
   return !!item && item.type === "todo"
 }
 
-function isDone(item) {
+function isReadOrCompleted(item) {
   return !!item && Number(item.status) === 1
 }
 
-// "open" | "done" (todos) or "unread" | "read" (notes).
+// "pending" | "completed" (todos) or "unread" | "read" (notes).
 function statusLabel(item) {
   if (!item) return ""
-  if (isTodo(item)) return isDone(item) ? "done" : "open"
-  return isDone(item) ? "read" : "unread"
+  if (isTodo(item)) return isReadOrCompleted(item) ? "completed" : "pending"
+  return isReadOrCompleted(item) ? "read" : "unread"
 }
 
 // Label for the button that flips status.
 function toggleVerb(item) {
   if (!item) return ""
-  if (isTodo(item)) return isDone(item) ? "Reopen" : "Complete"
-  return isDone(item) ? "Mark unread" : "Mark read"
+  if (isTodo(item)) return isReadOrCompleted(item) ? "Reopen" : "Complete"
+  return isReadOrCompleted(item) ? "Mark unread" : "Mark read"
 }
 
 // Toast text after `item`'s status is set to `status` (0 or 1).
 function statusToast(item, status) {
   if (!item) return ""
-  var done = Number(status) === 1
+  var readOrCompleted = Number(status) === 1
   var verb = isTodo(item)
-    ? (done ? "Completed" : "Reopened")
-    : (done ? "Marked read" : "Marked unread")
+    ? (readOrCompleted ? "Completed" : "Marked pending")
+    : (readOrCompleted ? "Marked read" : "Marked unread")
   return verb + " — " + item.title
 }
 

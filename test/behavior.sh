@@ -62,70 +62,70 @@ ShellRoot {
   property int probeId: -1
   property int probeRows: -1
   property var panel: null
-  property var mainTab: null
+  property var itemsTab: null
   property var historyTab: null
   property var header: null
   property var toast: null
-  readonly property var db: sr.mainTab ? sr.mainTab.db : null
+  readonly property var db: sr.itemsTab ? sr.itemsTab.db : null
 
   function titleOf(id) {
     for (var i = 0; i < db.items.length; ++i) if (Number(db.items[i].id) === id) return db.items[i].title
     return "missing"
   }
   readonly property var steps: [
-    function() { mainTab.pickItem(2); mainTab.focusEditor() },
-    function() { mainTab.editorTitle = "EDITED-RENEW"; mainTab.pickItem(3) },
-    function() { mainTab.commitIfDirty() },
-    function() { console.log("HIGHLIGHTED " + sr.highlighted(mainTab).join(",")) },
+    function() { itemsTab.pickItem(2); itemsTab.focusEditor() },
+    function() { itemsTab.editorTitle = "EDITED-RENEW"; itemsTab.pickItem(3) },
+    function() { itemsTab.commitIfDirty() },
+    function() { console.log("HIGHLIGHTED " + sr.highlighted(itemsTab).join(",")) },
 
-    function() { mainTab.pickItem(4); mainTab.focusEditor() },
-    function() { mainTab.editorTitle = "EDITED-COFFEE"; mainTab.focusSearch() },
-    function() { console.log("FOCUS-AFTER-SEARCH " + mainTab.focusContext + " TITLE4 " + sr.titleOf(4)) },
-    function() { mainTab.searchText = "panel" },
-    function() { mainTab.searchText = "" },
+    function() { itemsTab.pickItem(4); itemsTab.focusEditor() },
+    function() { itemsTab.editorTitle = "EDITED-COFFEE"; itemsTab.focusSearch() },
+    function() { console.log("FOCUS-AFTER-SEARCH " + itemsTab.focusContext + " TITLE4 " + sr.titleOf(4)) },
+    function() { itemsTab.searchText = "panel" },
+    function() { itemsTab.searchText = "" },
 
-    function() { mainTab.startNew("note") },
-    function() { mainTab.editorTitle = "DRAFT-ON-CLOSE"; panel.close() },
+    function() { itemsTab.startNew("note") },
+    function() { itemsTab.editorTitle = "DRAFT-ON-CLOSE"; panel.close() },
     function() { panel.open() },
 
-    function() { mainTab.pickItem(5); mainTab.focusEditor() },
-    function() { mainTab.startNew("todo") },
-    function() { mainTab.editorTitle = "DRAFT-BY-ENTER"; mainTab.commitEditor() },
+    function() { itemsTab.pickItem(5); itemsTab.focusEditor() },
+    function() { itemsTab.startNew("todo") },
+    function() { itemsTab.editorTitle = "DRAFT-BY-ENTER"; itemsTab.commitEditor() },
 
-    function() { mainTab.pickItem(1); mainTab.focusEditor() },
-    function() { mainTab.editorTitle = "DISCARDED"; mainTab.discardEditor() },
-    function() { mainTab.commitIfDirty() },
+    function() { itemsTab.pickItem(1); itemsTab.focusEditor() },
+    function() { itemsTab.editorTitle = "DISCARDED"; itemsTab.discardEditor() },
+    function() { itemsTab.commitIfDirty() },
 
-    function() { mainTab.pickItem(5); mainTab.convertSelected() },
+    function() { itemsTab.pickItem(5); itemsTab.convertSelected() },
 
-    function() { mainTab.pickItem(3); mainTab.focusEditor() },
-    function() { mainTab.editorTitle = ""; mainTab.editorBody = "BODY-KEPT"; mainTab.pickItem(1) },
+    function() { itemsTab.pickItem(3); itemsTab.focusEditor() },
+    function() { itemsTab.editorTitle = ""; itemsTab.editorBody = "BODY-KEPT"; itemsTab.pickItem(1) },
 
-    function() { sr.lastId = db.items[db.items.length - 1].id; sr.beforeLastId = db.items[db.items.length - 2].id; mainTab.pickItem(sr.lastId) },
-    function() { mainTab.armDelete(); mainTab.armDelete() },
-    function() { console.log("AFTER-DELETE-LAST " + (mainTab.selectedId === sr.beforeLastId ? "previous-row" : "other:" + mainTab.selectedId)) },
+    function() { sr.lastId = db.items[db.items.length - 1].id; sr.beforeLastId = db.items[db.items.length - 2].id; itemsTab.pickItem(sr.lastId) },
+    function() { itemsTab.armDelete(); itemsTab.armDelete() },
+    function() { console.log("AFTER-DELETE-LAST " + (itemsTab.selectedId === sr.beforeLastId ? "previous-row" : "other:" + itemsTab.selectedId)) },
 
-    function() { mainTab.searchText = "zzz_no_match" },
-    function() { mainTab.startNew("note") },
-    function() { mainTab.editorTitle = "DRAFT-IN-EMPTY-LIST"; db.load() },
-    function() { console.log("DRAFT-AFTER-RELOAD " + mainTab.draftNew + " " + mainTab.editorTitle) },
-    function() { mainTab.commitEditor(true) },
-    function() { mainTab.searchText = "" },
+    function() { itemsTab.searchText = "zzz_no_match" },
+    function() { itemsTab.startNew("note") },
+    function() { itemsTab.editorTitle = "DRAFT-IN-EMPTY-LIST"; db.load() },
+    function() { console.log("DRAFT-AFTER-RELOAD " + itemsTab.draftNew + " " + itemsTab.editorTitle) },
+    function() { itemsTab.commitEditor(true) },
+    function() { itemsTab.searchText = "" },
 
-    function() { mainTab.pickItem(1); mainTab.focusEditor() },
-    function() { mainTab.editorBody = "QUEUED-BODY"; mainTab.pickItem(2); mainTab.convertSelected(); mainTab.toggleStatus() },
+    function() { itemsTab.pickItem(1); itemsTab.focusEditor() },
+    function() { itemsTab.editorBody = "QUEUED-BODY"; itemsTab.pickItem(2); itemsTab.convertSelected(); itemsTab.toggleStatus() },
 
-    function() { mainTab.filterType = "todo"; mainTab.searchText = "upstream" },
-    function() { sr.keepId = mainTab.selectedId; mainTab.startNew("note") },
-    function() { mainTab.editorTitle = "NOTE-HIDDEN-BY-FILTER"; mainTab.commitEditor(true) },
-    function() { mainTab.filterType = "all"; mainTab.searchText = "" },
-    function() { console.log("SELECTION-AFTER-WIDENING " + (mainTab.selectedId === sr.keepId ? "kept" : "hijacked:" + mainTab.selectedId)) },
+    function() { itemsTab.filterType = "todo"; itemsTab.searchText = "upstream" },
+    function() { sr.keepId = itemsTab.selectedId; itemsTab.startNew("note") },
+    function() { itemsTab.editorTitle = "NOTE-HIDDEN-BY-FILTER"; itemsTab.commitEditor(true) },
+    function() { itemsTab.filterType = "all"; itemsTab.searchText = "" },
+    function() { console.log("SELECTION-AFTER-WIDENING " + (itemsTab.selectedId === sr.keepId ? "kept" : "hijacked:" + itemsTab.selectedId)) },
 
-    function() { mainTab.pickItem(4); mainTab.focusEditor() },
-    function() { mainTab.editorBody = "THROWN-AWAY"; mainTab.discardEditor(); mainTab.startNew("note") },
-    function() { console.log("DRAFT-AFTER-DISCARD " + mainTab.draftNew); mainTab.discardEditor() },
+    function() { itemsTab.pickItem(4); itemsTab.focusEditor() },
+    function() { itemsTab.editorBody = "THROWN-AWAY"; itemsTab.discardEditor(); itemsTab.startNew("note") },
+    function() { console.log("DRAFT-AFTER-DISCARD " + itemsTab.draftNew); itemsTab.discardEditor() },
 
-    function() { mainTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1) },
+    function() { itemsTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1) },
     function() { keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1); sr.type("orphan body") },
     function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
     function() {
@@ -134,7 +134,7 @@ ShellRoot {
       keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1)
     },
     function() { keys.keyClick(Qt.Key_Return, Qt.NoModifier, -1) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-ENTER " + sr.draftState()); sr.click(sr.firstRow(mainTab)) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-ENTER " + sr.draftState()); sr.click(sr.firstRow(itemsTab)) },
     function() { console.log("UNTITLED-DRAFT-AFTER-ROW-CLICK " + sr.draftState()); panel.close() },
     function() { panel.open() },
     function() { console.log("UNTITLED-DRAFT-AFTER-REOPEN " + sr.draftState()); sr.click(sr.findByText(header, "History")) },
@@ -146,47 +146,47 @@ ShellRoot {
     function() { keys.keyClick(Qt.Key_Return, Qt.NoModifier, -1) },
     function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-ENTER " + sr.draftState()); sr.clickSearch() },
     function() { keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-TAB " + sr.draftState()); sr.hiddenId = mainTab.selectedId; sr.type("dd") },
+    function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-TAB " + sr.draftState()); sr.hiddenId = itemsTab.selectedId; sr.type("dd") },
     function() {
       console.log("HIDDEN-ROW-AFTER-DD " + (sr.titleOf(sr.hiddenId) === "missing" ? "deleted" : "kept"))
       keys.keyClick(Qt.Key_Backspace, Qt.NoModifier, -1); keys.keyClick(Qt.Key_Backspace, Qt.NoModifier, -1)
     },
     function() { keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1) },
     function() {
-      console.log("UNTITLED-DRAFT-AFTER-SHIFT-ESC " + mainTab.draftNew + " " + mainTab.focusContext)
+      console.log("UNTITLED-DRAFT-AFTER-SHIFT-ESC " + itemsTab.draftNew + " " + itemsTab.focusContext)
       toast.text = ""; keys.keyClickChar("n", Qt.NoModifier, -1)
     },
     function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
     function() {
-      console.log("EMPTY-DRAFT-AFTER-ESC " + mainTab.draftNew + " " + mainTab.focusContext + " toast=[" + toast.text + "]")
-      mainTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1)
+      console.log("EMPTY-DRAFT-AFTER-ESC " + itemsTab.draftNew + " " + itemsTab.focusContext + " toast=[" + toast.text + "]")
+      itemsTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1)
     },
     function() { sr.type("first draft") },
     function() { sr.click(sr.findByText(header, "New")) },
-    function() { console.log("AFTER-NEW-CLICK " + mainTab.draftNew + " [" + mainTab.editorTitle + "]") },
-    function() { mainTab.discardEditor() },
+    function() { console.log("AFTER-NEW-CLICK " + itemsTab.draftNew + " [" + itemsTab.editorTitle + "]") },
+    function() { itemsTab.discardEditor() },
 
-    function() { sr.probeId = mainTab.itemList[1].id; mainTab.pickItem(sr.probeId); sr.ctrl([Qt.Key_J]) },
+    function() { sr.probeId = itemsTab.itemList[1].id; itemsTab.pickItem(sr.probeId); sr.ctrl([Qt.Key_J]) },
     function() {
-      console.log("CTRL-J-IN-LIST " + (mainTab.selectedId === sr.probeId))
-      sr.probeId = mainTab.selectedId; sr.ctrl([Qt.Key_K])
+      console.log("CTRL-J-IN-LIST " + (itemsTab.selectedId === sr.probeId))
+      sr.probeId = itemsTab.selectedId; sr.ctrl([Qt.Key_K])
     },
     function() {
-      console.log("CTRL-K-IN-LIST " + (mainTab.selectedId === sr.probeId))
-      mainTab.pickItem(1); sr.probeId = mainTab.selectedId
+      console.log("CTRL-K-IN-LIST " + (itemsTab.selectedId === sr.probeId))
+      itemsTab.pickItem(1); sr.probeId = itemsTab.selectedId
       sr.ctrl([Qt.Key_C, Qt.Key_A, Qt.Key_L, Qt.Key_D, Qt.Key_N, Qt.Key_F])
     },
     function() {
-      console.log("CTRL-LETTERS-IN-LIST " + (mainTab.selectedId === sr.probeId) + " " + mainTab.focusContext + " "
-        + mainTab.draftNew + " " + mainTab.filterType + " " + mainTab.deleteArmed)
+      console.log("CTRL-LETTERS-IN-LIST " + (itemsTab.selectedId === sr.probeId) + " " + itemsTab.focusContext + " "
+        + itemsTab.draftNew + " " + itemsTab.filterType + " " + itemsTab.deleteArmed)
       keys.keyClickChar("j", Qt.NoModifier, -1)
     },
     function() {
-      console.log("PLAIN-J-IN-LIST " + (mainTab.selectedId !== sr.probeId))
-      sr.probeId = mainTab.itemList[0].id; mainTab.pickItem(sr.probeId); keys.keyClickChar("J", Qt.ShiftModifier, -1)
+      console.log("PLAIN-J-IN-LIST " + (itemsTab.selectedId !== sr.probeId))
+      sr.probeId = itemsTab.itemList[0].id; itemsTab.pickItem(sr.probeId); keys.keyClickChar("J", Qt.ShiftModifier, -1)
     },
-    function() { console.log("SHIFT-J-IN-LIST " + (mainTab.selectedId === sr.probeId)); keys.keyClickChar("J", Qt.NoModifier, -1) },
-    function() { console.log("CAPS-J-IN-LIST " + (mainTab.selectedId !== sr.probeId)); sr.click(sr.findByText(header, "History")) },
+    function() { console.log("SHIFT-J-IN-LIST " + (itemsTab.selectedId === sr.probeId)); keys.keyClickChar("J", Qt.NoModifier, -1) },
+    function() { console.log("CAPS-J-IN-LIST " + (itemsTab.selectedId !== sr.probeId)); sr.click(sr.findByText(header, "History")) },
     function() {
       historyTab.moveSelection(1); sr.probeRows = historyTab.rowList.length; sr.probeId = historyTab.selectedId
       sr.ctrl([Qt.Key_J])
@@ -207,33 +207,33 @@ ShellRoot {
     },
     function() { console.log("CAPS-J-IN-HISTORY " + (historyTab.selectedId !== sr.probeId)); sr.click(sr.findByText(header, "Items")) },
 
-    function() { mainTab.pickItem(1); mainTab.focusEditor() },
+    function() { itemsTab.pickItem(1); itemsTab.focusEditor() },
     function() { console.log("EDITOR-TITLE-HINTS " + sr.hintKeys()); keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1) },
     function() { console.log("EDITOR-BODY-HINTS " + sr.hintKeys()); keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
     function() { keys.keyClickChar("n", Qt.NoModifier, -1) },
     function() { sr.type("tomar") },
-    function() { console.log("DRAFT-TYPED [" + mainTab.editorTitle + "] " + mainTab.draftType); sr.ctrl([Qt.Key_T]) },
+    function() { console.log("DRAFT-TYPED [" + itemsTab.editorTitle + "] " + itemsTab.draftType); sr.ctrl([Qt.Key_T]) },
     function() {
-      console.log("DRAFT-AFTER-CTRL-T-IN-TITLE [" + mainTab.editorTitle + "] " + mainTab.draftType)
+      console.log("DRAFT-AFTER-CTRL-T-IN-TITLE [" + itemsTab.editorTitle + "] " + itemsTab.draftType)
       console.log("DRAFT-TITLE-HINTS " + sr.hintKeys())
       keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1)
     },
     function() { sr.ctrl([Qt.Key_T]) },
     function() {
-      console.log("DRAFT-AFTER-CTRL-T-IN-BODY [" + mainTab.editorBody + "] " + mainTab.draftType)
+      console.log("DRAFT-AFTER-CTRL-T-IN-BODY [" + itemsTab.editorBody + "] " + itemsTab.draftType)
       console.log("DRAFT-BODY-HINTS " + sr.hintKeys())
       keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
     },
 
-    function() { mainTab.cycleFilter() },
-    function() { console.log("FILTER-AFTER-F " + mainTab.filterType + " rows=" + db.items.filter(function(i) { return i.type !== "note" }).length) },
+    function() { itemsTab.cycleFilter() },
+    function() { console.log("FILTER-AFTER-F " + itemsTab.filterType + " rows=" + db.items.filter(function(i) { return i.type !== "note" }).length) },
 
     // qs runs under a 60 s timeout, so these three steps check what they can
     // in the same tick. An empty db._writeKind means no write was started.
     function() {
-      sr.keepId = mainTab.itemList[0].id; mainTab.pickItem(sr.keepId); sr.type("dj")
-      var armedAfterMove = mainTab.deleteArmed; sr.type("kd")
-      console.log("ITEMS-ARMED-AFTER-MOVE " + armedAfterMove + " " + mainTab.deleteArmed)
+      sr.keepId = itemsTab.itemList[0].id; itemsTab.pickItem(sr.keepId); sr.type("dj")
+      var armedAfterMove = itemsTab.deleteArmed; sr.type("kd")
+      console.log("ITEMS-ARMED-AFTER-MOVE " + armedAfterMove + " " + itemsTab.deleteArmed)
       db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
       sr.click(sr.findByText(header, "History"))
       historyTab.selectedId = historyTab.rowList[0].id; sr.type("dj")
@@ -267,9 +267,9 @@ ShellRoot {
 
       var shown = []
       var counting = { show: function(message) { shown.push(message) } }
-      mainTab.toast = counting; historyTab.toast = counting
+      itemsTab.toast = counting; historyTab.toast = counting
       db.update(1, "", "")
-      mainTab.toast = toast; historyTab.toast = toast
+      itemsTab.toast = toast; historyTab.toast = toast
       // The failure is forced here, so it is not one of the run's write failures.
       sr.writeFailures--
       console.log("ERROR-TOASTS " + shown.filter(function(m) { return m.indexOf("Error") === 0 }).length)
@@ -284,18 +284,18 @@ ShellRoot {
     },
     function() {
       sr.type("ef")
-      console.log("DRAFT-TYPED-ON-OPEN [" + mainTab.editorTitle + "] [" + mainTab.editorBody + "] " + mainTab.focusContext)
+      console.log("DRAFT-TYPED-ON-OPEN [" + itemsTab.editorTitle + "] [" + itemsTab.editorBody + "] " + itemsTab.focusContext)
       keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
     },
-    function() { mainTab.showAll(); panel.close() },
+    function() { itemsTab.showAll(); panel.close() },
     function() { sr.burst([function() { panel.open() }, function() { sr.type("/") }, function() { sr.type("cof") }]) },
     function() {
       sr.type("fee")
-      console.log("SEARCH-TYPED-ON-OPEN [" + mainTab.searchText + "] " + mainTab.focusContext + " " + mainTab.filterType)
+      console.log("SEARCH-TYPED-ON-OPEN [" + itemsTab.searchText + "] " + itemsTab.focusContext + " " + itemsTab.filterType)
       keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
     },
 
-    function() { mainTab.focusList(); sr.ctrl([Qt.Key_2]) },
+    function() { itemsTab.focusList(); sr.ctrl([Qt.Key_2]) },
     function() { console.log("CTRL-2-IN-LIST " + panel.activeTab); sr.type("2") },
     function() {
       console.log("TWO-IN-LIST " + panel.activeTab + " " + historyTab.activeFocus + " " + sr.historyHints()
@@ -303,16 +303,16 @@ ShellRoot {
       sr.type("1")
     },
     function() {
-      console.log("ONE-IN-HISTORY " + panel.activeTab + " " + mainTab.focusContext + " " + sr.hintKeys() + " tooltip=[" + sr.newTooltip() + "]")
-      mainTab.focusSearch(); sr.type("1")
+      console.log("ONE-IN-HISTORY " + panel.activeTab + " " + itemsTab.focusContext + " " + sr.hintKeys() + " tooltip=[" + sr.newTooltip() + "]")
+      itemsTab.focusSearch(); sr.type("1")
     },
     function() {
-      console.log("ONE-IN-SEARCH " + panel.activeTab + " [" + mainTab.searchText + "] " + mainTab.focusContext)
+      console.log("ONE-IN-SEARCH " + panel.activeTab + " [" + itemsTab.searchText + "] " + itemsTab.focusContext)
       keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1); sr.type("n")
     },
     function() { sr.type("2") },
     function() {
-      console.log("TWO-IN-TITLE " + panel.activeTab + " [" + mainTab.editorTitle + "] " + mainTab.focusContext)
+      console.log("TWO-IN-TITLE " + panel.activeTab + " [" + itemsTab.editorTitle + "] " + itemsTab.focusContext)
       keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
     }
   ]
@@ -341,15 +341,15 @@ ShellRoot {
     for (var i = 0; i < text.length; ++i) keys.keyClickChar(text[i], Qt.NoModifier, -1)
   }
   function draftState() {
-    return mainTab.draftNew + " [" + mainTab.editorBody + "] " + mainTab.focusContext + " toast=" + toast.text
+    return itemsTab.draftNew + " [" + itemsTab.editorBody + "] " + itemsTab.focusContext + " toast=" + toast.text
   }
   function hintKeys() {
-    return mainTab.hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
+    return itemsTab.hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
   }
   function click(item) {
     keys.mouseClick(item, item.width / 2, item.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
   }
-  function clickSearch() { sr.click(sr.findType(mainTab, "SearchField")) }
+  function clickSearch() { sr.click(sr.findType(itemsTab, "SearchField")) }
   function firstRow(item) { return sr.findType(item, "ItemRow") }
   function findType(item, prefix) {
     if (String(item).indexOf(prefix) === 0) return item
@@ -388,7 +388,7 @@ ShellRoot {
         if (String(item.data[i]).indexOf("KeyboardPanel") === 0) content = item.data[i].contentItem
       sr.header = sr.findType(content, "PanelHeader")
       sr.toast = sr.findType(content, "Toast")
-      sr.mainTab = sr.findType(content, "MainTab")
+      sr.itemsTab = sr.findType(content, "ItemsTab")
       sr.historyTab = sr.findType(content, "HistoryTab")
       sr.panel = item
       item.open()
@@ -625,9 +625,9 @@ ShellRoot {
   property bool started: false
   property var toasts: []
   property var panel: null
-  property var mainTab: null
+  property var itemsTab: null
   property var editor: null
-  readonly property var db: sr.mainTab ? sr.mainTab.db : null
+  readonly property var db: sr.itemsTab ? sr.itemsTab.db : null
 
   function has(text) { return sr.toasts.some(function(m) { return m.indexOf(text) >= 0 }) }
   function toastsSeen(label) {
@@ -636,127 +636,127 @@ ShellRoot {
       + " removed=" + sr.has("Item removed elsewhere")
   }
   function editorState() {
-    return mainTab.draftNew + " [" + mainTab.editorTitle + "] [" + mainTab.editorBody + "] dirty=" + editor.dirty
+    return itemsTab.draftNew + " [" + itemsTab.editorTitle + "] [" + itemsTab.editorBody + "] dirty=" + editor.dirty
   }
-  function otherId() { return mainTab.itemList[0].id === 203 ? mainTab.itemList[1].id : mainTab.itemList[0].id }
+  function otherId() { return itemsTab.itemList[0].id === 203 ? itemsTab.itemList[1].id : itemsTab.itemList[0].id }
 
   readonly property var steps: [
-    function() { mainTab.pickItem(201); mainTab.focusEditor() },
-    function() { mainTab.editorTitle = "DIRTY-DELETE"; sr.toasts = []; sr.click(sr.findByText(editor, "Delete")) },
+    function() { itemsTab.pickItem(201); itemsTab.focusEditor() },
+    function() { itemsTab.editorTitle = "DIRTY-DELETE"; sr.toasts = []; sr.click(sr.findByText(editor, "Delete")) },
     function() { sr.click(sr.findByText(editor, "Confirm")) },
     function() { console.log("DELETE-DIRTY " + sr.toastsSeen("DELETE-DIRTY") + " deleted=" + sr.has("Deleted")) },
 
-    function() { mainTab.pickItem(202); mainTab.focusEditor() },
+    function() { itemsTab.pickItem(202); itemsTab.focusEditor() },
     function() {
-      mainTab.editorBody = "TYPED-BEFORE-REMOVAL"; sr.toasts = []
+      itemsTab.editorBody = "TYPED-BEFORE-REMOVAL"; sr.toasts = []
       db.fromScript(function() { return db.deleteItem(202) })
     },
     function() {
       console.log("REMOVED-ELSEWHERE " + sr.toastsSeen("REMOVED-ELSEWHERE") + " holds-removed=" + (editor.editingId === 202)
-        + " " + mainTab.focusContext)
+        + " " + itemsTab.focusContext)
     },
 
-    function() { mainTab.focusList(); mainTab.startNew("note") },
+    function() { itemsTab.focusList(); itemsTab.startNew("note") },
     function() {
-      mainTab.editorTitle = "FAIL-ADD"; mainTab.editorBody = "draft body kept"; sr.toasts = []
-      mainTab.commitEditor(true)
+      itemsTab.editorTitle = "FAIL-ADD"; itemsTab.editorBody = "draft body kept"; sr.toasts = []
+      itemsTab.commitEditor(true)
       console.log("FAILING-ADD-AT-COMMIT " + sr.toastsSeen("FAILING-ADD-AT-COMMIT"))
     },
     function() {
-      console.log("FAILED-ADD " + sr.editorState() + " " + mainTab.focusContext + " " + sr.toastsSeen("FAILED-ADD"))
-      mainTab.discardEditor()
+      console.log("FAILED-ADD " + sr.editorState() + " " + itemsTab.focusContext + " " + sr.toastsSeen("FAILED-ADD"))
+      itemsTab.discardEditor()
     },
-    function() { mainTab.startNew("todo") },
+    function() { itemsTab.startNew("todo") },
     function() {
-      mainTab.editorTitle = "GOOD-ADD"; sr.toasts = []
-      mainTab.commitEditor(true)
+      itemsTab.editorTitle = "GOOD-ADD"; sr.toasts = []
+      itemsTab.commitEditor(true)
       console.log("GOOD-ADD-AT-COMMIT " + sr.toastsSeen("GOOD-ADD-AT-COMMIT"))
     },
     function() { console.log("GOOD-ADD-LATER " + sr.has("Added todo — GOOD-ADD")) },
 
-    function() { mainTab.pickItem(203); mainTab.focusEditor() },
+    function() { itemsTab.pickItem(203); itemsTab.focusEditor() },
     function() {
-      mainTab.editorTitle = "FAIL-EDIT"; mainTab.editorBody = "edit body kept"; sr.toasts = []
-      mainTab.pickItem(sr.otherId())
+      itemsTab.editorTitle = "FAIL-EDIT"; itemsTab.editorBody = "edit body kept"; sr.toasts = []
+      itemsTab.pickItem(sr.otherId())
     },
     function() {
-      console.log("FAILED-EDIT-AFTER-MOVE " + (mainTab.selectedId === 203) + " " + sr.editorState() + " "
+      console.log("FAILED-EDIT-AFTER-MOVE " + (itemsTab.selectedId === 203) + " " + sr.editorState() + " "
         + sr.toastsSeen("FAILED-EDIT-AFTER-MOVE"))
-      mainTab.discardEditor(); mainTab.focusEditor()
+      itemsTab.discardEditor(); itemsTab.focusEditor()
     },
     function() {
-      mainTab.editorTitle = "FAIL-EDIT-AGAIN"; sr.toasts = []
-      mainTab.commitEditor(true)
+      itemsTab.editorTitle = "FAIL-EDIT-AGAIN"; sr.toasts = []
+      itemsTab.commitEditor(true)
     },
     function() {
-      console.log("FAILED-EDIT-IN-PLACE " + (mainTab.selectedId === 203) + " " + sr.editorState() + " "
+      console.log("FAILED-EDIT-IN-PLACE " + (itemsTab.selectedId === 203) + " " + sr.editorState() + " "
         + sr.toastsSeen("FAILED-EDIT-IN-PLACE"))
-      mainTab.discardEditor(); mainTab.cycleFilter()
+      itemsTab.discardEditor(); itemsTab.cycleFilter()
     },
 
-    function() { mainTab.pickItem(204); mainTab.focusEditor() },
+    function() { itemsTab.pickItem(204); itemsTab.focusEditor() },
     function() {
-      mainTab.editorBody = "TYPED-UNDER-FILTER"; sr.toasts = []
+      itemsTab.editorBody = "TYPED-UNDER-FILTER"; sr.toasts = []
       db.fromScript(function() { return db.deleteItem(204) })
     },
     function() {
       console.log("REMOVED-UNDER-FILTER " + db.listFilter + " " + sr.toastsSeen("REMOVED-UNDER-FILTER") + " "
-        + mainTab.focusContext)
-      mainTab.cycleFilter(); mainTab.cycleFilter()
+        + itemsTab.focusContext)
+      itemsTab.cycleFilter(); itemsTab.cycleFilter()
     },
 
-    function() { mainTab.pickItem(205); mainTab.focusEditor() },
+    function() { itemsTab.pickItem(205); itemsTab.focusEditor() },
     function() {
-      mainTab.editorTitle = "FAIL-ON-CLOSE"; mainTab.editorBody = "typed before close"; sr.toasts = []
+      itemsTab.editorTitle = "FAIL-ON-CLOSE"; itemsTab.editorBody = "typed before close"; sr.toasts = []
       panel.close()
     },
     function() { panel.open() },
     function() {
-      console.log("FAILED-ON-CLOSE " + (mainTab.selectedId === 205) + " " + sr.editorState() + " "
+      console.log("FAILED-ON-CLOSE " + (itemsTab.selectedId === 205) + " " + sr.editorState() + " "
         + sr.toastsSeen("FAILED-ON-CLOSE"))
-      mainTab.discardEditor()
+      itemsTab.discardEditor()
     },
 
-    function() { mainTab.pickItem(206); mainTab.focusEditor() },
+    function() { itemsTab.pickItem(206); itemsTab.focusEditor() },
     function() {
-      mainTab.editorTitle = "FAIL-BEHIND-DRAFT"; sr.toasts = []
-      mainTab.commitEditor(true); mainTab.startNew("note"); mainTab.editorTitle = "DRAFT-OVER-FAILURE"
+      itemsTab.editorTitle = "FAIL-BEHIND-DRAFT"; sr.toasts = []
+      itemsTab.commitEditor(true); itemsTab.startNew("note"); itemsTab.editorTitle = "DRAFT-OVER-FAILURE"
     },
     function() {
       console.log("FAILED-BEHIND-DRAFT " + sr.editorState() + " " + sr.toastsSeen("FAILED-BEHIND-DRAFT"))
-      mainTab.commitEditor(true)
+      itemsTab.commitEditor(true)
     },
     function() {},
     function() {
-      console.log("RESTORED-AFTER-DRAFT " + (mainTab.selectedId === 206) + " " + sr.editorState())
-      mainTab.discardEditor(); locker.running = true
+      console.log("RESTORED-AFTER-DRAFT " + (itemsTab.selectedId === 206) + " " + sr.editorState())
+      itemsTab.discardEditor(); locker.running = true
     },
 
-    function() { mainTab.pickItem(207); mainTab.focusEditor() },
+    function() { itemsTab.pickItem(207); itemsTab.focusEditor() },
     function() {
-      mainTab.editorTitle = "LOCKED-EDIT"; sr.toasts = []
-      mainTab.focusSearch(); mainTab.searchText = "matches no item"
+      itemsTab.editorTitle = "LOCKED-EDIT"; sr.toasts = []
+      itemsTab.focusSearch(); itemsTab.searchText = "matches no item"
     },
-    function() { console.log("HIDDEN-BEFORE-FAILURE " + mainTab.itemList.length) },
+    function() { console.log("HIDDEN-BEFORE-FAILURE " + itemsTab.itemList.length) },
     function() {}, function() {}, function() {}, function() {}, function() {},
     function() {}, function() {}, function() {}, function() {},
     function() {
-      console.log("FAILED-WHILE-HIDDEN " + (mainTab.selectedId === 207) + " [" + mainTab.searchText + "] "
+      console.log("FAILED-WHILE-HIDDEN " + (itemsTab.selectedId === 207) + " [" + itemsTab.searchText + "] "
         + sr.editorState() + " " + sr.toastsSeen("FAILED-WHILE-HIDDEN"))
-      mainTab.discardEditor()
+      itemsTab.discardEditor()
     },
 
-    function() { mainTab.pickItem(208); mainTab.focusEditor() },
+    function() { itemsTab.pickItem(208); itemsTab.focusEditor() },
     function() {
-      mainTab.editorTitle = "FAIL-REMOVED-BEHIND-DRAFT"
-      mainTab.commitEditor(true); mainTab.startNew("note"); mainTab.editorTitle = "DRAFT-OVER-REMOVAL"
+      itemsTab.editorTitle = "FAIL-REMOVED-BEHIND-DRAFT"
+      itemsTab.commitEditor(true); itemsTab.startNew("note"); itemsTab.editorTitle = "DRAFT-OVER-REMOVAL"
     },
     function() {
       console.log("QUEUED-BEHIND-DRAFT " + sr.editorState() + " error=" + sr.has("Error"))
       sr.toasts = []
       db.fromScript(function() { return db.deleteItem(208) })
     },
-    function() { mainTab.commitEditor(true) },
+    function() { itemsTab.commitEditor(true) },
     function() {},
     function() {
       console.log("REMOVED-BEHIND-DRAFT " + sr.editorState() + " " + sr.toastsSeen("REMOVED-BEHIND-DRAFT"))
@@ -804,9 +804,9 @@ ShellRoot {
       for (var i = 0; i < item.data.length; ++i)
         if (String(item.data[i]).indexOf("KeyboardPanel") === 0) content = item.data[i].contentItem
       var toast = sr.findType(content, "Toast")
-      sr.mainTab = sr.findType(content, "MainTab")
-      sr.editor = sr.findType(sr.mainTab, "EditorPane")
-      sr.mainTab.toast = { show: function(message, urgent) { sr.toasts.push(String(message)); toast.show(message, urgent) } }
+      sr.itemsTab = sr.findType(content, "ItemsTab")
+      sr.editor = sr.findType(sr.itemsTab, "EditorPane")
+      sr.itemsTab.toast = { show: function(message, urgent) { sr.toasts.push(String(message)); toast.show(message, urgent) } }
       item.open()
     }
   }
