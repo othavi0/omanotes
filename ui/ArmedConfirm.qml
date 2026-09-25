@@ -7,7 +7,6 @@ QtObject {
     id: root
 
     property var target: null
-    readonly property bool armed: root.target !== null
 
     function isArmedFor(key) {
         return root.target === key
