@@ -84,7 +84,7 @@ The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/
 ## Development
 
 - `npm run validate` runs `omarchy plugin validate .`.
-- `npm test` runs `node --test test/`, then `test/render.sh`, `test/behavior.sh` and `test/panel.sh`. The last three start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
+- `npm test` runs `node --test test/`, then `test/render.sh`, `test/behavior.sh`, `test/panel.sh` and `test/teardown.sh`. The last four start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
 
 Design decisions are in [`docs/adr/`](docs/adr/) and the project vocabulary is in [`CONTEXT.md`](CONTEXT.md).
 

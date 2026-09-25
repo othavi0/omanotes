@@ -76,9 +76,9 @@ ShellRoot {
 }
 QML
 
-OMANOTES_WORKTREE="$worktree" run_qs > "$cfg_dir/qs.log" 2>&1 &
+OMANOTES_WORKTREE="$worktree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
-trap 'kill "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
+trap 'kill "$qs_pid" 2> /dev/null || true; wait "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
 
 ipc() { qs -p "$cfg_dir" ipc call "$@" 2>&1; }
 

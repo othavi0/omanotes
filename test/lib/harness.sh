@@ -47,6 +47,7 @@ INSERT INTO history (id, type, title, action, ts) VALUES
   (4, 'note', 'Ideas for the panel', 'edited', $now - 3600);"
 
 
-run_qs() {
-  XDG_DATA_HOME="$data_home" QT_QPA_PLATFORM=offscreen timeout 60 qs -p "$cfg_dir" "$@"
-}
+# A plain command, so a caller that backgrounds it gets the pid of `timeout`
+# in `$!`; killing that pid then reaches qs.
+qs_cmd=(env XDG_DATA_HOME="$data_home" QT_QPA_PLATFORM=offscreen timeout 60 qs -p "$cfg_dir")
+run_qs() { "${qs_cmd[@]}" "$@"; }
