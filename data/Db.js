@@ -189,8 +189,8 @@ function clearHistorySql() {
   return "DELETE FROM history"
 }
 
-// searchText(column) in SQL, for the rows written before the search copy:
-// each character through search_map, joined back in order.
+// searchText(column) in SQL: each character through search_map, joined back
+// in order.
 function foldedSql(column) {
   var ch = "substr(" + column + ", n.i, 1)"
   return "(WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(" + column + "))"
@@ -198,10 +198,18 @@ function foldedSql(column) {
     + " FROM n LEFT JOIN search_map ON search_map.ch = " + ch + ")"
 }
 
+function copiesSql(row) {
+  return "search_title = " + foldedSql(row + ".title") + ", search_body = CASE WHEN " + row
+    + ".body IS NULL THEN NULL ELSE " + foldedSql(row + ".body") + " END"
+}
+
 // Adds the search copy and fills it for the items already there. search_map
 // holds every character searchChar changes; SQLite's lower() only knows ASCII,
 // so it covers that too. Building the map takes tens of milliseconds, so it is
 // built only when a database needs this step.
+// The triggers fold the rows written with sqlite3, which leave the copy empty
+// on insert or as it was on update. addSql and updateSql write it themselves,
+// so the triggers skip them.
 function searchCopyMigration() {
   var rows = []
   for (var u = 0; u < 0x10000; u++) {
@@ -212,10 +220,14 @@ function searchCopyMigration() {
   return [
     "ALTER TABLE items ADD COLUMN search_title TEXT",
     "ALTER TABLE items ADD COLUMN search_body TEXT",
-    "CREATE TEMP TABLE search_map (ch TEXT PRIMARY KEY, folded TEXT NOT NULL) WITHOUT ROWID",
+    "CREATE TABLE search_map (ch TEXT PRIMARY KEY, folded TEXT NOT NULL) WITHOUT ROWID",
     "INSERT INTO search_map VALUES " + rows.join(", "),
-    "UPDATE items SET search_title = " + foldedSql("items.title")
-      + ", search_body = CASE WHEN items.body IS NULL THEN NULL ELSE " + foldedSql("items.body") + " END"
+    "UPDATE items SET " + copiesSql("items"),
+    "CREATE TRIGGER items_search_insert AFTER INSERT ON items WHEN NEW.search_title IS NULL"
+      + " BEGIN UPDATE items SET " + copiesSql("NEW") + " WHERE id = NEW.id; END",
+    "CREATE TRIGGER items_search_update AFTER UPDATE OF title, body ON items"
+      + " WHEN NEW.search_title IS OLD.search_title AND NEW.search_body IS OLD.search_body"
+      + " BEGIN UPDATE items SET " + copiesSql("NEW") + " WHERE id = NEW.id; END"
   ]
 }
 

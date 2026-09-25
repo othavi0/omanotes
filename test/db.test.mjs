@@ -328,6 +328,21 @@ test("listSql: search ignores case and accents in items added or edited after it
   assert.deepEqual(searchIds(db, "all", "CHA"), [cafe])
 })
 
+test("listSql: search finds items inserted or edited with sqlite3 after the migration", (t) => {
+  const db = openDb(t)
+  db.write(Db.addSql("note", "Buy milk", ""))
+  db.write("INSERT INTO items (type, title, body, status, created_at, updated_at)"
+    + " VALUES ('todo', 'Renew the domain', 'Pagar a AÇÃO', 0, " + T0 + ", " + T0 + ")")
+  db.write("UPDATE items SET title = 'Call the bank' WHERE id = 1")
+  assert.deepEqual(searchIds(db, "all", "domain"), [2])
+  assert.deepEqual(searchIds(db, "all", "acao"), [2])
+  assert.deepEqual(searchIds(db, "all", "CALL"), [1])
+  assert.deepEqual(searchIds(db, "all", "milk"), [])
+  db.write("UPDATE items SET body = 'Due day 30' WHERE id = 2")
+  assert.deepEqual(searchIds(db, "all", "acao"), [])
+  assert.deepEqual(searchIds(db, "all", "DUE"), [2])
+})
+
 // Every character of the Basic Multilingual Plane except NUL and the
 // surrogate halves, plus combining marks, a final sigma and characters
 // outside the plane, which the fold must treat the same in JS and SQL.
@@ -346,17 +361,34 @@ function searchSamples() {
   return samples
 }
 
-test("the migration folds existing items exactly as addSql folds new ones", (t) => {
-  const samples = searchSamples()
-  const old = openV0Db(t)
-  old.write(["BEGIN"].concat(samples.map((text, i) =>
+function insertRaw(db, samples) {
+  db.write(["BEGIN"].concat(samples.map((text, i) =>
     "INSERT INTO items (type, title, body, status, created_at, updated_at) VALUES ('note', "
       + Db.q(text) + ", " + (text === "" ? "NULL" : Db.q(text)) + ", 0, " + i + ", " + i + ")"), ["COMMIT"]))
-  start(old.path)
+}
+
+test("the migration and sqlite3 writes fold items exactly as addSql does", (t) => {
+  const samples = searchSamples()
   const added = openDb(t)
   for (const text of samples) added.write(Db.addSql("note", text, text))
   const copies = "SELECT title, body, search_title, search_body FROM items ORDER BY id"
-  assert.deepEqual(old.read(copies), added.read(copies))
+  const expected = added.read(copies)
+
+  const old = openV0Db(t)
+  insertRaw(old, samples)
+  start(old.path)
+  assert.deepEqual(old.read(copies), expected, "migrated")
+
+  const inserted = openDb(t)
+  insertRaw(inserted, samples)
+  assert.deepEqual(inserted.read(copies), expected, "inserted with sqlite3")
+
+  const edited = openDb(t)
+  insertRaw(edited, samples.map(() => "x"))
+  edited.write(["BEGIN"].concat(samples.map((text, i) =>
+    "UPDATE items SET title = " + Db.q(text) + ", body = " + (text === "" ? "NULL" : Db.q(text))
+      + " WHERE id = " + (i + 1)), ["COMMIT"]))
+  assert.deepEqual(edited.read(copies), expected, "edited with sqlite3")
 })
 
 test("listSql: a quote and LIKE wildcards in the search are matched literally", (t) => {
