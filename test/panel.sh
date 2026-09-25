@@ -241,8 +241,6 @@ for _ in $(seq 50); do
   [[ "$rows" == "7" ]] && break
   sleep 0.2
 done
-# Panel.qml refills the editor 120 ms after opening (focusPrimeTimer).
-sleep 0.5
 replies "the open panel edits item 2" "$(ipc omanotes-test editItem 2 "Renew the domain HALF-TYPED")" "ok"
 ipc scratchpad toggleTodo 2 > /dev/null
 ipc scratchpad clearHistory > /dev/null

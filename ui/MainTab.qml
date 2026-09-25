@@ -11,13 +11,14 @@ import "Item.js" as ItemJs
 //   list:   j/k or ↑/↓ move · Enter/l/→/Tab edit the selected item
 //           · n new draft · space/c toggle status · d delete (double-press
 //           to confirm) · / focus search · f cycles All/Notes/Todos
-//           · Esc closes the panel · letters ignore Ctrl, Alt and Meta
+//           · Esc closes the panel · 1/2 switch tabs (Panel.qml)
+//           · letters ignore Ctrl, Alt and Meta
 //   editor: fields own printable keys · Enter/Tab title→body, body→save+list
 //           · Esc saves (auto-save on leaving) · Shift+Esc discards
 //           · Ctrl+T sets a draft's type to the other of note/todo
 //   search: Enter/Tab/Shift+Tab return to the list, Esc clears and returns;
 //           with a draft open they return to its title instead
-Item {
+FocusScope {
     id: root
 
     property QtObject db: null              // Panel's Data.Db instance
@@ -59,7 +60,7 @@ Item {
 
     readonly property var hintSets: ({
         list: [["j/k", "move"], ["Enter", "edit"], ["n", "new"], ["Space", "toggle"],
-            ["d d", "delete"], ["/", "search"], ["f", "filter"], ["Esc", "close"]],
+            ["d d", "delete"], ["/", "search"], ["f", "filter"], ["1/2", "tabs"], ["Esc", "close"]],
         search: [["Enter", "to list"], ["Esc", "clear"]],
         searchWithDraft: [["Enter", "to draft"], ["Esc", "clear"]],
         title: [["Enter/Tab", "to body"], ["Esc", "save and back"], ["Shift+Esc", "discard"]],
