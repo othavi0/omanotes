@@ -16,7 +16,10 @@ ln -s "$worktree/data" "$cfg_dir/data"
 
 mkdir -p "$data_home/omarchy"
 db="$data_home/omarchy/scratchpad.db"
-sqlite3 "$db" < "$worktree/data/schema.sql"
+node --input-type=module -e '
+  const { loadQmlLib } = await import(process.argv[1])
+  process.stdout.write(loadQmlLib(process.argv[2], ["SCHEMA"]).SCHEMA)
+' "$worktree/test/lib/load-qml-lib.mjs" "$worktree/data/Db.js" | sqlite3 "$db"
 
 now="$(date +%s)"
 sqlite3 "$db" "INSERT INTO items (type, title, body, status, created_at, updated_at) VALUES
