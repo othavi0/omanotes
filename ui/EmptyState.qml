@@ -1,14 +1,19 @@
 import QtQuick
 import qs.Commons
 import "Icons.js" as Icons
+import "Tone.js" as Tone
 
-// Shown over the list when it has no rows. Unfiltered: "Nothing here yet"
-// with New note / New todo (each opens a draft already in that type).
-// Filtered or searched down to nothing: "No matches" with a Clear search
-// action, which MainTab uses to clear both the search and the type filter.
+// What a list shows when it has no rows. By default it is the Items list:
+// "Nothing here yet" with New note / New todo, or, when a search or filter
+// hides every item, "No matches" with a button that clears both. History
+// sets its own glyph, title and message and turns the create buttons off.
 Column {
     id: root
     property bool filtered: false
+    property bool creates: !root.filtered
+    property string glyph: root.filtered ? "" : Icons.note
+    property string title: root.filtered ? "No matches" : "Nothing here yet"
+    property string message: root.filtered ? "" : "Keep a note or track a todo."
     property color foreground: Color.foreground
 
     signal newNote()
@@ -18,17 +23,17 @@ Column {
     spacing: Style.spacing.xxl
 
     Text {
-        visible: !root.filtered
+        visible: root.glyph !== ""
         anchors.horizontalCenter: parent.horizontalCenter
-        text: Icons.note
-        color: Util.alpha(root.foreground, 0.35)
+        text: root.glyph
+        color: Util.alpha(root.foreground, Tone.muted)
         font.family: Style.font.family
         font.pixelSize: Style.space(34)
     }
 
     Text {
         anchors.horizontalCenter: parent.horizontalCenter
-        text: root.filtered ? "No matches" : "Nothing here yet"
+        text: root.title
         color: root.foreground
         font.bold: true
         font.family: Style.font.family
@@ -36,42 +41,48 @@ Column {
     }
 
     Text {
-        visible: !root.filtered
+        visible: root.message !== ""
         anchors.horizontalCenter: parent.horizontalCenter
-        text: "Keep a note or track a todo."
-        color: Util.alpha(root.foreground, 0.62)
+        text: root.message
+        color: Util.alpha(root.foreground, Tone.secondary)
         font.family: Style.font.family
         font.pixelSize: Style.font.body
     }
 
-    Row {
-        visible: !root.filtered
+    Loader {
+        active: root.creates
+        visible: active
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: Style.spacing.lg
+        sourceComponent: Row {
+            spacing: Style.spacing.lg
 
-        ActionButton {
-            bordered: true
-            selected: true
-            iconText: Icons.plus
-            text: "New note"
-            foreground: root.foreground
-            onClicked: root.newNote()
-        }
-        ActionButton {
-            bordered: true
-            iconText: Icons.plus
-            text: "New todo"
-            foreground: root.foreground
-            onClicked: root.newTodo()
+            ActionButton {
+                bordered: true
+                selected: true
+                iconText: Icons.plus
+                text: "New note"
+                foreground: root.foreground
+                onClicked: root.newNote()
+            }
+            ActionButton {
+                bordered: true
+                iconText: Icons.plus
+                text: "New todo"
+                foreground: root.foreground
+                onClicked: root.newTodo()
+            }
         }
     }
 
-    ActionButton {
-        visible: root.filtered
+    Loader {
+        active: root.filtered
+        visible: active
         anchors.horizontalCenter: parent.horizontalCenter
-        bordered: true
-        text: "Clear search"
-        foreground: root.foreground
-        onClicked: root.clearSearch()
+        sourceComponent: ActionButton {
+            bordered: true
+            text: "Clear search and filter"
+            foreground: root.foreground
+            onClicked: root.clearSearch()
+        }
     }
 }

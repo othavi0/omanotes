@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Renders PanelHeader, MainTab and HistoryTab against
+# Renders PanelHeader, MainTab, HistoryTab and Toast against
 # a real, seeded sqlite db, offscreen, and checks that every ActionButton,
 # Field, SearchField and Segment is exactly Style.spacing.controlHeight tall
 # (the dev's hard rule: a button with an icon must never be taller than a
-# plain text button). Exits non-zero if any control fails that check.
+# plain text button). Some scenes also check their own layout: the toast
+# wraps a long title inside the panel, History draws the kit's separators and
+# section headers and shows the same EmptyState as Items, and the no-match
+# button names what it clears. Exits non-zero if any check fails.
 #
 # Usage: test/render.sh [output-dir]
 #
@@ -37,7 +40,8 @@ ShellRoot {
   property int sceneIndex: 0
   readonly property var scenes: Quickshell.env("SCENES").split(",")
   // A scene that finds fewer controls than this measured nothing.
-  readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, history: 3, blank: 6 })
+  readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3 })
+  readonly property string longTitle: "Renew the domain before the card on file expires, then move the DNS records to the new registrar, check the MX entries, and write down every step so the next renewal takes five minutes instead of an afternoon"
   readonly property string outDir: Quickshell.env("OUT_DIR")
 
   Data.Db {
@@ -65,25 +69,48 @@ ShellRoot {
     function onCountsUpdated() { sr.markReady() }
   }
 
-  // Collect every visible ActionButton/Field/SearchField/Segment under
-  // `item`, by parsing the QML type name off its toString().
-  function walk(item, out) {
+  // Every visible item under `item` whose QML type name, parsed off its
+  // toString(), matches `pattern`. A hidden item hides its subtree.
+  function find(item, pattern, out) {
+    out = out || []
+    if (!item.visible) return out
     var n = String(item).split("_QMLTYPE")[0].split("(")[0]
-    if (/^(ActionButton|Field|SearchField|Segment)$/.test(n) && item.visible)
-      out.push({ name: n, height: item.height })
-    for (var i = 0; i < item.children.length; ++i) walk(item.children[i], out)
+    if (pattern.test(n)) out.push({ name: n, item: item })
+    for (var i = 0; i < item.children.length; ++i) sr.find(item.children[i], pattern, out)
+    return out
+  }
+
+  function expect(sceneName, ok, what) {
+    if (!ok) sr.failed = true
+    console.log("SCENE " + sceneName + " CHECK " + what + (ok ? " ok" : " FAIL"))
+  }
+
+  function checkLayout(sceneName) {
+    if (sceneName === "toast") {
+      var maxWidth = frame.width - 2 * Style.spacing.panelPadding
+      var label = sr.find(toast, /^QQuickText$/)[0].item
+      sr.expect(sceneName, toast.width <= maxWidth, "toast width " + Math.round(toast.width) + " <= " + maxWidth)
+      sr.expect(sceneName, label.lineCount >= 2, "long title wraps to " + label.lineCount + " lines")
+    } else if (sceneName === "empty") {
+      var labels = sr.find(mainTab, /^ActionButton$/).map(function(b) { return b.item.text })
+      sr.expect(sceneName, labels.indexOf("Clear search and filter") >= 0, "buttons [" + labels.join(", ") + "] name what they clear")
+    } else if (sceneName === "history") {
+      sr.expect(sceneName, sr.find(historyTab, /^PanelSeparator$/).length === 2, "History uses the kit PanelSeparator")
+      sr.expect(sceneName, sr.find(historyTab, /^PanelSectionHeader$/).length === 4, "History column headers are PanelSectionHeader")
+    } else if (sceneName === "historyblank") {
+      sr.expect(sceneName, sr.find(historyTab, /^EmptyState$/).length === 1, "empty History shows EmptyState")
+    }
   }
 
   function checkHeights(sceneName, rootItem) {
-    var found = []
-    sr.walk(rootItem, found)
+    var found = sr.find(rootItem, /^(ActionButton|Field|SearchField|Segment)$/)
     var want = Style.spacing.controlHeight
     var parts = []
     for (var i = 0; i < found.length; ++i) {
       var row = found[i]
-      var ok = row.height === want
+      var ok = row.item.height === want
       if (!ok) sr.failed = true
-      parts.push(row.name + "=" + row.height + (ok ? "" : " MISMATCH(want " + want + ")"))
+      parts.push(row.name + "=" + row.item.height + (ok ? "" : " MISMATCH(want " + want + ")"))
     }
     if (found.length < sr.minControls[sceneName]) {
       sr.failed = true
@@ -107,9 +134,11 @@ ShellRoot {
     mainTab.draftNew = false
     mainTab.searchText = ""
     mainTab.focusList()
-    sr.activeTab = (name === "history") ? 1 : 0
+    toast.hide()
+    sr.activeTab = (name === "history" || name === "historyblank") ? 1 : 0
     if (name === "draft") mainTab.startNew("todo")
     else if (name === "empty") mainTab.searchText = "zzz_no_match_xyz"
+    else if (name === "toast") toast.show("Deleted — " + sr.longTitle)
     settleTimer.restart()
   }
 
@@ -123,6 +152,7 @@ ShellRoot {
   function captureScene() {
     var name = sr.currentScene
     sr.checkHeights(name, frame)
+    sr.checkLayout(name)
     frame.grabToImage(function(r) {
       r.saveToFile(sr.outDir + "/" + name + ".png")
       console.log("SHOT " + name + " saved")
@@ -165,6 +195,14 @@ ShellRoot {
           }
         }
       }
+
+      Ui.Toast {
+        id: toast
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: Style.spacing.panelGap
+        z: 10
+      }
     }
   }
 }
@@ -174,6 +212,8 @@ echo "config dir: $cfg_dir"
 if [[ -n "${1:-}" ]]; then
   echo "output dir: $out_dir"
 fi
-SCENES=browse,draft,empty,history OUT_DIR="$out_dir" run_qs
+status=0
+SCENES=browse,draft,empty,toast,history OUT_DIR="$out_dir" run_qs || status=1
 sqlite3 "$db" "DELETE FROM items; DELETE FROM history;"
-SCENES=blank OUT_DIR="$out_dir" run_qs
+SCENES=blank,historyblank OUT_DIR="$out_dir" run_qs || status=1
+exit "$status"
