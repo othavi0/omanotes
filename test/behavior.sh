@@ -38,6 +38,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import "data" as Data
+import "ui/Icons.js" as Icons
 
 ShellRoot {
   id: sr
@@ -187,7 +188,7 @@ ShellRoot {
     function() { console.log("CTRL-K-IN-HISTORY " + (historyTab.selectedId === sr.probeId)); sr.ctrl([Qt.Key_D, Qt.Key_C]) },
     function() {
       console.log("CTRL-LETTERS-IN-HISTORY " + (historyTab.rowList.length === sr.probeRows) + " "
-        + (historyTab.selectedId === sr.probeId) + " " + historyTab.deleteArmed)
+        + (historyTab.selectedId === sr.probeId) + " " + historyTab.deleteArmed + " " + historyTab.clearArmed)
       keys.keyClickChar("j", Qt.NoModifier, -1)
     },
     function() {
@@ -243,9 +244,11 @@ ShellRoot {
       db._write("test", "CREATE TABLE kept_history AS SELECT * FROM history", null)
       sr.click(button)
       db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
+      db.setStatus(3, 1); db.setStatus(3, 0)
     },
     function() {
       console.log("HISTORY-AFTER-TWO-CLEAR-CLICKS " + historyTab.rowList.length)
+      console.log("HISTORY-TODO-ICONS " + !!sr.findByText(historyTab, Icons.boxOn) + " " + !!sr.findByText(historyTab, Icons.boxOff))
       sr.type("c")
       var hints = sr.findType(historyTab, "HintBar").hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
       console.log("HISTORY-AFTER-ONE-C " + (db._writeKind === "") + " " + hints)
@@ -429,7 +432,8 @@ logged "Shift+J does not move the list selection" "SHIFT-J-IN-LIST true$"
 logged "J typed with Caps Lock on moves the list selection" "CAPS-J-IN-LIST true$"
 logged "Ctrl+J does not move the History selection" "CTRL-J-IN-HISTORY true$"
 logged "Ctrl+K does not move the History selection" "CTRL-K-IN-HISTORY true$"
-logged "Ctrl plus a History letter does not clear, move or arm a delete" "CTRL-LETTERS-IN-HISTORY true true false$"
+logged "Ctrl plus a History letter does not clear, move, or arm a delete or a clear" \
+  "CTRL-LETTERS-IN-HISTORY true true false false$"
 expect "Ctrl+C in History leaves the log in the db" "SELECT COUNT(*) > 0 FROM history" "1"
 logged "plain j still moves the History selection" "PLAIN-J-IN-HISTORY true$"
 logged "J typed with Caps Lock on moves the History selection" "CAPS-J-IN-HISTORY true$"
@@ -454,7 +458,8 @@ logged "deleting a middle History entry selects the next one" "HISTORY-AFTER-MID
 logged "a note marked read or unread shows read and unread in History, never completed or reopened" \
   "HISTORY-NOTE-LABELS true true false false$"
 logged "one click on Clear history only arms it" "HISTORY-AFTER-ONE-CLEAR-CLICK true Confirm$"
-logged "a second click on Clear history clears it" "HISTORY-AFTER-TWO-CLEAR-CLICKS 2$"
+logged "a second click on Clear history clears it" "HISTORY-AFTER-TWO-CLEAR-CLICKS 4$"
+logged "a completed todo shows a checked box in History, a reopened one an empty box" "HISTORY-TODO-ICONS true true$"
 logged "one c only arms the clear, with its hint" "HISTORY-AFTER-ONE-C true c press again to clear$"
 expect "c c clears the history" \
   "SELECT COUNT(*) FROM (SELECT id FROM history EXCEPT SELECT id FROM kept_history)" "0"
