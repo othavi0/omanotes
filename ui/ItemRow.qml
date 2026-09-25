@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import "Item.js" as ItemJs
 import "Icons.js" as Icons
+import "Tone.js" as Tone
 
 // One row of the unified list: a checkbox (todo) or note glyph, an unread
 // dot on unread notes, the title (bold when an unread note, struck through
@@ -39,7 +40,7 @@ Rectangle {
         x: Style.space(10)
         y: (root.height - height) / 2
         text: root.todo ? (root.done ? Icons.boxOn : Icons.boxOff) : Icons.note
-        color: root.done ? Util.alpha(root.foreground, 0.45) : (root.todo ? root.foreground : Color.accent)
+        color: root.done ? Util.alpha(root.foreground, Tone.muted) : (root.todo ? root.foreground : Color.accent)
         font.family: Style.font.family
         font.pixelSize: Style.font.icon
 
@@ -71,7 +72,8 @@ Rectangle {
         y: (root.height - height) / 2
         text: root.item.title || ""
         elide: Text.ElideRight
-        color: root.done ? Util.alpha(root.foreground, 0.5) : root.foreground
+        color: root.done ? Util.alpha(root.foreground, Tone.muted)
+            : root.selected ? Style.selectedStateColor(root.foreground, Color.accent) : root.foreground
         font.strikeout: root.todo && root.done
         font.bold: !root.done && !root.todo
         font.family: Style.font.family
@@ -84,7 +86,7 @@ Rectangle {
         anchors.rightMargin: Style.space(10)
         y: (root.height - height) / 2
         text: ItemJs.relativeAge(Number(root.item.updated_at), root.nowSeconds)
-        color: Util.alpha(root.foreground, 0.5)
+        color: Util.alpha(root.foreground, Tone.secondary)
         font.family: Style.font.family
         font.pixelSize: Style.font.caption
     }

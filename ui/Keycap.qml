@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "Tone.js" as Tone
 
 // One `key` + label pair inside a HintBar.
 Row {
@@ -12,15 +13,15 @@ Row {
     Rectangle {
         width: kt.implicitWidth + Style.space(10)
         height: kt.implicitHeight + Style.space(4)
-        radius: Style.space(3)
-        color: Util.alpha(root.foreground, 0.06)
-        border.width: 1
-        border.color: Util.alpha(root.foreground, 0.22)
+        radius: Style.cornerRadius
+        color: Style.normalFillFor(root.foreground, Color.accent)
+        border.width: Style.normalBorderWidth
+        border.color: Style.normalBorderFor(root.foreground, Color.accent)
         Text {
             id: kt
             anchors.centerIn: parent
             text: root.k
-            color: Util.alpha(root.foreground, 0.9)
+            color: root.foreground
             font.family: Style.font.family
             font.pixelSize: Style.font.caption
         }
@@ -28,7 +29,7 @@ Row {
     Text {
         anchors.verticalCenter: parent.verticalCenter
         text: root.l
-        color: Util.alpha(root.foreground, 0.62)
+        color: Util.alpha(root.foreground, Tone.secondary)
         font.family: Style.font.family
         font.pixelSize: Style.font.caption
     }

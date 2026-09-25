@@ -5,6 +5,7 @@ import qs.Commons
 import qs.Ui
 import "Item.js" as ItemJs
 import "Icons.js" as Icons
+import "Tone.js" as Tone
 
 // Owns the edit session: which row the fields belong to, what they opened
 // with, and what they hold now. The three only change together, through
@@ -122,12 +123,14 @@ ColumnLayout {
                 width: statusText.implicitWidth + Style.space(14)
                 height: statusText.implicitHeight + Style.space(6)
                 radius: height / 2
-                color: root.item && ItemJs.isDone(root.item) ? Util.alpha(root.foreground, 0.08) : Util.alpha(Color.urgent, 0.14)
+                color: root.item && ItemJs.isDone(root.item)
+                    ? Util.alpha(root.foreground, Style.hoverFillAlpha)
+                    : Util.alpha(Color.urgent, Style.selectedFillAlpha)
                 Text {
                     id: statusText
                     anchors.centerIn: parent
                     text: root.item ? ItemJs.statusLabel(root.item) : ""
-                    color: root.item && ItemJs.isDone(root.item) ? Util.alpha(root.foreground, 0.7) : Color.urgent
+                    color: root.item && ItemJs.isDone(root.item) ? Util.alpha(root.foreground, Tone.secondary) : Color.urgent
                     font.family: Style.font.family
                     font.pixelSize: Style.font.caption
                 }
@@ -141,7 +144,7 @@ ColumnLayout {
             Rectangle {
                 width: Style.space(6); height: width; radius: width / 2
                 anchors.verticalCenter: parent.verticalCenter
-                color: root.unsaved ? Color.urgent : Util.alpha(root.foreground, 0.4)
+                color: root.unsaved ? Color.urgent : Util.alpha(root.foreground, Tone.muted)
             }
             Text {
                 text: root.draft
@@ -149,7 +152,7 @@ ColumnLayout {
                     : (root.dirty
                             ? "Unsaved changes"
                             : "Saved · edited " + ItemJs.relativeAge(Number(root.item ? root.item.updated_at : 0), root.nowSeconds))
-                color: Util.alpha(root.foreground, 0.62)
+                color: Util.alpha(root.foreground, Tone.secondary)
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
             }
@@ -182,7 +185,7 @@ ColumnLayout {
         Layout.fillHeight: true
         placeholderText: "Details (optional)"
         color: root.foreground
-        placeholderTextColor: Util.alpha(root.foreground, 0.45)
+        placeholderTextColor: Util.alpha(root.foreground, Tone.muted)
         selectionColor: Style.selectionFillFor(root.foreground, Color.accent)
         selectedTextColor: root.foreground
         font.family: Style.font.family
@@ -190,9 +193,10 @@ ColumnLayout {
         wrapMode: Text.Wrap
         padding: Style.spacing.controlPaddingX
         background: Rectangle {
-            color: Util.alpha(root.foreground, 0.03)
-            border.width: 1
-            border.color: Util.alpha(root.foreground, 0.10)
+            color: Style.controlFill(bodyField.activeFocus, bodyField.hovered, root.foreground, Color.accent)
+            border.width: Style.controlBorderWidth(bodyField.activeFocus, bodyField.hovered)
+            border.color: Style.controlBorder(bodyField.activeFocus, bodyField.hovered, root.foreground, Color.accent)
+            radius: Style.cornerRadius
         }
         selectByMouse: true
         activeFocusOnTab: false

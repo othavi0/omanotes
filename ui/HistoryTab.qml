@@ -3,8 +3,10 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import qs.Commons
+import qs.Ui
 import "Icons.js" as Icons
 import "Item.js" as ItemJs
+import "Tone.js" as Tone
 
 // "History" tab: the log Db writes on every action (added, edited, completed,
 // reopened, converted, deleted), rendered as a table of
@@ -56,7 +58,7 @@ FocusScope {
         var a = String(action || "")
         if (a === "deleted") return Color.urgent
         if (a === "completed") return Color.accent
-        return Util.alpha(root.foreground, 0.75)
+        return Util.alpha(root.foreground, Tone.secondary)
     }
 
     function focusList() { pump.forceActiveFocus() }
@@ -138,31 +140,29 @@ FocusScope {
             Layout.rightMargin: Style.spacing.controlPaddingX
             spacing: Style.spacing.sm
 
-            Text { Layout.preferredWidth: root.colTypeW; text: "type"; color: Util.alpha(root.foreground, 0.62); font.family: Style.font.family; font.pixelSize: Style.font.caption }
-            Text { Layout.fillWidth: true; text: "title"; elide: Text.ElideRight; color: Util.alpha(root.foreground, 0.62); font.family: Style.font.family; font.pixelSize: Style.font.caption }
-            Text { Layout.preferredWidth: root.colActionW; text: "action"; color: Util.alpha(root.foreground, 0.62); font.family: Style.font.family; font.pixelSize: Style.font.caption }
-            Text { Layout.preferredWidth: root.colTsW; text: "timestamp"; color: Util.alpha(root.foreground, 0.62); font.family: Style.font.family; font.pixelSize: Style.font.caption }
+            PanelSectionHeader { Layout.preferredWidth: root.colTypeW; text: "Type"; foreground: root.foreground }
+            PanelSectionHeader { Layout.fillWidth: true; text: "Title"; foreground: root.foreground }
+            PanelSectionHeader { Layout.preferredWidth: root.colActionW; text: "Action"; foreground: root.foreground }
+            PanelSectionHeader { Layout.preferredWidth: root.colTsW; text: "Timestamp"; foreground: root.foreground }
         }
 
-        Rectangle {
+        PanelSeparator {
             Layout.fillWidth: true
-            height: 1
-            color: Util.alpha(root.foreground, 0.10)
+            foreground: root.foreground
         }
 
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            Text {
+            EmptyState {
                 anchors.centerIn: parent
                 visible: listView.count === 0
-                text: "No history entries yet —\nmutations from the Items tab appear here"
-                horizontalAlignment: Text.AlignHCenter
-                color: Util.alpha(root.foreground, 0.5)
-                font.family: Style.font.family
-                font.pixelSize: Style.font.body
-                lineHeight: 1.6
+                creates: false
+                glyph: Icons.history
+                title: "No history yet"
+                message: "Every change to an item is logged here."
+                foreground: root.foreground
             }
 
             ListView {
@@ -182,7 +182,7 @@ FocusScope {
                     radius: Style.cornerRadius
                     color: Number(modelData.id) === root.selectedId
                         ? Style.selectedFillFor(root.foreground, Color.accent)
-                        : "transparent"
+                        : rowMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
 
                     RowLayout {
                         id: rowRow
@@ -199,7 +199,7 @@ FocusScope {
                                 : modelData.action === "completed" ? Icons.boxOn : Icons.boxOff
                             color: Number(modelData.id) === root.selectedId
                                 ? Style.selectedStateColor(root.foreground, Color.accent)
-                                : Util.alpha(root.foreground, 0.75)
+                                : Util.alpha(root.foreground, Tone.secondary)
                             font.family: Style.font.family
                             font.pixelSize: Style.font.icon
                         }
@@ -226,14 +226,16 @@ FocusScope {
                         Text {
                             Layout.preferredWidth: root.colTsW
                             text: root.formatTs(modelData.ts)
-                            color: Util.alpha(root.foreground, 0.62)
+                            color: Util.alpha(root.foreground, Tone.secondary)
                             font.family: Style.font.family
                             font.pixelSize: Style.font.bodySmall
                         }
                     }
 
                     MouseArea {
+                        id: rowMouse
                         anchors.fill: parent
+                        hoverEnabled: true
                         acceptedButtons: Qt.LeftButton
                         onClicked: {
                             root.selectedId = modelData.id
@@ -246,10 +248,9 @@ FocusScope {
             }
         }
 
-        Rectangle {
+        PanelSeparator {
             Layout.fillWidth: true
-            height: 1
-            color: Util.alpha(root.foreground, 0.10)
+            foreground: root.foreground
         }
 
         RowLayout {
@@ -269,8 +270,7 @@ FocusScope {
                 text: root.clearArmed ? "Confirm" : "Clear history"
                 bordered: true
                 enabled: root.clearButtonEnabled
-                opacity: root.clearButtonEnabled ? 1 : 0.5
-                foreground: root.foreground
+                foreground: root.clearButtonEnabled ? root.foreground : Util.alpha(root.foreground, Tone.muted)
                 onClicked: { root.clearHistory(); root.focusList() }
             }
         }

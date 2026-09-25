@@ -6,6 +6,7 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 import "Item.js" as ItemJs
+import "Tone.js" as Tone
 
 // Keyboard map:
 //   list:   j/k or ↑/↓ move · Enter/l/→/Tab edit the selected item
@@ -392,10 +393,10 @@ FocusScope {
                 }
             }
 
-            Rectangle {
+            PanelSeparator {
                 Layout.fillHeight: true
                 Layout.preferredWidth: 1
-                color: Util.alpha(root.foreground, 0.10)
+                foreground: root.foreground
             }
 
             EditorPane {
@@ -428,17 +429,16 @@ FocusScope {
                 Text {
                     anchors.centerIn: parent
                     text: "Your note or todo opens here."
-                    color: Util.alpha(root.foreground, 0.45)
+                    color: Util.alpha(root.foreground, Tone.muted)
                     font.family: Style.font.family
                     font.pixelSize: Style.font.body
                 }
             }
         }
 
-        Rectangle {
+        PanelSeparator {
             Layout.fillWidth: true
-            height: 1
-            color: Util.alpha(root.foreground, 0.10)
+            foreground: root.foreground
         }
 
         HintBar {
