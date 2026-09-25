@@ -32,11 +32,7 @@ Item {
     property var ringing: null
     property bool soundBroken: false
 
-    readonly property var alarmsById: {
-        var byId = {}
-        for (var i = 0; i < root.alarms.length; ++i) byId[root.alarms[i].id] = root.alarms[i]
-        return byId
-    }
+    readonly property var alarmsById: store.alarmsById
     readonly property var next: Alarm.nextAlarm(root.alarms, root.nowMs)
     readonly property bool nextIsSnooze: !!root.next && root.next.at === Number(root.next.alarm.snoozedUntil)
     readonly property string barLabel: root.next ? Alarms.nextText(root.next.at, root.nowMs) : ""
@@ -144,15 +140,11 @@ Item {
         Quickshell.execDetached(["omarchy-notification-send", "-g", Icons.alarm, text.headline, text.body])
     }
 
-    // The lookup reads `alarms` itself: inside this handler the alarmsById
-    // binding still holds the list from before the change.
     onAlarmsChanged: {
         if (!root.ringing) return
         var events = root.ringing.events
         for (var i = 0; i < events.length; ++i) {
-            var alarm = null
-            for (var j = 0; j < root.alarms.length; ++j) if (root.alarms[j].id === events[i].id) alarm = root.alarms[j]
-            if (Alarm.lostOutside(alarm)) root._drop(events[i].id)
+            if (Alarm.lostOutside(root.alarmsById[events[i].id])) root._drop(events[i].id)
         }
     }
 
@@ -232,7 +224,11 @@ Item {
     }
 
     Component.onCompleted: {
-        if (root.ringWindow === null) root.ringWindow = Qt.createComponent(Qt.resolvedUrl("ui/RingWindow.qml"))
+        if (root.ringWindow === null) {
+            var window = Qt.createComponent(Qt.resolvedUrl("ui/RingWindow.qml"))
+            if (window.status === Component.Error) console.error("omanotes: no ring card: " + window.errorString())
+            root.ringWindow = window
+        }
         if (root.clockRunning) root.tick(clock.date.getTime())
     }
 }

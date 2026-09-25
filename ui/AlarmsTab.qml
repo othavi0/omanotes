@@ -156,6 +156,11 @@ FocusScope {
     function onAlarmsSynced() {
         if (root.draftNew) return
         var list = root.alarmList
+        if (editor.editingId >= 0 && (editor.dirty || editor.fieldFocused) && ItemJs.indexOfId(list, editor.editingId) < 0) {
+            editor.openAlarm(null)
+            if (root.toast) root.toast.show("Alarm removed elsewhere")
+            root.focusList()
+        }
         if (root._selectAfterReload >= 0 && ItemJs.indexOfId(list, root._selectAfterReload) >= 0) {
             root.selectedId = root._selectAfterReload
             root._selectAfterReload = -1

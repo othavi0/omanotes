@@ -5,7 +5,7 @@ import assert from "node:assert/strict"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const A = loadQmlLib(new URL("../data/Alarm.js", import.meta.url), [
-  "GRACE_MS", "MAX_AUTO_SNOOZES", "DEFAULT_SNOOZE_MINUTES", "DEFAULT_RING_SECONDS",
+  "GRACE_MS", "MAX_AUTO_SNOOZES", "DEFAULT_SNOOZE_MINUTES",
   "normalizeDays", "isRepeating", "occurrenceAfter", "occurrenceAtOrBefore",
   "alarmNextAt", "alarmDue", "nextAlarm", "tick", "snoozePatch", "expire",
   "MAX_ALARMS", "MAX_LABEL", "DEFAULT_RING_MINUTES", "MIN_RING_MINUTES", "MAX_RING_MINUTES",
@@ -35,7 +35,6 @@ test("the constants hold the product defaults", () => {
   assert.equal(A.GRACE_MS, 10 * MIN)
   assert.equal(A.MAX_AUTO_SNOOZES, 3)
   assert.equal(A.DEFAULT_SNOOZE_MINUTES, 9)
-  assert.equal(A.DEFAULT_RING_SECONDS, 300)
 })
 
 test("normalizeDays keeps valid weekdays sorted and never turns an empty token into Sunday", () => {
@@ -178,12 +177,12 @@ test("a snooze length is clamped to 1..180 minutes and only a missing or non-num
   }
 })
 
-test("expire drops events that rang for ringSeconds and snoozes only those alarms", () => {
+test("expire drops events of a record without ringMinutes after the default ring length and snoozes only those alarms", () => {
   const byId = { a: alarm({ id: "a" }), b: alarm({ id: "b" }) }
   const events = [{ id: "a", startedAt: NOW - 300 * 1000 }, { id: "b", startedAt: NOW - 299 * 1000 }]
-  assert.deepEqual(A.expire(events, byId, NOW, 300), { keep: [events[1]], snooze: ["a"] })
-  assert.deepEqual(A.expire(events, byId, NOW - 1000, 300), { keep: events, snooze: [] })
-  assert.deepEqual(A.expire([{ id: "gone", startedAt: NOW - 400 * 1000 }], byId, NOW, 300), { keep: [], snooze: [] }, "a removed alarm expires without a snooze")
+  assert.deepEqual(A.expire(events, byId, NOW), { keep: [events[1]], snooze: ["a"] })
+  assert.deepEqual(A.expire(events, byId, NOW - 1000), { keep: events, snooze: [] })
+  assert.deepEqual(A.expire([{ id: "gone", startedAt: NOW - 400 * 1000 }], byId, NOW), { keep: [], snooze: [] }, "a removed alarm expires without a snooze")
 })
 
 test("three automatic expirations each schedule a snooze and the fourth does not", () => {
@@ -195,8 +194,8 @@ test("three automatic expirations each schedule a snooze and the fourth does not
     assert.equal(fired.ring.length, 1, "period " + period + " rings")
     a = apply(a, fired.patches)
     const startedAt = clock
-    clock = startedAt + A.DEFAULT_RING_SECONDS * 1000
-    const out = A.expire([{ id: a.id, startedAt }], { [a.id]: a }, clock, A.DEFAULT_RING_SECONDS)
+    clock = startedAt + A.DEFAULT_RING_MINUTES * MIN
+    const out = A.expire([{ id: a.id, startedAt }], { [a.id]: a }, clock)
     assert.deepEqual(out.keep, [])
     if (period < 4) {
       assert.deepEqual(out.snooze, [a.id], "period " + period + " expires into a snooze")
@@ -219,7 +218,6 @@ test("the limits hold the product defaults", () => {
   assert.equal(A.MAX_ALARMS, 50)
   assert.equal(A.MAX_LABEL, 40)
   assert.equal(A.DEFAULT_RING_MINUTES, 5)
-  assert.equal(A.DEFAULT_RING_SECONDS, A.DEFAULT_RING_MINUTES * 60)
   assert.equal(A.MIN_RING_MINUTES, 1)
   assert.equal(A.MAX_RING_MINUTES, 60)
 })

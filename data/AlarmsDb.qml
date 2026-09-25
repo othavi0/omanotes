@@ -11,6 +11,8 @@ DbCore {
     id: root
 
     property var alarms: []
+    // Set before `alarms`, so a handler of alarmsChanged reads the new one.
+    property var alarmsById: ({})
     property bool alarmsLoaded: false
     // Inserts queued or landed that no read has listed yet, so the service
     // can count them against the limit.
@@ -68,7 +70,7 @@ DbCore {
             if (pending[id].seq <= root._alarmsReadSeq && !pending[id].retry && !pending[id].unwritable) delete pending[id]
         }
         root._insertSeqs = root._insertSeqs.filter(function(seq) { return seq > root._alarmsReadSeq })
-        root.alarms = Db.mergeAlarms(rows, pending)
+        root._show(Db.mergeAlarms(rows, pending))
         root.alarmsLoaded = true
     }
 
@@ -84,8 +86,15 @@ DbCore {
             { id: Number(id), seq: seq, record: record, caller: caller || null })
         root._alarmSeq = seq
         root._alarmPending[Number(id)] = { seq: seq, record: record, retry: false, unwritable: error !== "" }
-        root.alarms = Db.mergeAlarms(root._alarmRows, root._alarmPending)
+        root._show(Db.mergeAlarms(root._alarmRows, root._alarmPending))
         return error
+    }
+
+    function _show(list) {
+        var byId = {}
+        for (var i = 0; i < list.length; ++i) byId[list[i].id] = list[i]
+        root.alarmsById = byId
+        root.alarms = list
     }
 
     function saveAlarm(record, caller) {

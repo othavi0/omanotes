@@ -42,12 +42,13 @@ Panel {
     // still points at the tab shown before the change.
     onActiveTabChanged: {
         itemsTab.commitIfDirty()
-        alarmsTab.commitIfDirty();
-        [itemsTab, alarmsTab, historyTab][root.activeTab].resetFocus()
+        alarmsTab.commitIfDirty()
+        root.tabAt(root.activeTab).resetFocus()
     }
 
     property int activeTab: Tabs.items
-    readonly property var shownTab: [itemsTab, alarmsTab, historyTab][root.activeTab]
+    readonly property var shownTab: root.tabAt(root.activeTab)
+    function tabAt(index) { return [itemsTab, alarmsTab, historyTab][index] }
 
     // The popup card. The kit Panel is only the state machine (open/close/
     // toggle IPC); without a popup window nothing is ever drawn, so the bar

@@ -16,7 +16,6 @@ var GRACE_MS = 10 * 60 * 1000
 var MAX_AUTO_SNOOZES = 3
 var DEFAULT_SNOOZE_MINUTES = 9
 var DEFAULT_RING_MINUTES = 5
-var DEFAULT_RING_SECONDS = DEFAULT_RING_MINUTES * 60
 var MIN_SNOOZE_MINUTES = 1
 var MAX_SNOOZE_MINUTES = 180
 var MIN_RING_MINUTES = 1
@@ -258,14 +257,12 @@ function snoozePatch(alarm, minutes, automatic, nowMs) {
 
 // Splits ring events ({ id, startedAt }) into those still ringing and the ids
 // of expired alarms that earn an automatic snooze. Each event rings for its
-// alarm's ringMinutes; a record without one rings for fallbackSeconds. An
-// event whose alarm is gone is dropped without a snooze.
-function expire(events, alarmsById, nowMs, fallbackSeconds) {
-  var fallback = (Number(fallbackSeconds) > 0 ? Number(fallbackSeconds) : DEFAULT_RING_SECONDS) * 1000
+// alarm's ringMinutes. An event whose alarm is gone is dropped without a
+// snooze.
+function expire(events, alarmsById, nowMs) {
   return (events || []).reduce(function(acc, event) {
     var alarm = alarmsById ? alarmsById[event.id] : null
-    var limit = alarm && Number(alarm.ringMinutes) > 0 ? Number(alarm.ringMinutes) * MINUTE_MS : fallback
-    if (!alarm) limit = 0
+    var limit = alarm ? ringMinutes(alarm.ringMinutes) * MINUTE_MS : 0
     if (nowMs - instant(event.startedAt) < limit) {
       acc.keep.push(event)
       return acc

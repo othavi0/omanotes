@@ -168,6 +168,7 @@ ShellRoot {
     function tick(ms: string): string { svc.item.tick(Number(ms)); return sr.state() }
     function state(): string { return sr.state() }
     function chips(): string { return sr.chips() }
+    function tooltip(n: int): string { return sr.chip(n).tooltipText }
     function pressChip(n: int, button: string): string {
       sr.chip(n).triggerPress(button === "right" ? Qt.RightButton : Qt.LeftButton)
       return sr.chips() + " open=" + monitors.instances[n - 1].widget.opened
@@ -343,6 +344,7 @@ replies "at 07:30 the daily alarm rings on every screen and the two one-shots fr
   "$(ipc tick "$t0730")" '{"loaded":true,"alarms":4,'"$ringing_wake"
 sound_is "one player runs for three screens" 1 0
 replies "every chip reads the bell and the title, painted active" "$(ipc chips)" "{bell} Wake up*|{bell} Wake up*|{bell} Wake up*"
+replies "the chip's tooltip names the ring, for a vertical bar that shows the bell alone" "$(ipc tooltip 2)" "Omanotes: Wake up is ringing · click to stop"
 replies "one notification lists both missed alarms" "$(wc -l < "$cfg_dir/notify.log")" "1"
 contains "the notification is headed by the count" "$(cat "$cfg_dir/notify.log")" "2 missed alarms"
 contains "and names the first missed alarm with how late it is" "$(cat "$cfg_dir/notify.log")" "06:00 · Pills, 1 h 30 min late"
@@ -500,6 +502,14 @@ replies "deleting an unlabeled alarm in the middle names its time and selects th
   "$(ipc pressDelete)" "5|draft:false|08:30|Delete|toast:Deleted — 07:45"
 expect "and removes it" "SELECT COUNT(*) FROM alarms WHERE id = 9" "0"
 ipc clearToast
+ipc pickAlarm 3 > /dev/null
+ipc setEditor "06:10" "Standup moved" "" "9" "5" > /dev/null
+sql "DELETE FROM alarms WHERE id = 3"
+tab_is "an alarm removed elsewhere while its edit is unsaved says so" 1 5 "toast:Alarm removed elsewhere"
+ipc leave > /dev/null
+sleep 0.5
+replies "and its unsaved edit is not written anywhere" "$(sql "SELECT COUNT(*) FROM alarms WHERE id = 3 OR label = 'Standup moved'")" "0"
+ipc clearToast
 ipc startNew > /dev/null
 ipc setEditor "25:00" "Late" "" "9" "5" > /dev/null
 contains "a draft without a readable time stays open with the warning" "$(ipc leave)" "|draft:true|25:00|-|toast:New alarm needs a time like 07:30"
@@ -530,7 +540,7 @@ replies "the alarm edits wrote no history row" "$(sql "SELECT COUNT(*) FROM hist
 # instants below zero or with a fraction. The alarm is still consumed once.
 sql "INSERT INTO alarms (id, hour, minute, label, days, enabled, snoozed_until_ms, last_fired_at_ms, armed_at_ms)
   VALUES (30, 10.4, 0, 'Malformed', 0, 1, -1, 0.5, $yesterday.5)"
-state_has "the service picks up the malformed alarm" '"alarms":9'
+state_has "the service picks up the malformed alarm" '"alarms":8'
 notices_before="$(wc -l < "$cfg_dir/notify.log")"
 t1030="$(ms "$day 10:30")"
 for second in 0 1 2; do ipc tick "$(( t1030 + second * 1000 ))" > /dev/null; done
