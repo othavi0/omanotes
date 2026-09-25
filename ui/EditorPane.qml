@@ -20,7 +20,6 @@ ColumnLayout {
     property bool deleteArmed: false
     property int nowSeconds: 0
     property color foreground: Color.foreground
-    property color accent: Color.accent
 
     property alias titleText: titleField.text
     property alias bodyText: bodyField.text
@@ -82,7 +81,6 @@ ColumnLayout {
             ]
             value: root.draftType
             foreground: root.foreground
-            accent: root.accent
             onPicked: function(v) { root.toggleDraftTypeRequested(v) }
         }
 
@@ -92,7 +90,7 @@ ColumnLayout {
 
             Text {
                 text: root.item && ItemJs.isTodo(root.item) ? Icons.boxOff : Icons.note
-                color: root.accent
+                color: Color.accent
                 font.family: Style.font.family
                 font.pixelSize: Style.font.icon
                 anchors.verticalCenter: parent.verticalCenter
@@ -149,7 +147,6 @@ ColumnLayout {
         Layout.fillWidth: true
         placeholderText: root.draft ? (root.draftType === "todo" ? "What needs doing?" : "Note title") : "Title"
         foreground: root.foreground
-        accent: root.accent
         activeFocusOnTab: false
         onAccepted: root.focusBody()
         Keys.onPressed: function(event) {
@@ -171,7 +168,7 @@ ColumnLayout {
         placeholderText: "Details (optional)"
         color: root.foreground
         placeholderTextColor: Util.alpha(root.foreground, 0.45)
-        selectionColor: Style.selectionFillFor(root.foreground, root.accent)
+        selectionColor: Style.selectionFillFor(root.foreground, Color.accent)
         selectedTextColor: root.foreground
         font.family: Style.font.family
         font.pixelSize: Style.font.body
@@ -209,7 +206,6 @@ ColumnLayout {
             iconText: Icons.check
             text: root.draft ? ("Save " + root.draftType) : "Save"
             foreground: root.foreground
-            accent: root.accent
             onClicked: root.saveRequested()
         }
         ActionButton {
@@ -217,7 +213,6 @@ ColumnLayout {
             bordered: true
             text: "Discard"
             foreground: root.foreground
-            accent: root.accent
             onClicked: root.discardRequested()
         }
         ActionButton {
@@ -226,7 +221,6 @@ ColumnLayout {
             iconText: Icons.check
             text: root.item ? ItemJs.toggleVerb(root.item) : ""
             foreground: root.foreground
-            accent: root.accent
             onClicked: root.toggleRequested()
         }
         ActionButton {
@@ -235,7 +229,6 @@ ColumnLayout {
             iconText: Icons.swap
             text: root.item && ItemJs.isTodo(root.item) ? "To note" : "To todo"
             foreground: root.foreground
-            accent: root.accent
             onClicked: root.convertRequested()
         }
         ActionButton {
@@ -244,7 +237,6 @@ ColumnLayout {
             iconText: Icons.copy
             text: "Copy"
             foreground: root.foreground
-            accent: root.accent
             onClicked: root.copyRequested()
         }
         Item { Layout.fillWidth: true }

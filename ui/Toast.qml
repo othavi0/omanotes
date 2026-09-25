@@ -6,14 +6,11 @@ Item {
     id: root
 
     property string text: ""
-    property int duration: 2200
     property bool urgent: false
 
     // Sizing is internal (it floats over the panel, not in a layout).
     width: box.implicitWidth
     height: box.implicitHeight
-
-    readonly property bool shown: opacity > 0
 
     function show(message, urgent) {
         root.text = String(message || "")
@@ -31,7 +28,7 @@ Item {
 
     Timer {
         id: hideTimer
-        interval: root.duration
+        interval: 2200
         onTriggered: root.hide()
     }
 
