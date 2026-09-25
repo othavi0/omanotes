@@ -49,7 +49,7 @@ INSERT INTO history (id, type, title, action, ts) VALUES
 
 # A plain command, so a caller that backgrounds it gets the pid of `timeout`
 # in `$!`; killing that pid then reaches qs.
-qs_cmd=(env XDG_DATA_HOME="$data_home" QT_QPA_PLATFORM=offscreen timeout 60 qs -p "$cfg_dir")
+qs_cmd=(env XDG_DATA_HOME="$data_home" QT_QPA_PLATFORM=offscreen timeout 120 qs -p "$cfg_dir")
 run_qs() { "${qs_cmd[@]}" "$@"; }
 
 # The kit's KeyboardPanel is a layer-shell PanelWindow, which has no backend

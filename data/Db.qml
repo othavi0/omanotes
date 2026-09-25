@@ -54,7 +54,7 @@ QtObject {
     // errors are visible in the shell logs even before the UI handles them.
     function fail(message, fromScript) {
         console.error("omanotes db: " + message)
-        if (!fromScript) root.failed(message)
+        if (!fromScript && !root._fromScript) root.failed(message)
     }
 
     // The panel answers added, statusChanged, itemDeleted, historyCleared and
@@ -65,10 +65,27 @@ QtObject {
     function fromScript(run) {
         root._fromScript = true
         try {
-            run()
+            return run()
         } finally {
             root._fromScript = false
         }
+    }
+
+    // What parse makes of a finished read's output, or null once the failure
+    // is reported.
+    function _parsed(what, exitCode, stdout, stderr, parse) {
+        var error
+        if (exitCode !== 0) {
+            error = Db.errorText(stderr.text, exitCode)
+        } else {
+            try {
+                return parse(stdout.text)
+            } catch (e) {
+                error = e.message
+            }
+        }
+        root.fail(what + " read failed: " + error)
+        return null
     }
 
     property Process countsProcess: Process {
@@ -76,12 +93,13 @@ QtObject {
             id: countsStdout
             waitForEnd: true
         }
+        stderr: StdioCollector {
+            id: countsStderr
+            waitForEnd: true
+        }
         onExited: function(exitCode) {
-            if (exitCode !== 0) {
-                root.fail("counts read failed (exit " + exitCode + ")")
-                return
-            }
-            var c = Db.parseCounts(countsStdout.text)
+            var c = root._parsed("counts", exitCode, countsStdout, countsStderr, Db.parseCounts)
+            if (c === null) return
             root.unreadNotes = c.unreadNotes
             root.inProgressTodos = c.inProgressTodos
             root.totalNotes = c.notes
@@ -95,16 +113,17 @@ QtObject {
             id: listStdout
             waitForEnd: true
         }
+        stderr: StdioCollector {
+            id: listStderr
+            waitForEnd: true
+        }
         onExited: function(exitCode) {
-            if (exitCode !== 0) {
-                root.fail("list read failed (exit " + exitCode + ")")
-                return
-            }
+            var rows = root._parsed("list", exitCode, listStdout, listStderr, Db.parseRows)
+            if (rows === null) return
             if (root._listStale) {
                 Qt.callLater(function() { root.list(root.listFilter, root.listQuery) })
                 return
             }
-            var rows = Db.parseRows(listStdout.text)
             root.items = rows
             root.itemsUpdated(rows)
         }
@@ -116,16 +135,18 @@ QtObject {
             id: allItemsStdout
             waitForEnd: true
         }
+        stderr: StdioCollector {
+            id: allItemsStderr
+            waitForEnd: true
+        }
         onExited: function(exitCode) {
-            if (exitCode !== 0) {
-                root.fail("all items read failed (exit " + exitCode + ")")
-                return
-            }
+            var rows = root._parsed("all items", exitCode, allItemsStdout, allItemsStderr, Db.parseRows)
+            if (rows === null) return
             if (root._allItemsStale) {
                 Qt.callLater(root.listAll)
                 return
             }
-            root.allItems = Db.parseRows(allItemsStdout.text)
+            root.allItems = rows
         }
     }
 
@@ -134,12 +155,13 @@ QtObject {
             id: historyStdout
             waitForEnd: true
         }
+        stderr: StdioCollector {
+            id: historyStderr
+            waitForEnd: true
+        }
         onExited: function(exitCode) {
-            if (exitCode !== 0) {
-                root.fail("history read failed (exit " + exitCode + ")")
-                return
-            }
-            var rows = Db.parseRows(historyStdout.text)
+            var rows = root._parsed("history", exitCode, historyStdout, historyStderr, Db.parseRows)
+            if (rows === null) return
             root.history = rows
             root.historyUpdated(rows)
         }
@@ -149,10 +171,16 @@ QtObject {
     property var _writeArgs: null
     property bool _writeFromScript: false
     property var _writeQueue: []
+    // Writes whose SQL prints Db.CHANGES.
+    readonly property var _oneItemWrites: ["setStatus", "update", "convertType", "deleteItem"]
 
     property Process writeProcess: Process {
         stdout: StdioCollector {
             id: writeStdout
+            waitForEnd: true
+        }
+        stderr: StdioCollector {
+            id: writeStderr
             waitForEnd: true
         }
         onExited: function(exitCode) {
@@ -165,11 +193,15 @@ QtObject {
             Qt.callLater(root._runNextWrite)
 
             if (exitCode !== 0) {
-                var err = String(writeStdout.text || "").trim()
-                if (err === "") err = "sqlite3 exited " + exitCode
-                root.fail(err, fromScript)
+                root.fail(Db.errorText(writeStderr.text, exitCode), fromScript)
                 if (kind === "init") initRetry.start()
                 else reloadDebounce.restart()
+                return
+            }
+
+            if (root._oneItemWrites.indexOf(kind) >= 0 && !Db.parseFound(writeStdout.text)) {
+                root.fail("item not found", fromScript)
+                reloadDebounce.restart()
                 return
             }
 
@@ -210,8 +242,22 @@ QtObject {
         root.writeProcess.command = next.command
         root.writeProcess.running = true
     }
-    function _write(kind, sql, args) {
+    function _refuse(message) {
+        root.fail(message)
+        return message
+    }
+    // Returns why the write was refused, or "" once it is queued. build()
+    // throws on an invalid id, before any SQL exists.
+    function _write(kind, build, args) {
+        if (!root.ready) return root._refuse("not ready")
+        var sql
+        try {
+            sql = build()
+        } catch (e) {
+            return root._refuse(e.message)
+        }
         root._enqueue(kind, Db.sqliteCommand(root.dbPath, sql, false), args)
+        return ""
     }
 
     // Watches the db file; any change (external edits or our own writes)
@@ -292,52 +338,43 @@ QtObject {
     }
 
     function add(type, title, body) {
-        if (!root.ready) return
         var t = String(title || "").trim()
-        if (t === "") {
-            root.fail("add: empty title")
-            return
-        }
-        root._write("add", Db.addSql(type === "todo" ? "todo" : "note", t, body), null)
+        if (t === "") return root._refuse("add: empty title")
+        return root._write("add", function() {
+            return Db.addSql(type === "todo" ? "todo" : "note", t, body)
+        }, null)
     }
 
     function setStatus(id, status) {
-        if (!root.ready) return
         var s = status === 1 ? 1 : 0
-        root._write("setStatus", Db.setStatusSql(id, s), { id: Number(id), status: s })
+        return root._write("setStatus", function() { return Db.setStatusSql(id, s) },
+            { id: Number(id), status: s })
     }
 
     // Type is fixed on edit — use convertType() to change it.
     function update(id, title, body) {
-        if (!root.ready) return
         var t = String(title || "").trim()
-        if (t === "") {
-            root.fail("update: empty title")
-            return
-        }
-        root._write("update", Db.updateSql(id, t, body), { id: Number(id), title: t })
+        if (t === "") return root._refuse("update: empty title")
+        return root._write("update", function() { return Db.updateSql(id, t, body) },
+            { id: Number(id), title: t })
     }
 
     // Emits typeChanged(id).
     function convertType(id) {
-        if (!root.ready) return
-        root._write("convertType", Db.convertTypeSql(id), { id: Number(id) })
+        return root._write("convertType", function() { return Db.convertTypeSql(id) }, { id: Number(id) })
     }
 
     // Emits itemDeleted(id).
     function deleteItem(id) {
-        if (!root.ready) return
-        root._write("deleteItem", Db.deleteItemSql(id), { id: Number(id) })
+        return root._write("deleteItem", function() { return Db.deleteItemSql(id) }, { id: Number(id) })
     }
 
     // Emits historyRowDeleted(id).
     function deleteHistory(id) {
-        if (!root.ready) return
-        root._write("deleteHistory", Db.deleteHistorySql(id), { id: Number(id) })
+        return root._write("deleteHistory", function() { return Db.deleteHistorySql(id) }, { id: Number(id) })
     }
 
     function clearHistory() {
-        if (!root.ready) return
-        root._write("clearHistory", Db.clearHistorySql(), null)
+        return root._write("clearHistory", Db.clearHistorySql, null)
     }
 }

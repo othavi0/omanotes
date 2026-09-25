@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Loads one BarWidget per monitor, as the bar does, against a missing database
 # file, with the first schema run failing as a locked database does. Asserts
-# that every widget runs one Db that its panel shares, that every Db ends
-# ready, and that one write reloads each Db once.
+# that the IPC refuses calls until the database is ready, that every widget
+# runs one Db that its panel shares, that every Db ends ready, and that one
+# write reloads each Db once.
 
 set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
@@ -11,15 +12,19 @@ stub_keyboard_panel
 rm -rf "$data_home/omarchy"
 monitors=3
 
-# Logs every sqlite3 run, one line each, and fails the first schema run.
+# Logs every sqlite3 run, one line each. Schema runs wait for the release
+# file, and the first one fails.
 real_sqlite3="$(command -v sqlite3)"
 mkdir "$cfg_dir/bin"
 cat > "$cfg_dir/bin/sqlite3" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$cfg_dir/sqlite3.log"
-if [[ "\$*" == *"CREATE TABLE"* ]] && mkdir "$cfg_dir/init-failed" 2> /dev/null; then
-  echo "Error: database is locked" >&2
-  exit 5
+if [[ "\$*" == *"CREATE TABLE"* ]]; then
+  for _ in \$(seq 200); do [[ -e "$cfg_dir/release" ]] && break; sleep 0.05; done
+  if mkdir "$cfg_dir/init-failed" 2> /dev/null; then
+    echo "Error: database is locked" >&2
+    exit 5
+  fi
 fi
 exec "$real_sqlite3" "\$@"
 SH
@@ -69,6 +74,11 @@ ShellRoot {
     function addNote(title: string): string {
       return monitors.instances[0].widget.ipcAdd("note", title, "")
     }
+    function everyCall(): string {
+      var w = monitors.instances[0].widget
+      return [w.ipcAdd("note", "EARLY", ""), w.ipcToggle(1), w.ipcRemove(1), w.ipcClearHistory(),
+        w.ipcList("note"), w.ipcList("todo")].join(" ")
+    }
     function quit(): void { Qt.exit(0) }
   }
 }
@@ -96,6 +106,11 @@ replies() {
   if [[ "$got" == "$want" ]]; then pass "$what"; else fail "$what: want '$want', got '$got'"; fi
 }
 
+refused='{"ok":false,"error":"not ready"}'
+replies "every IPC call before the database is ready answers not ready" "$(ipc everyCall)" \
+  "$refused $refused $refused $refused $refused $refused"
+touch "$cfg_dir/release"
+
 one='{"dbs":1,"ready":1,"panelShares":true}'
 want="[$one$(printf ",$one%.0s" $(seq 2 $monitors))]"
 state=""
@@ -109,6 +124,8 @@ replies "each widget runs one Db, shared with its panel and ready" "$state" "$wa
 [[ -d "$cfg_dir/init-failed" ]] && pass "the first schema run failed" || fail "the first schema run failed"
 tables="$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name" 2>&1 | tr '\n' ' ')"
 replies "the missing database file now has both tables" "$tables" "history items "
+replies "the refused add never lands" \
+  "$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT COUNT(*) FROM items WHERE title = 'EARLY'")" "0"
 
 sleep 1
 : > "$cfg_dir/sqlite3.log"
@@ -120,7 +137,9 @@ replies "one write reloads each Db once" "$(grep -c "FROM history ORDER BY" "$cf
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
-replies "only the injected failure is logged" "$(grep -c "omanotes db:" "$cfg_dir/qs.log" || true)" "1"
+replies "only the refused writes and the injected failure are logged" \
+  "$(grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | tr '\n' ';' || true)" \
+  "not ready;not ready;not ready;database is locked;"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
 echo "startup: $checks checks, $failures failed"
