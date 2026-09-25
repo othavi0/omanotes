@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Loads one BarWidget per monitor, as the bar does, against a missing database
 # file, with the first schema run failing as a locked database does. Asserts
-# that the IPC refuses calls until the database is ready, that every widget
+# that the IPC refuses calls until the database is ready, that list and toggle
+# keep refusing until the first read of every item lands, that every widget
 # runs one Db that its panel shares, that every Db ends ready, and that one
 # write reloads each Db once.
 
@@ -13,12 +14,16 @@ rm -rf "$data_home/omarchy"
 monitors=3
 
 # Logs every sqlite3 run, one line each. Schema runs wait for the release
-# file, and the first one fails.
+# file, and the first one fails. Reads of every item wait for the
+# items-release file.
 real_sqlite3="$(command -v sqlite3)"
 mkdir "$cfg_dir/bin"
 cat > "$cfg_dir/bin/sqlite3" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$cfg_dir/sqlite3.log"
+if [[ "\$*" == *"FROM items ORDER BY"* ]]; then
+  for _ in \$(seq 200); do [[ -e "$cfg_dir/items-release" ]] && break; sleep 0.05; done
+fi
 if [[ "\$*" == *"CREATE TABLE"* ]]; then
   for _ in \$(seq 200); do [[ -e "$cfg_dir/release" ]] && break; sleep 0.05; done
   if mkdir "$cfg_dir/init-failed" 2> /dev/null; then
@@ -79,6 +84,10 @@ ShellRoot {
       return [w.ipcAdd("note", "EARLY", ""), w.ipcToggle(1), w.ipcRemove(1), w.ipcClearHistory(),
         w.ipcList("note"), w.ipcList("todo")].join(" ")
     }
+    function readCalls(): string {
+      var w = monitors.instances[0].widget
+      return [w.ipcToggle(1), w.ipcList("note"), w.ipcList("todo")].join(" ")
+    }
     function quit(): void { Qt.exit(0) }
   }
 }
@@ -120,6 +129,17 @@ for _ in $(seq 50); do
   sleep 0.2
 done
 replies "each widget runs one Db, shared with its panel and ready" "$state" "$want"
+replies "list and toggle answer not ready until the items are read" "$(ipc readCalls)" \
+  "$refused $refused $refused"
+touch "$cfg_dir/items-release"
+reads=""
+for _ in $(seq 50); do
+  reads="$(ipc readCalls)"
+  [[ "$reads" != "$refused"* ]] && break
+  sleep 0.2
+done
+replies "list and toggle answer from the items once read" "$reads" \
+  '{"ok":false,"error":"item not found: 1"} [] []'
 
 [[ -d "$cfg_dir/init-failed" ]] && pass "the first schema run failed" || fail "the first schema run failed"
 tables="$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name" 2>&1 | tr '\n' ' ')"

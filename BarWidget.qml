@@ -45,7 +45,7 @@ BarWidget {
         return ipcReply(db.fromScript(function() { return db.add(type, t, String(body || "")) }))
     }
     function ipcList(type) {
-        if (!db.ready) return ipcReply("not ready")
+        if (!db.allItemsLoaded) return ipcReply("not ready")
         var list = db.allItems
         var out = []
         for (var i = 0; i < list.length; ++i) {
@@ -61,7 +61,7 @@ BarWidget {
         return JSON.stringify(out)
     }
     function ipcToggle(id) {
-        if (!db.ready) return ipcReply("not ready")
+        if (!db.allItemsLoaded) return ipcReply("not ready")
         var n = Number(id)
         var list = db.allItems
         for (var i = 0; i < list.length; ++i) {

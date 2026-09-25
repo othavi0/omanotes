@@ -26,6 +26,7 @@ QtObject {
     // Every item, whatever list() last filtered: the IPC reads this, and the
     // panel sharing this Db narrows `items`.
     property var allItems: []
+    property bool allItemsLoaded: false
     property var history: []                   // historyList() results
     property int unreadNotes: 0                // notes with status 0
     property int inProgressTodos: 0            // todos with status 0
@@ -147,6 +148,7 @@ QtObject {
                 return
             }
             root.allItems = rows
+            root.allItemsLoaded = true
         }
     }
 
