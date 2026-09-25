@@ -168,7 +168,7 @@ ipc quit > /dev/null || true
 wait "$qs_pid" || true
 replies "only the refused writes and the injected failure are logged" \
   "$(grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | tr '\n' ';' || true)" \
-  "not ready;not ready;not ready;database is locked;"
+  "not ready;not ready;database is locked;"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
 echo "startup: $checks checks, $failures failed"
