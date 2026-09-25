@@ -53,6 +53,20 @@ FocusScope {
     readonly property var selectedItem: root.selectedIndex >= 0 ? root.itemList[root.selectedIndex] : null
     readonly property bool _filtered: root.filterType !== "all" || root.searchText.trim() !== ""
 
+    // A new model array can send a ListView back to the top, so the model is
+    // set here, not bound. A new read of the same list (a reload, a move, a
+    // status change) keeps the scroll; another filter or search starts from
+    // the top.
+    property string _shownList: ""
+    onItemListChanged: {
+        var shown = root.db ? root.db.listFilter + "\n" + root.db.listQuery : ""
+        var y = shown === root._shownList ? listView.contentY - listView.originY : 0
+        root._shownList = shown
+        listView.model = root.itemList
+        var bottom = Math.max(0, listView.contentHeight - listView.height)
+        listView.contentY = listView.originY + Math.min(y, bottom)
+    }
+
     // Order (CONTEXT.md): rows drag inside their block, never while the
     // search has text or the list still shows a search's results.
     readonly property bool canDrag: root.searchText === "" && !!root.db && root.db.listQuery === ""
@@ -304,7 +318,7 @@ FocusScope {
                     boundsBehavior: Flickable.StopAtBounds
                     keyNavigationEnabled: false
                     spacing: Style.spacing.xxs
-                    model: root.itemList
+                    Component.onCompleted: listView.model = root.itemList
 
                     delegate: ItemRow {
                         id: row

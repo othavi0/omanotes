@@ -1128,8 +1128,37 @@ ShellRoot {
     },
     function() { console.log("AFTER-GLYPH-DRAG " + sr.order().split(",").slice(0, 4).join(",") + " selected=" + itemsTab.selectedId) },
     function() { sr.pressAt(sr.glyphPoint(402)); sr.release() },
-    function() { console.log("GLYPH-CLICK status=" + sr.statusOf(402) + " selected=" + itemsTab.selectedId) }
+    function() { console.log("GLYPH-CLICK status=" + sr.statusOf(402) + " selected=" + itemsTab.selectedId) },
+    function() { sr.listView().positionViewAtIndex(20, ListView.Beginning) },
+    function() {
+      sr.scrolledY = sr.listView().contentY
+      sr.dragId = itemsTab.itemList[23].id
+      sr.drag(sr.dragId, sr.pointIn(itemsTab.itemList[21].id, 0.25).y)
+    },
+    function() {
+      sr.release()
+      Qt.callLater(function() { console.log("SCROLLED-DROP " + sr.keptScroll() + " write=[" + db._writeKind + "]") })
+    },
+    function() {
+      console.log("SCROLLED-AFTER-RELOAD " + sr.keptScroll() + " at=" + itemsTab.itemList.map(function(i) { return i.id }).indexOf(sr.dragId)
+        + " selected=" + (itemsTab.selectedId === sr.dragId) + " visible=" + sr.inView(sr.dragId))
+    },
+    function() { sr.pressAt(sr.glyphPoint(itemsTab.itemList[22].id)); sr.release() },
+    function() { console.log("SCROLLED-TOGGLE " + sr.keptScroll()); itemsTab.searchText = "Row" },
+    function() { console.log("SCROLLED-SEARCH rows=" + itemsTab.itemList.length + " top=" + (sr.listView().contentY === sr.listView().originY)) }
   ]
+  property real scrolledY: 0
+  property int dragId: -1
+  function keptScroll() {
+    var y = sr.listView().contentY
+    return (sr.scrolledY > 0 && y === sr.scrolledY) ? "kept" : "moved " + sr.scrolledY + " -> " + y
+  }
+  function inView(id) {
+    var row = sr.rowOf(id)
+    if (!row) return false
+    var top = row.mapToItem(sr.listView(), 0, 0).y
+    return top >= 0 && top + row.height <= sr.listView().height
+  }
 
   readonly property var dragSteps: [
     function() {
@@ -1305,6 +1334,11 @@ logged "while the search has text, dragging a row scrolls the list" "SEARCH-FLIC
 logged "a press on the status glyph that moves 6 px drags the row" "GLYPH-DRAG float=Row 4$"
 logged "and drops it there" "AFTER-GLYPH-DRAG 404,401,402,403 selected=404$"
 logged "a click on the status glyph toggles the item and keeps the selection" "GLYPH-CLICK status=1 selected=404$"
+logged "a drop in a scrolled list keeps the list where it was" "SCROLLED-DROP kept write=\[move\]$"
+logged "and it stays there after the reload, with the dropped row selected and in view" \
+  "SCROLLED-AFTER-RELOAD kept at=21 selected=true visible=true$"
+logged "a status change in a scrolled list keeps the list where it was" "SCROLLED-TOGGLE kept$"
+logged "a new search starts the list from the top" "SCROLLED-SEARCH rows=40 top=true$"
 
 echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))
