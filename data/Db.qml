@@ -67,10 +67,11 @@ QtObject {
         return message
     }
 
-    // The panel answers added, statusChanged, itemDeleted, historyCleared,
-    // failed and writeFailed as if its user acted: it moves the selection, which commits the
-    // open edit, and shows a toast. Writes a script makes inside run() reload
-    // the views but emit none of them.
+    // The panel answers added, statusChanged, itemDeleted, historyCleared and
+    // failed as if its user acted: it moves the selection, which commits the
+    // open edit, and shows a toast. It answers writeFailed by giving the text
+    // back to the editor. Writes a script makes inside run() reload the views
+    // but emit none of them.
     property bool _fromScript: false
     function fromScript(run) {
         root._fromScript = true
@@ -136,10 +137,15 @@ QtObject {
                 return
             }
             root.items = rows
-            root.itemsUpdated(rows)
+            if (root.allItemsProcess.running || root._allItemsStale) root._itemsPending = true
+            else root.itemsUpdated(rows)
         }
     }
 
+    // itemsUpdated waits for the allItems read of the same reload, so the
+    // panel never judges a row missing from a filtered list against allItems
+    // from before the change.
+    property bool _itemsPending: false
     property bool _allItemsStale: false
     property Process allItemsProcess: Process {
         stdout: StdioCollector {
@@ -152,13 +158,17 @@ QtObject {
         }
         onExited: function(exitCode) {
             var rows = root._parsed("all items", exitCode, allItemsStdout, allItemsStderr, Db.parseRows)
-            if (rows === null) return
             if (root._allItemsStale) {
                 Qt.callLater(root.listAll)
                 return
             }
-            root.allItems = rows
-            root.allItemsLoaded = true
+            if (rows !== null) {
+                root.allItems = rows
+                root.allItemsLoaded = true
+            }
+            if (!root._itemsPending) return
+            root._itemsPending = false
+            root.itemsUpdated(root.items)
         }
     }
 

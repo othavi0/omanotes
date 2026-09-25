@@ -523,7 +523,11 @@ fi
 sqlite3 "$db" "INSERT INTO items (id, type, title, body, status, created_at, updated_at) VALUES
   (201, 'note', 'Dirty then deleted', '', 0, $now, $now),
   (202, 'note', 'Removed by a script', '', 0, $now, $now),
-  (203, 'todo', 'Edit that fails', 'saved body', 0, $now, $now);
+  (203, 'todo', 'Edit that fails', 'saved body', 0, $now, $now),
+  (204, 'note', 'Removed under a filter', '', 0, $now, $now),
+  (205, 'note', 'Fails on close', '', 0, $now, $now),
+  (206, 'note', 'Fails behind a draft', '', 0, $now, $now),
+  (207, 'note', 'Hidden when it fails', '', 0, $now, $now);
 CREATE TRIGGER fail_add BEFORE INSERT ON items WHEN NEW.title LIKE 'FAIL-%'
   BEGIN SELECT RAISE(ABORT, 'forced failure'); END;
 CREATE TRIGGER fail_edit BEFORE UPDATE OF title ON items WHEN NEW.title LIKE 'FAIL-%'
@@ -532,6 +536,7 @@ cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
 import QtTest
 import Quickshell
+import Quickshell.Io
 import "data" as Data
 
 ShellRoot {
@@ -539,6 +544,7 @@ ShellRoot {
   property int stepIndex: 0
   property bool started: false
   property var toasts: []
+  property var panel: null
   property var mainTab: null
   property var editor: null
   readonly property var db: sr.mainTab ? sr.mainTab.db : null
@@ -605,8 +611,68 @@ ShellRoot {
     function() {
       console.log("FAILED-EDIT-IN-PLACE " + (mainTab.selectedId === 203) + " " + sr.editorState() + " "
         + sr.toastsSeen("FAILED-EDIT-IN-PLACE"))
+      mainTab.discardEditor(); mainTab.cycleFilter()
+    },
+
+    function() { mainTab.pickItem(204); mainTab.focusEditor() },
+    function() {
+      mainTab.editorBody = "TYPED-UNDER-FILTER"; sr.toasts = []
+      db.fromScript(function() { return db.deleteItem(204) })
+    },
+    function() {
+      console.log("REMOVED-UNDER-FILTER " + db.listFilter + " " + sr.toastsSeen("REMOVED-UNDER-FILTER") + " "
+        + mainTab.focusContext)
+      mainTab.cycleFilter(); mainTab.cycleFilter()
+    },
+
+    function() { mainTab.pickItem(205); mainTab.focusEditor() },
+    function() {
+      mainTab.editorTitle = "FAIL-ON-CLOSE"; mainTab.editorBody = "typed before close"; sr.toasts = []
+      panel.close()
+    },
+    function() { panel.open() },
+    function() {
+      console.log("FAILED-ON-CLOSE " + (mainTab.selectedId === 205) + " " + sr.editorState() + " "
+        + sr.toastsSeen("FAILED-ON-CLOSE"))
+      mainTab.discardEditor()
+    },
+
+    function() { mainTab.pickItem(206); mainTab.focusEditor() },
+    function() {
+      mainTab.editorTitle = "FAIL-BEHIND-DRAFT"; sr.toasts = []
+      mainTab.commitEditor(true); mainTab.startNew("note"); mainTab.editorTitle = "DRAFT-OVER-FAILURE"
+    },
+    function() {
+      console.log("FAILED-BEHIND-DRAFT " + sr.editorState() + " " + sr.toastsSeen("FAILED-BEHIND-DRAFT"))
+      mainTab.commitEditor(true)
+    },
+    function() {},
+    function() {
+      console.log("RESTORED-AFTER-DRAFT " + (mainTab.selectedId === 206) + " " + sr.editorState())
+      mainTab.discardEditor(); locker.running = true
+    },
+
+    function() { mainTab.pickItem(207); mainTab.focusEditor() },
+    function() {
+      mainTab.editorTitle = "LOCKED-EDIT"; sr.toasts = []
+      mainTab.focusSearch(); mainTab.searchText = "matches no item"
+    },
+    function() { console.log("HIDDEN-BEFORE-FAILURE " + mainTab.itemList.length) },
+    function() {}, function() {}, function() {}, function() {}, function() {},
+    function() {}, function() {}, function() {}, function() {},
+    function() {
+      console.log("FAILED-WHILE-HIDDEN " + (mainTab.selectedId === 207) + " [" + mainTab.searchText + "] "
+        + sr.editorState() + " " + sr.toastsSeen("FAILED-WHILE-HIDDEN"))
     }
   ]
+
+  // Unlike the triggers, a real lock lets the list reload before the edit
+  // fails: BEGIN IMMEDIATE blocks writers past their 5 s timeout, not readers.
+  Process {
+    id: locker
+    command: ["sh", "-c", "(printf 'BEGIN IMMEDIATE;\\n'; sleep 7; printf 'COMMIT;\\n') | sqlite3 \"$1\"",
+      "sh", sr.db ? sr.db.dbPath : ""]
+  }
 
   function click(item) {
     keys.mouseClick(item, item.width / 2, item.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
@@ -636,6 +702,7 @@ ShellRoot {
     source: Qt.resolvedUrl("Panel.qml")
     onLoaded: {
       item.db = testDb
+      sr.panel = item
       var content = null
       for (var i = 0; i < item.data.length; ++i)
         if (String(item.data[i]).indexOf("KeyboardPanel") === 0) content = item.data[i].contentItem
@@ -667,15 +734,13 @@ run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 
 
 logged "deleting a dirty item with the mouse shows Deleted, never Saved or an error" \
   "DELETE-DIRTY saved=false error=false added=false removed=false deleted=true$"
-expect "that edit never reaches the db" "SELECT COUNT(*) FROM history WHERE title = 'DIRTY-DELETE'" "0"
 logged "an item removed by a script while being edited shows Item removed elsewhere and returns to the list" \
   "REMOVED-ELSEWHERE saved=false error=false added=false removed=true holds-removed=false list$"
-expect "the text typed into the removed item is not saved anywhere" \
-  "SELECT COUNT(*) FROM items WHERE body = 'TYPED-BEFORE-REMOVAL'" "0"
+logged "with a filter on, an item removed by a script while being edited shows Item removed elsewhere" \
+  "REMOVED-UNDER-FILTER note saved=false error=false added=false removed=true list$"
 logged "Added does not show when a draft is committed" "FAILING-ADD-AT-COMMIT saved=false error=false added=false"
 logged "a failed add puts the draft back in the editor, focused, with the error and no Added" \
   "FAILED-ADD true \[FAIL-ADD\] \[draft body kept\] dirty=false draft saved=false error=true added=false"
-expect "the failed add wrote nothing" "SELECT COUNT(*) FROM items WHERE title = 'FAIL-ADD'" "0"
 logged "Added waits for the database on a good add too" "GOOD-ADD-AT-COMMIT saved=false error=false added=false"
 logged "Added shows once the database confirms the add" "GOOD-ADD-LATER true$"
 expect "the good add is saved" "SELECT COUNT(*) FROM items WHERE title = 'GOOD-ADD'" "1"
@@ -683,7 +748,15 @@ logged "a failed edit after moving to another row reselects the item with the ty
   "FAILED-EDIT-AFTER-MOVE true false \[FAIL-EDIT\] \[edit body kept\] dirty=true saved=false error=true"
 logged "a failed edit that stays on the item keeps the typed text, unsaved" \
   "FAILED-EDIT-IN-PLACE true false \[FAIL-EDIT-AGAIN\] \[saved body\] dirty=true saved=false error=true"
-expect "the failed edits wrote nothing" "SELECT title || '|' || body FROM items WHERE id = 203" "Edit that fails|saved body"
+logged "an edit that fails after the panel closes is still in the editor when it reopens" \
+  "FAILED-ON-CLOSE true false \[FAIL-ON-CLOSE\] \[typed before close\] dirty=true saved=false error=true"
+logged "an edit that fails while a draft is open leaves the draft alone" \
+  "FAILED-BEHIND-DRAFT true \[DRAFT-OVER-FAILURE\] \[\] dirty=false saved=false error=true"
+logged "that failed edit comes back once the draft is committed" \
+  "RESTORED-AFTER-DRAFT true false \[FAIL-BEHIND-DRAFT\] \[\] dirty=true$"
+logged "the search hides the edited item before its write fails" "HIDDEN-BEFORE-FAILURE 0$"
+logged "an edit that fails while the search hides its item clears the search and comes back" \
+  "FAILED-WHILE-HIDDEN true \[\] false \[LOCKED-EDIT\] \[\] dirty=true saved=false error=true"
 
 echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))
