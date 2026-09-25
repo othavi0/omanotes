@@ -7,7 +7,7 @@ Omarchy shell bar-widget plugin (Quickshell/QML): notes and todos in one list, a
 - `BarWidget.qml` is the plugin entry point, the popout identity and the IPC handler. It loads `Panel.qml`.
 - `data/Db.qml` runs every database operation, and `data/Db.js` builds all SQL and parses results.
 - `ui/` holds the tabs, the editor and the panel's own controls. `ui/Item.js` holds the wording that depends on type and status.
-- `test/` has Node unit tests for the `.pragma library` files and two offscreen Quickshell scripts.
+- `test/` has Node unit tests for the `.pragma library` files and four offscreen Quickshell scripts: `render.sh` checks control heights, `behavior.sh` drives `MainTab`, `panel.sh` drives `BarWidget` and `Panel` through IPC, and `teardown.sh` checks that `panel.sh` leaves no `qs` running when it fails.
 
 ## Commands
 
