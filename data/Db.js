@@ -165,27 +165,45 @@ function clearHistorySql() {
   return "DELETE FROM history"
 }
 
-// A string rather than a .sql file: QML file:// and qs:// VFS URLs cannot be
-// handed to the sqlite3 CLI, so init() must not need a filesystem path.
-var SCHEMA = "CREATE TABLE IF NOT EXISTS items ("
-  + "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-  + "  type TEXT NOT NULL,"
-  + "  title TEXT NOT NULL,"
-  + "  body TEXT,"
-  + "  status INTEGER NOT NULL DEFAULT 0,"
-  + "  created_at INTEGER NOT NULL,"
-  + "  updated_at INTEGER NOT NULL"
-  + ");"
-  + "CREATE INDEX IF NOT EXISTS idx_items_sort ON items(status, updated_at DESC);"
-  + "CREATE INDEX IF NOT EXISTS idx_items_type_status ON items(type, status);"
-  + "CREATE TABLE IF NOT EXISTS history ("
-  + "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-  + "  type TEXT NOT NULL,"
-  + "  title TEXT NOT NULL,"
-  + "  action TEXT NOT NULL,"
-  + "  ts INTEGER NOT NULL"
-  + ");"
-  + "CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts DESC);"
+// The schema, as the steps that build it. Entry i takes a database from
+// user_version i to i + 1, one statement per element (ADR-0001). A shipped
+// entry never changes: a schema change appends one (ADR-0011). The first
+// entry keeps IF NOT EXISTS because databases made before versioning have its
+// tables at version 0.
+var MIGRATIONS = [
+  [
+    "CREATE TABLE IF NOT EXISTS items ("
+      + "id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL, body TEXT,"
+      + " status INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS idx_items_sort ON items(status, updated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_items_type_status ON items(type, status)",
+    "CREATE TABLE IF NOT EXISTS history ("
+      + "id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL,"
+      + " action TEXT NOT NULL, ts INTEGER NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts DESC)"
+  ]
+]
+
+var VERSION_CHANGED = "version_changed"
+
+// The migrations above `version`, in one transaction that ends at the current
+// version, or [] when there are none. Every widget starts its own Db, so
+// another start-up can migrate between the version read and this write: the
+// first statements then fail with VERSION_CHANGED and nothing is written.
+function migrateSql(version) {
+  var steps = []
+  for (var v = version; v < MIGRATIONS.length; v++) steps = steps.concat(MIGRATIONS[v])
+  if (steps.length === 0) return []
+  return transaction([
+    "CREATE TEMP TABLE migrating_from (version INTEGER CONSTRAINT " + VERSION_CHANGED
+      + " CHECK (version = " + version + "))",
+    "INSERT INTO migrating_from SELECT user_version FROM pragma_user_version"
+  ].concat(steps, ["PRAGMA user_version = " + MIGRATIONS.length]))
+}
+
+function migrationRaced(stderr) {
+  return errorText(stderr, 1) === "CHECK constraint failed: " + VERSION_CHANGED
+}
 
 // argv for a read or write via the sqlite3 CLI. `sql` is one statement or a
 // transaction() array, one argument per statement. `json` enables -json output.
@@ -203,12 +221,18 @@ function sqliteCommand(dbPath, sql, json) {
   return cmd.concat(String(dbPath), ".timeout 5000", sql)
 }
 
-// argv for start-up: ensure the data dir exists, then apply the schema through
-// sqliteCommand, so it waits on a locked db like every other write ("$@" is
-// quoted, so the shell cannot mangle the SQL).
+// argv for start-up: ensure the data dir exists, then read the schema version
+// through sqliteCommand, so it waits on a locked db like every other command
+// ("$@" is quoted, so the shell cannot mangle the SQL).
 function initCommand(dataDir, dbPath) {
   return ["bash", "-c", 'mkdir -p -- "$0" && exec "$@"', String(dataDir)]
-    .concat(sqliteCommand(dbPath, SCHEMA, false))
+    .concat(sqliteCommand(dbPath, "PRAGMA user_version", false))
+}
+
+function parseVersion(text) {
+  var t = String(text || "").trim()
+  if (!/^\d+$/.test(t)) throw new Error("unreadable sqlite3 output")
+  return Number(t)
 }
 
 // Parse a `sqlite3 -json` result into an array of row objects. An empty result
