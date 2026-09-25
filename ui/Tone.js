@@ -5,3 +5,5 @@
 // text, so the panel fades its foreground instead (ADR-0008).
 var secondary = 0.62
 var muted = 0.45
+// The row a drag lifted out of the list, left behind as a trace.
+var lifted = 0.35

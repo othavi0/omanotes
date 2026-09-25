@@ -4,7 +4,7 @@ import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const Item = loadQmlLib(new URL("../ui/Item.js", import.meta.url), [
   "isTodo", "isReadOrCompleted", "statusLabel", "toggleVerb", "statusToast", "relativeAge", "indexOfId",
-  "historyLabel", "neighbourId", "isRemoved"
+  "historyLabel", "neighbourId", "isRemoved", "dropMove"
 ])
 
 const noteUnread = { type: "note", status: 0, title: "Ideas" }
@@ -120,4 +120,34 @@ test("isRemoved: a filtered list defers to every row, once loaded", () => {
   assert.equal(Item.isRemoved(12, listed, true, [{ id: 7 }]), true)
   assert.equal(Item.isRemoved(12, listed, true, null), false)
   assert.equal(Item.isRemoved(7, listed, true, []), false)
+})
+
+// The visible rows: pending 1, 2, 3, then completed 4, 5.
+const shown = [
+  { id: 1, status: 0 }, { id: 2, status: 0 }, { id: 3, status: 0 }, { id: 4, status: 1 }, { id: 5, status: 1 }
+]
+
+test("dropMove: a drop at a slot of the block lands before the visible row there", () => {
+  assert.deepEqual(Item.dropMove(shown, 3, 0), { anchorId: 1, after: false })
+  assert.deepEqual(Item.dropMove(shown, 1, 2), { anchorId: 3, after: false })
+  assert.deepEqual(Item.dropMove(shown, 5, 0), { anchorId: 4, after: false })
+})
+
+test("dropMove: a drop below the block's last row lands after it", () => {
+  assert.deepEqual(Item.dropMove(shown, 1, 3), { anchorId: 3, after: true })
+  assert.deepEqual(Item.dropMove(shown, 4, 2), { anchorId: 5, after: true })
+})
+
+test("dropMove: a drop right above or right below the item itself moves nothing", () => {
+  assert.equal(Item.dropMove(shown, 2, 1), null)
+  assert.equal(Item.dropMove(shown, 2, 2), null)
+  assert.equal(Item.dropMove(shown, 3, 3), null)
+  assert.equal(Item.dropMove(shown, 4, 0), null)
+})
+
+test("dropMove: a slot outside the block is clamped to it, and a missing item moves nothing", () => {
+  assert.deepEqual(Item.dropMove(shown, 1, 9), { anchorId: 3, after: true })
+  assert.deepEqual(Item.dropMove(shown, 5, -4), { anchorId: 4, after: false })
+  assert.equal(Item.dropMove(shown, 9, 0), null)
+  assert.equal(Item.dropMove([{ id: 1, status: 0 }], 1, 0), null)
 })

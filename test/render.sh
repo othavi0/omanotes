@@ -42,7 +42,7 @@ ShellRoot {
   property int sceneIndex: 0
   readonly property var scenes: Quickshell.env("SCENES").split(",")
   // A scene that finds fewer controls than this measured nothing.
-  readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3, menu: 11, trash: 4 })
+  readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3, menu: 11, trash: 4, drag: 9 })
   readonly property string longTitle: "Renew the domain before the card on file expires, then move the DNS records to the new registrar, check the MX entries, and write down every step so the next renewal takes five minutes instead of an afternoon"
   readonly property string outDir: Quickshell.env("OUT_DIR")
 
@@ -104,6 +104,11 @@ ShellRoot {
     } else if (sceneName === "menu") {
       var entries = sr.find(frame, /^ActionButton$/).map(function(b) { return b.item.text })
       sr.expect(sceneName, entries.indexOf("Note") >= 0 && entries.indexOf("Todo") >= 0, "the New menu shows Note and Todo")
+    } else if (sceneName === "drag") {
+      var shown = function(name) { return sr.find(itemsTab, /^QQuickRectangle/).filter(function(r) { return r.item.objectName === name }).length }
+      var faded = sr.find(itemsTab, /^ItemRow$/).filter(function(r) { return r.item.opacity < 1 })
+      sr.expect(sceneName, shown("dragFloat") === 1 && shown("dropLine") === 1 && faded.length === 1,
+        "a drag shows the floating copy, the drop line and one faded row")
     } else if (sceneName === "trash") {
       var armed = sr.find(historyTab, /^ActionButton$/).filter(function(b) { return b.item.text === "Confirm" })
       sr.expect(sceneName, armed.length === 1, "one armed trash reads Confirm")
@@ -166,6 +171,7 @@ ShellRoot {
     else if (name === "toast") toast.show("Deleted — " + sr.longTitle)
     else if (name === "menu") sr.newButton().clicked()
     else if (name === "trash") historyTab.armDelete(Number(db.history[1].id))
+    else if (name === "drag") itemsTab.dragTo(itemsTab.itemList[2], Style.space(60), itemsTab.rowStride * 0.9)
     settleTimer.restart()
   }
 
@@ -186,6 +192,7 @@ ShellRoot {
     sr.checkLayout(name)
     frame.grabToImage(function(r) {
       r.saveToFile(sr.outDir + "/" + name + ".png")
+      itemsTab.endDrag()
       console.log("SHOT " + name + " saved")
       sr.nextScene()
     })
@@ -245,7 +252,7 @@ if [[ -n "${1:-}" ]]; then
   echo "output dir: $out_dir"
 fi
 status=0
-SCENES=browse,draft,empty,toast,history,menu,trash OUT_DIR="$out_dir" run_qs || status=1
+SCENES=browse,draft,empty,toast,history,menu,trash,drag OUT_DIR="$out_dir" run_qs || status=1
 sqlite3 "$db" "DELETE FROM items; DELETE FROM history;"
 SCENES=blank,historyblank OUT_DIR="$out_dir" run_qs || status=1
 exit "$status"

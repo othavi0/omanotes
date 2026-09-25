@@ -14,7 +14,7 @@ const NAMES = [
   "updateSql", "deleteItemSql", "convertTypeSql", "historySql", "deleteHistorySql",
   "clearHistorySql", "sqliteCommand", "initCommand", "MIGRATIONS", "migrateSql",
   "parseVersion", "migrationRaced", "parseRows", "parseCounts", "parseId", "parseFound",
-  "errorText"
+  "errorText", "moveSql", "movedRows"
 ]
 const Db = loadQmlLib(DB_JS, NAMES)
 
@@ -151,14 +151,22 @@ function ids(rows) {
   return rows.map((r) => r.id)
 }
 
-// An item from before the search copy, as start-up leaves it. The seeded
-// texts are plain ASCII, so the copy is the text in lower case.
-function withSearch(item) {
-  return {
+// The order the list showed before items had a position.
+function byRecency(a, b) {
+  return a.status - b.status || b.updated_at - a.updated_at || b.id - a.id
+}
+
+// Items from before the search copy and the position, as start-up leaves
+// them. The seeded texts are plain ASCII, so the copy is the text in lower
+// case, and each block is numbered from 1 in the order the list showed.
+function migrated(items) {
+  const shown = [...items].sort(byRecency)
+  return items.map((item) => ({
     search_title: item.title.toLowerCase(),
     search_body: item.body === null ? null : item.body.toLowerCase(),
+    position: shown.filter((other) => other.status === item.status).indexOf(item) + 1,
     ...item
-  }
+  }))
 }
 
 const TABLES = "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name"
@@ -175,7 +183,7 @@ test("start-up takes a version 0 database with rows to the current version and k
   const before = db.snapshot()
   start(db.path)
   assert.equal(db.version(), Db.MIGRATIONS.length)
-  assert.deepEqual(db.snapshot(), { items: before.items.map(withSearch), history: before.history })
+  assert.deepEqual(db.snapshot(), { items: migrated(before.items), history: before.history })
 })
 
 test("a second start-up changes nothing", (t) => {
@@ -199,7 +207,7 @@ test("a migration appended to MIGRATIONS runs once, on the databases below its v
     start(db.path, undefined, Next)
     assert.equal(db.version(), Db.MIGRATIONS.length + 1)
     assert.deepEqual(db.snapshot(), {
-      items: before.items.map((item) => ({ ...withSearch(item), pinned: 0 })),
+      items: migrated(before.items).map((item) => ({ ...item, pinned: 0 })),
       history: before.history
     })
     const bytes = db.bytes()
@@ -267,9 +275,139 @@ test("sqliteCommand: a write waits for a lock held by another process", { timeou
   assert.deepEqual(ids(db.history()), [2, 3])
 })
 
-test("listSql: all items, status 0 (unread or pending) first, then most recent", (t) => {
+test("listSql: all items, status 0 (unread or pending) first, then each block in its order", (t) => {
   const db = seeded(t)
   assert.deepEqual(ids(db.read(Db.listSql("all", ""))), [2, 1, 3, 5, 4])
+})
+
+function order(db, filterType = "all") {
+  return ids(db.read(Db.listSql(filterType, "")))
+}
+
+function positions(db, status) {
+  return db.read("SELECT id, position FROM items WHERE status = " + status + " ORDER BY position")
+}
+
+test("the migration numbers each block in the order the list showed, the newest id first on a tie", (t) => {
+  const db = seed(openV0Db(t))
+  db.write("INSERT INTO items (id, type, title, body, status, created_at, updated_at) VALUES"
+    + " (6, 'note', 'Same second as 2', NULL, 0, " + (T0 - 720) + ", " + (T0 - 720) + "),"
+    + " (7, 'todo', 'Same second as 4', NULL, 1, " + (T0 - 90000) + ", " + (T0 - 90000) + ")")
+  const shown = ids(db.read("SELECT id FROM items ORDER BY status ASC, updated_at DESC, id DESC"))
+  start(db.path)
+  assert.deepEqual(order(db), shown)
+  assert.deepEqual(order(db), [6, 2, 1, 3, 5, 7, 4])
+  assert.deepEqual(positions(db, 0), [{ id: 6, position: 1 }, { id: 2, position: 2 }, { id: 1, position: 3 }, { id: 3, position: 4 }])
+  assert.deepEqual(positions(db, 1), [{ id: 5, position: 1 }, { id: 7, position: 2 }, { id: 4, position: 3 }])
+})
+
+test("addSql puts a new item at the top of the first block, whatever the other items' times", (t) => {
+  const db = seeded(t)
+  db.write("UPDATE items SET updated_at = " + (T0 + 100) + " WHERE id = 2")
+  const id = Db.parseId(db.write(atT0(() => Db.addSql("note", "Buy milk", ""))))
+  assert.deepEqual(order(db), [id, 2, 1, 3, 5, 4])
+  const other = Db.parseId(db.write(atT0(() => Db.addSql("todo", "Call the bank", ""))))
+  assert.deepEqual(order(db), [other, id, 2, 1, 3, 5, 4])
+})
+
+test("addSql puts a new item above items reopened before it", (t) => {
+  const db = seeded(t)
+  db.write(atT0(() => Db.setStatusSql(5, 0)))
+  db.write(atT0(() => Db.setStatusSql(4, 0)))
+  const id = Db.parseId(db.write(atT0(() => Db.addSql("note", "Buy milk", ""))))
+  assert.deepEqual(order(db), [id, 4, 5, 2, 1, 3])
+})
+
+test("setStatusSql: a read or completed item goes to the top of the second block, a reopened one to the top of the first", (t) => {
+  const db = seeded(t)
+  db.write(Db.moveSql(4, 5, false))
+  assert.deepEqual(order(db), [2, 1, 3, 4, 5])
+  db.write(atT0(() => Db.setStatusSql(3, 1)))
+  assert.deepEqual(order(db), [2, 1, 3, 4, 5])
+  assert.deepEqual(ids(positions(db, 1)), [3, 4, 5])
+  db.write(atT0(() => Db.setStatusSql(5, 0)))
+  assert.deepEqual(order(db), [5, 2, 1, 3, 4])
+  db.write(atT0(() => Db.setStatusSql(1, 1)))
+  assert.deepEqual(order(db), [5, 2, 1, 3, 4])
+  assert.deepEqual(ids(positions(db, 1)), [1, 3, 4])
+})
+
+test("setStatusSql: setting the status an item already has leaves it in place", (t) => {
+  const db = seeded(t)
+  db.write(Db.moveSql(3, 2, false))
+  db.write(atT0(() => Db.setStatusSql(1, 0)))
+  db.write(atT0(() => Db.setStatusSql(4, 1)))
+  assert.deepEqual(order(db), [3, 2, 1, 5, 4])
+})
+
+test("updateSql and convertTypeSql leave an item where it is", (t) => {
+  const db = seeded(t)
+  const before = db.read("SELECT id, position FROM items ORDER BY id")
+  db.write(atT0(() => Db.updateSql(3, "Answer the review", "by Friday")))
+  db.write(atT0(() => Db.convertTypeSql(3)))
+  db.write(atT0(() => Db.updateSql(4, "Buy tea", "")))
+  db.write(atT0(() => Db.convertTypeSql(4)))
+  assert.deepEqual(order(db), [2, 1, 3, 5, 4])
+  assert.deepEqual(db.read("SELECT id, position FROM items ORDER BY id"), before)
+})
+
+test("moveSql: puts an item just before or just after another of its block", (t) => {
+  const db = seeded(t)
+  assert.equal(Db.parseFound(db.write(Db.moveSql(3, 2, false))), true)
+  assert.deepEqual(order(db), [3, 2, 1, 5, 4])
+  db.write(Db.moveSql(3, 1, true))
+  assert.deepEqual(order(db), [2, 1, 3, 5, 4])
+  db.write(Db.moveSql(2, 3, true))
+  assert.deepEqual(order(db), [1, 3, 2, 5, 4])
+  db.write(Db.moveSql(4, 5, false))
+  assert.deepEqual(order(db), [1, 3, 2, 4, 5])
+})
+
+test("moveSql: renumbers only the item's block and changes nothing else", (t) => {
+  const db = seeded(t)
+  const before = db.snapshot()
+  db.write(Db.moveSql(3, 2, false))
+  assert.deepEqual(positions(db, 0), [{ id: 3, position: 1 }, { id: 2, position: 2 }, { id: 1, position: 3 }])
+  const after = db.snapshot()
+  assert.deepEqual(after.history, before.history)
+  const strip = (items) => items.map(({ position, ...rest }) => rest)
+  assert.deepEqual(strip(after.items), strip(before.items))
+  assert.deepEqual(after.items.filter((i) => i.status === 1), before.items.filter((i) => i.status === 1))
+})
+
+test("moveSql: a move across the two blocks, onto the item itself or with a missing id writes nothing", (t) => {
+  const db = seeded(t)
+  const before = db.snapshot()
+  for (const sql of [Db.moveSql(5, 2, false), Db.moveSql(2, 4, true), Db.moveSql(2, 2, false),
+    Db.moveSql(99, 2, false), Db.moveSql(2, 99, true)]) {
+    assert.equal(Db.parseFound(db.write(sql)), false)
+    assert.deepEqual(db.snapshot(), before)
+  }
+})
+
+test("moveSql: a move among the notes keeps the todos where they were", (t) => {
+  const db = seeded(t)
+  const note = Db.parseId(db.write(atT0(() => Db.addSql("note", "Buy milk", ""))))
+  assert.deepEqual(order(db), [note, 2, 1, 3, 5, 4])
+  assert.deepEqual(order(db, "note"), [note, 1, 4])
+  db.write(Db.moveSql(1, note, false))
+  assert.deepEqual(order(db, "note"), [1, note, 4])
+  assert.deepEqual(order(db), [1, note, 2, 3, 5, 4])
+  db.write(Db.moveSql(1, note, true))
+  assert.deepEqual(order(db), [note, 1, 2, 3, 5, 4])
+  db.write(Db.moveSql(note, 1, true))
+  assert.deepEqual(order(db), [1, note, 2, 3, 5, 4])
+  assert.deepEqual(order(db, "todo"), [2, 3, 5])
+})
+
+test("movedRows: the list with the item moved before or after another, the same list when either is missing", () => {
+  const rows = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }]
+  assert.deepEqual(ids(Db.movedRows(rows, 3, 1, false)), [3, 1, 2, 4])
+  assert.deepEqual(ids(Db.movedRows(rows, 1, 3, true)), [2, 3, 1, 4])
+  assert.deepEqual(ids(Db.movedRows(rows, "4", "2", true)), [1, 2, 4, 3])
+  assert.deepEqual(ids(Db.movedRows(rows, 9, 1, false)), [1, 2, 3, 4])
+  assert.deepEqual(ids(Db.movedRows(rows, 1, 9, false)), [1, 2, 3, 4])
+  assert.deepEqual(ids(rows), [1, 2, 3, 4])
 })
 
 test("listSql: type filter", (t) => {
@@ -414,7 +552,7 @@ test("addSql: stores the item, prints its id and logs it as added", (t) => {
   const id = Db.parseId(db.write(atT0(() => Db.addSql("todo", "Jane's list", "milk, 'eggs'"))))
   assert.equal(id, 6)
   assert.deepEqual(db.item(id), {
-    id: 6, type: "todo", title: "Jane's list", body: "milk, 'eggs'", status: 0, created_at: T0, updated_at: T0,
+    id: 6, type: "todo", title: "Jane's list", body: "milk, 'eggs'", status: 0, position: 0, created_at: T0, updated_at: T0,
     search_title: "jane's list", search_body: "milk, 'eggs'"
   })
   assert.deepEqual(db.history().at(-1), { id: 4, type: "todo", title: "Jane's list", action: "added", ts: T0 })
@@ -482,7 +620,7 @@ test("sqliteCommand: the user's sqliterc does not change what reads and writes p
   assert.equal(Db.parseFound(db.write(atT0(() => Db.convertTypeSql(1)))), true)
   assert.equal(Db.parseFound(db.write(atT0(() => Db.deleteItemSql(4)))), true)
   assert.equal(Db.parseFound(db.write(atT0(() => Db.setStatusSql(99, 1)))), false)
-  assert.deepEqual(ids(db.read(Db.listSql("all", ""))), [6, 3, 1, 2, 5])
+  assert.deepEqual(ids(db.read(Db.listSql("all", ""))), [6, 1, 3, 2, 5])
 })
 
 test("updateSql: new title and body, logged with the new title", (t) => {
@@ -524,7 +662,9 @@ test("an id that is not a whole number is refused before any SQL is built", () =
       () => Db.updateSql(id, "x", "y"),
       () => Db.deleteItemSql(id),
       () => Db.convertTypeSql(id),
-      () => Db.deleteHistorySql(id)
+      () => Db.deleteHistorySql(id),
+      () => Db.moveSql(id, 1, false),
+      () => Db.moveSql(1, id, true)
     ]) {
       assert.throws(build, { message: "invalid id: " + id })
     }

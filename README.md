@@ -6,7 +6,7 @@ Notes and todos in one panel on the Omarchy bar. Everything is stored in a local
 
 ## Features
 
-- One list for notes and todos. Unread notes and pending todos sort first, then the most recently updated.
+- One list for notes and todos. Unread notes and pending todos come first, read notes and completed todos after them, and you set the order inside each of those two blocks by dragging.
 - The right-hand pane is the editor: a title field and a body. Leaving the editor saves it.
 - Driven by the mouse, with Esc to close the panel.
 - A History tab that logs every change (`added`, `edited`, `completed`, `reopened`, `converted`, `deleted`). Entries can be deleted one by one or cleared.
@@ -31,6 +31,7 @@ Everything is on screen. `Esc` closes the panel from anywhere in it, and closing
 
 - **New** opens a menu with Note and Todo. Each opens a draft of that type in the editor.
 - Click a row to open it in the editor. Its box toggles the status. The search field and the All, Notes and Todos buttons narrow the list.
+- Drag a row, from anywhere on it, to put it somewhere else in its block. The drag starts after the pointer moves 6 px, so a click still opens the row, or toggles it on the status icon. A new or reopened item goes to the top of the first block, and an item you mark read or complete goes to the top of the second. Editing or converting an item leaves it where it is. In Notes or Todos, a dropped row lands next to the rows you see and the hidden ones keep their places. Rows don't drag while the search field has text.
 - The editor saves when you leave it: another row, the Save button, another tab or closing the panel. Discard throws the changes away. In the title, `Tab` and `Enter` move to the body; in the body, `Enter` starts a new line and `Shift+Tab` goes back to the title.
 - A draft with a body and no title can't be saved. It stays open with the warning "New item needs a title" until you type a title or discard it.
 - The buttons under the editor toggle the status, convert between note and todo, copy the item and delete it.
@@ -53,7 +54,7 @@ qs -p /usr/share/omarchy/shell ipc call scratchpad listTodos
 | Method | What it does | Replies |
 |---|---|---|
 | `addNote(title, body)`, `addTodo(title, body)` | Adds a note or a todo | `{"ok":true}`, `{"ok":false,"error":"title is required"}` for an empty title |
-| `listNotes()`, `listTodos()` | Lists every note or every todo, from the bar widget's last reload | A JSON array of `{id, type, title, body, status}` |
+| `listNotes()`, `listTodos()` | Lists every note or every todo in the panel's order, from the bar widget's last reload | A JSON array of `{id, type, title, body, status}` |
 | `toggleStatus(id)` | Toggles the status of any item, note or todo | `{"ok":true}`, `{"ok":false,"error":"item not found: <id>"}` |
 | `toggleTodo(id)` | The old name of `toggleStatus`, kept for existing scripts. It also toggles notes | Same as `toggleStatus` |
 | `remove(id)` | Deletes an item | `{"ok":true}`, `{"ok":false,"error":"item not found: <id>"}` |
@@ -67,7 +68,7 @@ Writes are asynchronous. `{"ok":true}` means the write is queued. A write that f
 
 ## Data
 
-The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is the `MIGRATIONS` list in `data/Db.js`: an `items` table for notes and todos, a `history` table, and a folded copy of each title and body for search. At start the plugin runs every migration above the database's `user_version` in one transaction (ADR-0011), and the test harness seeds its database the same way.
+The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is the `MIGRATIONS` list in `data/Db.js`: an `items` table for notes and todos with a `position` for the order, a `history` table, and a folded copy of each title and body for search. At start the plugin runs every migration above the database's `user_version` in one transaction (ADR-0011), and the test harness seeds its database the same way.
 
 ## Development
 

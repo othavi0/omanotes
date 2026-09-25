@@ -207,7 +207,7 @@ QtObject {
     property bool _writeFromScript: false
     property var _writeQueue: []
     // Writes whose SQL prints Db.CHANGES.
-    readonly property var _oneItemWrites: ["setStatus", "update", "convertType", "deleteItem"]
+    readonly property var _oneItemWrites: ["setStatus", "update", "convertType", "deleteItem", "move"]
 
     property Process writeProcess: Process {
         stdout: StdioCollector {
@@ -418,6 +418,15 @@ QtObject {
     // Emits typeChanged(id).
     function convertType(id) {
         return root._write("convertType", function() { return Db.convertTypeSql(id) }, { id: Number(id) })
+    }
+
+    // Puts the item just before `anchorId`, or just after it when `after`,
+    // inside its block. The list shows the move before the reload confirms it.
+    function move(id, anchorId, after) {
+        var error = root._write("move", function() { return Db.moveSql(id, anchorId, after) },
+            { id: Number(id), anchorId: Number(anchorId), after: !!after })
+        if (error === "") root.items = Db.movedRows(root.items, id, anchorId, after)
+        return error
     }
 
     // Emits itemDeleted(id).
