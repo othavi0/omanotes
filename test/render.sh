@@ -171,7 +171,7 @@ ShellRoot {
 QML
 
 echo "config dir: $cfg_dir"
-if (( $# > 0 )); then
+if [[ -n "${1:-}" ]]; then
   echo "output dir: $out_dir"
 fi
 SCENES=browse,draft,empty,history OUT_DIR="$out_dir" run_qs
