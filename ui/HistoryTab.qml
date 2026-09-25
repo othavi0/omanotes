@@ -14,7 +14,7 @@ import "Tone.js" as Tone
 // Entries are never edited; the user can only delete one or clear them all.
 // Title and row count live in PanelHeader's tab Segment, not here. The Toast
 // is owned by Panel.qml and injected here.
-Item {
+FocusScope {
     id: root
 
     property QtObject db: null              // Panel's Data.Db instance
@@ -263,7 +263,7 @@ Item {
                 urgent: root.deleteArmed || root.clearArmed
                 hints: root.deleteArmed ? [["d", "press again to delete"]]
                     : root.clearArmed ? [["c", "press again to clear"]]
-                    : [["j/k", "move"], ["d d", "delete"], ["c c", "clear"], ["Esc", "close"]]
+                    : [["j/k", "move"], ["d d", "delete"], ["c c", "clear"], ["1/2", "tabs"], ["Esc", "close"]]
             }
 
             ActionButton {

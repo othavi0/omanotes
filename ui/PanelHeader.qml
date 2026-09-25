@@ -40,7 +40,8 @@ RowLayout {
         selected: true
         iconText: Icons.plus
         text: "New"
-        tooltipText: "New item (n)"
+        // n opens a draft only from the Items list.
+        tooltipText: root.activeTab === 0 ? "New item (n)" : ""
         foreground: root.foreground
         onClicked: root.newRequested()
     }

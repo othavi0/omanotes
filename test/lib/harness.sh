@@ -79,10 +79,12 @@ FloatingWindow {
   property bool open: false
   property int contentWidth
   property int contentHeight
+  property Item focusTarget: null
   default property alias contentItem: holder.children
   function fittedContentWidth(width) { return width }
   function fittedContentHeight(height) { return height }
   visible: open
+  onOpenChanged: if (open && focusTarget) Qt.callLater(function() { if (open && focusTarget) focusTarget.forceActiveFocus() })
   implicitWidth: contentWidth
   implicitHeight: contentHeight
   Item { id: holder; anchors.fill: parent }

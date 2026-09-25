@@ -21,34 +21,19 @@ Panel {
     property QtObject db: null
 
     // Reopening the panel reloads as a safety net on top of the watcher.
+    // The tabs are focus scopes: the reset picks the field inside the tab
+    // once, and KeyboardPanel gives the tab keyboard focus when it maps.
     onOpenedChanged: {
         if (!root.opened) {
             mainTab.commitIfDirty()
             return
         }
-        root.activeTab = 0
         root.db.load()
-        root.resetTabFocus()
-        focusPrimeTimer.restart()
+        if (root.activeTab === 0) mainTab.resetFocus()
+        else root.activeTab = 0
     }
     onActiveTabChanged: {
         mainTab.commitIfDirty()
-        root.resetTabFocus()
-    }
-
-    // The popup surface maps a beat after `opened` flips (layer-shell focus
-    // negotiation), so re-prime keyboard focus on a short retry like the
-    // first-party panels do — otherwise the first keystrokes can land nowhere.
-    Timer {
-        id: focusPrimeTimer
-        interval: 120
-        repeat: false
-        onTriggered: if (root.opened) root.resetTabFocus()
-    }
-
-    // Give keyboard focus to whichever tab is showing (the reopen safety net
-    // above supersedes focusing only tab 0).
-    function resetTabFocus() {
         if (root.activeTab === 0) mainTab.resetFocus()
         else historyTab.resetFocus()
     }
@@ -70,11 +55,21 @@ Panel {
         open: root.opened
         contentWidth: panel.fittedContentWidth(Style.space(760))
         contentHeight: panel.fittedContentHeight(Style.space(520))
+        focusTarget: root.activeTab === 0 ? mainTab : historyTab
 
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: Style.space(16)
             spacing: Style.space(12)
+
+            // Keys a tab leaves unhandled bubble up here. Text fields take 1
+            // and 2 as text, so only the lists switch tabs.
+            Keys.onPressed: function(event) {
+                if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return
+                if (event.text !== "1" && event.text !== "2") return
+                root.activeTab = Number(event.text) - 1
+                event.accepted = true
+            }
 
             Ui.PanelHeader {
                 Layout.fillWidth: true
