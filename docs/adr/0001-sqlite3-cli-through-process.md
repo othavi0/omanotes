@@ -5,5 +5,5 @@ Omanotes reads and writes its database by running the `sqlite3` command-line too
 ## Consequences
 
 - SQL travels as text with no parameter binding (ADR-0002).
-- Each write is one SQL string wrapped in `BEGIN; ... COMMIT;`. When a statement in the middle fails, the CLI still runs the ones after it, so the batch is not atomic. The audit of 2026-09-24 reproduced this with a failing middle `INSERT`. Running each statement as its own argument stops at the failure.
+- Each write passes its statements as separate arguments between `BEGIN IMMEDIATE` and `COMMIT` (`transaction` in `data/Db.js`). The CLI stops at the first argument that fails and exits with the transaction open, so SQLite rolls it back and nothing is written. Inside a single argument the CLI keeps running the statements after a failure, which the audit of 2026-09-24 reproduced with a failing middle `INSERT`, so a write never joins its statements into one string.
 - sqlite3 reports errors on stderr. No `Process` in `data/Db.qml` collects stderr yet, so a failed write only shows "sqlite3 exited N".

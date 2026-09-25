@@ -245,6 +245,24 @@ test("a non-numeric id changes no row", (t) => {
   }
 })
 
+for (const [name, build, failOn] of [
+  ["addSql", () => Db.addSql("todo", "Renew the car", ""), "INSERT ON history"],
+  ["setStatusSql", () => Db.setStatusSql(2, 1), "INSERT ON history"],
+  ["updateSql", () => Db.updateSql(2, "Renew the car", "x"), "INSERT ON history"],
+  ["convertTypeSql", () => Db.convertTypeSql(2), "INSERT ON history"],
+  ["deleteItemSql", () => Db.deleteItemSql(2), "DELETE ON items"]
+]) {
+  test(name + ": a failing second change writes nothing", (t) => {
+    const db = seed(openDb(t))
+    db.write("CREATE TRIGGER fail_second BEFORE " + failOn + " BEGIN SELECT RAISE(ABORT, 'forced'); END")
+    const before = db.snapshot()
+    const r = db.run(atT0(build), false)
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /forced/)
+    assert.deepEqual(db.snapshot(), before)
+  })
+}
+
 test("historySql: newest first, capped at 500 rows", (t) => {
   const db = seed(openDb(t))
   assert.deepEqual(ids(db.read(Db.historySql())), [1, 2, 3])

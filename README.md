@@ -49,9 +49,12 @@ Items tab, editor:
 | `Tab` | Move to the body | Save and return to the list |
 | `Shift+Tab` | Save and return to the list | Move to the title |
 | `Esc` | Save and return to the list | Save and return to the list |
+| `Shift+Esc` | Discard and return to the list | Discard and return to the list |
 | `t` | On an empty draft title, switch between note and todo | |
 
-Search field: `Enter`, `Tab` or `Shift+Tab` return to the list, `Esc` clears the search and returns.
+A draft with a body and no title can't be saved. It stays open with the warning "New item needs a title" until you type a title or discard it.
+
+Search field: `Enter`, `Tab` or `Shift+Tab` return to the list, `Esc` clears the search and returns. While a draft is open, they return to the draft's title instead.
 
 History tab: `j` / `k` move, `d` `d` deletes an entry, `c` clears the whole history at once, `Esc` cancels an armed delete or closes the panel.
 
