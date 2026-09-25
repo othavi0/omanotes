@@ -13,7 +13,7 @@ import "Tone.js" as Tone
 //           · n new draft · space/c toggle status · d delete (double-press
 //           to confirm) · / focus search · f cycles All/Notes/Todos
 //           · Esc closes the panel · 1/2 switch tabs (Panel.qml)
-//           · letters ignore Ctrl, Alt and Meta
+//           · every list key ignores Ctrl, Alt and Meta
 //   editor: fields own printable keys · Enter/Tab title→body, body→save+list
 //           · Esc saves (auto-save on leaving) · Shift+Esc discards
 //           · Ctrl+T sets a draft's type to the other of note/todo
@@ -127,6 +127,7 @@ FocusScope {
 
     // Called by Panel.qml when the panel opens or this tab is re-shown.
     function resetFocus() {
+        confirm.cancel()
         if (!editorPane.unsaved) root.refillEditor()
         root.focusList()
     }
@@ -257,8 +258,8 @@ FocusScope {
         // layouts need it to type "/". Caps Lock sends "J" with no
         // modifier at all, so that text is lowered.
         var mods = event.modifiers
-        var text = mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier) ? ""
-            : mods & Qt.ShiftModifier ? event.text : event.text.toLowerCase()
+        if (mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return
+        var text = mods & Qt.ShiftModifier ? event.text : event.text.toLowerCase()
         if (event.key === Qt.Key_Down || text === "j") {
             root.moveSelection(1); event.accepted = true
         } else if (event.key === Qt.Key_Up || text === "k") {

@@ -314,8 +314,64 @@ ShellRoot {
     function() {
       console.log("TWO-IN-TITLE " + panel.activeTab + " [" + itemsTab.editorTitle + "] " + itemsTab.focusContext)
       keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
+    },
+
+    // An empty db._writeKind right after the last d means that d started no delete.
+    function() {
+      sr.type("j"); sr.probeId = itemsTab.selectedId; sr.type("d21")
+      console.log("ITEMS-ARM-AFTER-KEY-SWITCH " + panel.activeTab + " " + itemsTab.deleteArmed + " " + sr.armHintShown())
+      sr.type("d")
+      console.log("ITEMS-D-AFTER-KEY-SWITCH " + itemsTab.deleteArmed + " " + (db._writeKind === ""))
+    },
+    function() {
+      console.log("ITEMS-AFTER-KEY-SWITCH " + (sr.titleOf(sr.probeId) === "missing" ? "deleted" : "kept"))
+      if (itemsTab.deleteArmed) keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+      sr.probeId = itemsTab.selectedId; sr.type("d")
+      sr.click(sr.findByText(header, "History")); sr.click(sr.findByText(header, "Items"))
+      console.log("ITEMS-ARM-AFTER-CLICK-SWITCH " + panel.activeTab + " " + itemsTab.deleteArmed + " " + sr.armHintShown())
+      sr.type("d")
+      console.log("ITEMS-D-AFTER-CLICK-SWITCH " + itemsTab.deleteArmed + " " + (db._writeKind === ""))
+    },
+    function() {
+      console.log("ITEMS-AFTER-CLICK-SWITCH " + (sr.titleOf(sr.probeId) === "missing" ? "deleted" : "kept"))
+      if (itemsTab.deleteArmed) keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+      sr.type("2d12")
+      console.log("HISTORY-ARM-AFTER-KEY-SWITCH " + panel.activeTab + " " + historyTab.deleteArmed)
+      sr.type("1")
     }
-  ]
+  ].concat(sr.modifierSteps("CTRL", Qt.ControlModifier), sr.modifierSteps("ALT", Qt.AltModifier),
+    sr.modifierSteps("SUPER", Qt.MetaModifier))
+
+  // The editor takes focus one turn after Enter, Tab or Right, so each of them
+  // gets its own step, and the list gets focus back before the next key.
+  property var listBefore: null
+  function modifierSteps(name, mods) {
+    function press(key) { itemsTab.focusList(); keys.keyClick(key, mods, -1) }
+    function focusAfter(key) { console.log(name + "-" + key + " " + itemsTab.focusContext + " " + itemsTab.draftNew) }
+    return [
+      function() {
+        itemsTab.focusList()
+        sr.listBefore = { id: itemsTab.selectedId, status: itemsTab.selectedItem.status, history: db.totalHistory }
+        keys.keyClick(Qt.Key_Space, mods, -1); keys.keyClick(Qt.Key_Down, mods, -1)
+        console.log(name + "-SPACE-DOWN " + (itemsTab.selectedId === sr.listBefore.id) + " " + (db._writeKind === ""))
+        press(Qt.Key_Return)
+      },
+      function() {
+        var item = db.items.filter(function(i) { return Number(i.id) === sr.listBefore.id })[0]
+        console.log(name + "-AFTER-SPACE " + (!!item && item.status === sr.listBefore.status) + " "
+          + (db.totalHistory === sr.listBefore.history))
+        focusAfter("RETURN"); press(Qt.Key_Enter)
+      },
+      function() { focusAfter("ENTER"); press(Qt.Key_Tab) },
+      function() { focusAfter("TAB"); press(Qt.Key_Right) },
+      function() {
+        focusAfter("RIGHT"); press(Qt.Key_Escape)
+        console.log(name + "-ESC " + panel.opened)
+        if (!panel.opened) panel.open()
+      }
+    ]
+  }
+  function armHintShown() { return sr.hintKeys().indexOf("press again") >= 0 }
 
   property var burstSteps: []
   property int burstIndex: 0
@@ -544,6 +600,23 @@ logged "1 in History shows Items with the list focused, the list hints list the 
   "ONE-IN-HISTORY 0 list j/k move,Enter edit,n new,Space toggle,d d delete,/ search,f filter,1/2 tabs,Esc close tooltip=\[New item \(n\)\]$"
 logged "1 in the search field is typed as text" "ONE-IN-SEARCH 0 \[1\] search$"
 logged "2 in a draft title is typed as text" "TWO-IN-TITLE 0 \[2\] draft$"
+logged "d, 2 then 1 leave no delete armed in the list and hide its confirm hint" "ITEMS-ARM-AFTER-KEY-SWITCH 0 false false$"
+logged "a d after coming back with 1 only arms the delete again" "ITEMS-D-AFTER-KEY-SWITCH true true$"
+logged "that d leaves the item in place" "ITEMS-AFTER-KEY-SWITCH kept$"
+logged "d, then clicking History and Items, leave no delete armed in the list and hide its confirm hint" \
+  "ITEMS-ARM-AFTER-CLICK-SWITCH 0 false false$"
+logged "a d after coming back by click only arms the delete again" "ITEMS-D-AFTER-CLICK-SWITCH true true$"
+logged "that d leaves the item in place too" "ITEMS-AFTER-CLICK-SWITCH kept$"
+logged "d in History, 1 then 2 leave no delete armed in History" "HISTORY-ARM-AFTER-KEY-SWITCH 1 false$"
+for mod in CTRL:Ctrl ALT:Alt SUPER:Super; do
+  label="${mod#*:}"; mod="${mod%%:*}"
+  logged "$label+Space and $label+Down keep the selection and start no write" "$mod-SPACE-DOWN true true$"
+  logged "$label+Space leaves the item's status and the history unchanged" "$mod-AFTER-SPACE true true$"
+  for key in RETURN:Return ENTER:Enter TAB:Tab RIGHT:Right; do
+    logged "$label+${key#*:} leaves focus in the list and opens no draft" "$mod-${key%%:*} list false$"
+  done
+  logged "$label+Esc leaves the panel open" "$mod-ESC true$"
+done
 logged "no write was rejected during the whole run" "WRITE-FAILURES 0$"
 
 # The first qs run has no time left under its timeout, so the history count

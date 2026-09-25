@@ -91,7 +91,7 @@ Throwing away the editor's changes. A discarded draft disappears.
 _Avoid_: cancel, revert
 
 **Arm**:
-The first press of a destructive key or button: `d` on a row, or `c` and the Clear history button in History. A second press on the same target within two seconds confirms it. Moving the selection or pressing Esc cancels it.
+The first press of a destructive key or button: `d` on a row, or `c` and the Clear history button in History. A second press on the same target within two seconds confirms it. Moving the selection, switching tabs or pressing Esc cancels it.
 _Avoid_: confirm dialog, prime
 
 ### Panel
