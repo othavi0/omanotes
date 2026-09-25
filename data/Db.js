@@ -38,8 +38,8 @@ function searchText(text) {
 // Unified list. filterType is "all"|"note"|"todo";
 // query is an optional substring match on title or body that ignores case and
 // accents (searchText).
-// Sort order: status 0 (unread notes, pending todos) always on top, then
-// recency — `status ASC, updated_at DESC`.
+// Order: status 0 (unread notes, pending todos) first, then each block by
+// position (ADR-0014). Every filter reads the same order.
 function listSql(filterType, query) {
   var where = []
   var ft = String(filterType || "all")
@@ -54,8 +54,13 @@ function listSql(filterType, query) {
   }
   var sql = "SELECT id, type, title, body, status, created_at, updated_at FROM items"
   if (where.length > 0) sql += " WHERE " + where.join(" AND ")
-  sql += " ORDER BY status ASC, updated_at DESC, id DESC"
+  sql += " ORDER BY status ASC, position ASC, id DESC"
   return sql
+}
+
+// The position above every item of the block with `status`.
+function topOfBlockSql(status) {
+  return "(SELECT COALESCE(MIN(position), 1) - 1 FROM items WHERE status = " + status + ")"
 }
 
 // Counts for the bar tooltip and the panel header: unread notes and pending
@@ -85,17 +90,18 @@ function searchBodySql(body) {
   return bodySql(body) === "NULL" ? "NULL" : q(searchText(body))
 }
 
-// Insert a new item (status 0) + "added" history row, and return its id.
-// The `SELECT last_insert_rowid()` sits between the two INSERTs so it captures
-// the items row (a later history INSERT would otherwise move last_insert_rowid).
+// Insert a new item (status 0, top of its block) + "added" history row, and
+// return its id. The `SELECT last_insert_rowid()` sits between the two INSERTs
+// so it captures the items row (a later history INSERT would otherwise move
+// last_insert_rowid).
 function addSql(type, title, body) {
   var t = (type === "todo") ? "todo" : "note"
   var ts = now()
   var b = bodySql(body)
   return transaction([
-    "INSERT INTO items (type, title, body, search_title, search_body, status, created_at, updated_at) VALUES ("
+    "INSERT INTO items (type, title, body, search_title, search_body, status, position, created_at, updated_at) VALUES ("
       + q(t) + ", " + q(title) + ", " + b + ", " + q(searchText(title)) + ", " + searchBodySql(body)
-      + ", 0, " + ts + ", " + ts + ")",
+      + ", 0, " + topOfBlockSql(0) + ", " + ts + ", " + ts + ")",
     "SELECT last_insert_rowid() AS id",
     "INSERT INTO history (type, title, action, ts) VALUES ("
       + q(t) + ", " + q(title) + ", 'added', " + ts + ")"
@@ -113,7 +119,8 @@ function sqlId(id) {
 // changes it: parseFound() reads 0 when no item had that id.
 var CHANGES = "SELECT changes()"
 
-// Set an item's status (0 or 1) + record "completed"/"reopened" history.
+// Set an item's status (0 or 1), moving it to the top of its new block, +
+// record "completed"/"reopened" history.
 // The history row is an INSERT…SELECT of the item's own type/title so quoting
 // is always correct. It runs first so it can skip an item that already has
 // the status, which the UPDATE then leaves as it was.
@@ -126,8 +133,9 @@ function setStatusSql(id, status) {
     "INSERT INTO history (type, title, action, ts) "
       + "SELECT type, title, " + q(action) + ", " + ts + " FROM items WHERE id = " + nid
       + " AND status <> " + s,
-    "UPDATE items SET status = " + s + ", updated_at = CASE status WHEN " + s
-      + " THEN updated_at ELSE " + ts + " END WHERE id = " + nid,
+    "UPDATE items SET status = " + s
+      + ", position = CASE status WHEN " + s + " THEN position ELSE " + topOfBlockSql(s) + " END"
+      + ", updated_at = CASE status WHEN " + s + " THEN updated_at ELSE " + ts + " END WHERE id = " + nid,
     CHANGES
   ])
 }
@@ -172,6 +180,43 @@ function convertTypeSql(id) {
     "INSERT INTO history (type, title, action, ts) "
       + "SELECT type, title, 'converted', " + ts + " FROM items WHERE id = " + nid
   ])
+}
+
+// Put item `id` just before item `anchorId` of the same block, or just after
+// it when `after`, and number that block 1, 2, 3… in the new order. The item
+// takes the anchor's place in the list order (position, then id DESC), with
+// one more key to fall before or after it. Nothing is written, and CHANGES
+// prints 0, when either id is missing, they are the same item or the two sit
+// in different blocks. A move is not an action, so it leaves history and
+// updated_at alone.
+function moveSql(id, anchorId, after) {
+  var nid = sqlId(id)
+  var aid = sqlId(anchorId)
+  var key = function(moved, other) { return "CASE i.id WHEN " + nid + " THEN " + moved + " ELSE " + other + " END" }
+  return transaction([
+    "UPDATE items SET position = moved.rank FROM (SELECT i.id, ROW_NUMBER() OVER (ORDER BY "
+      + key("a.position", "i.position") + ", " + key("a.id", "i.id") + " DESC, " + key(after ? 2 : 0, 1)
+      + ") AS rank FROM items i JOIN items a ON a.id = " + aid + " AND a.status = i.status"
+      + " JOIN items m ON m.id = " + nid + " AND m.status = a.status AND m.id <> a.id) AS moved"
+      + " WHERE items.id = moved.id",
+    CHANGES
+  ])
+}
+
+// `rows` with the row `id` moved as moveSql moves it, so the list shows the
+// drop before the reload confirms it. The same rows when either is missing.
+function movedRows(rows, id, anchorId, after) {
+  var list = rows.slice()
+  var from = -1
+  for (var i = 0; i < list.length; ++i) if (Number(list[i].id) === Number(id)) from = i
+  if (from < 0) return list
+  var row = list.splice(from, 1)[0]
+  for (var j = 0; j < list.length; ++j) {
+    if (Number(list[j].id) !== Number(anchorId)) continue
+    list.splice(after ? j + 1 : j, 0, row)
+    return list
+  }
+  return rows.slice()
 }
 
 // The newest 500 history rows, for the History tab. The table keeps growing;
@@ -249,7 +294,16 @@ var MIGRATIONS = [
       + " action TEXT NOT NULL, ts INTEGER NOT NULL)",
     "CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts DESC)"
   ],
-  searchCopyMigration
+  searchCopyMigration,
+  // Numbers each block in the order the list showed before (ADR-0014).
+  [
+    "ALTER TABLE items ADD COLUMN position INTEGER NOT NULL DEFAULT 0",
+    "UPDATE items SET position = shown.rank FROM (SELECT id, ROW_NUMBER() OVER"
+      + " (PARTITION BY status ORDER BY updated_at DESC, id DESC) AS rank FROM items) AS shown"
+      + " WHERE items.id = shown.id",
+    "DROP INDEX IF EXISTS idx_items_sort",
+    "CREATE INDEX idx_items_order ON items(status, position)"
+  ]
 ]
 
 var VERSION_CHANGED = "version_changed"

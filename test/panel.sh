@@ -181,6 +181,18 @@ replies "addTodo answers ok" "$(ipc scratchpad addTodo "IPC-TODO" "todo body")" 
 expect "addTodo writes the todo" \
   "SELECT type || '|' || body || '|' || status FROM items WHERE title = 'IPC-TODO'" "todo|todo body|0"
 replies "addTodo with an empty title is refused" "$(ipc scratchpad addTodo "" "")" '{"ok":false,"error":"title is required"}'
+expect "items added through the IPC land at the top of the first block" \
+  "SELECT group_concat(title, '|') FROM (SELECT title FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 2)" \
+  "IPC-TODO|IPC-NOTE"
+# listTodos reads the same order the panel shows.
+stored_todos="$(sqlite3 "$db" "SELECT group_concat(id) FROM (SELECT id FROM items WHERE type = 'todo' ORDER BY status, position, id DESC)" 2>&1 || true)"
+listed_todos=""
+for _ in $(seq 50); do
+  listed_todos="$(node -e 'console.log(JSON.parse(process.argv[1]).map(t => t.id).join(","))' "$(ipc scratchpad listTodos)" 2> /dev/null)"
+  [[ "$listed_todos" == "$stored_todos" ]] && break
+  sleep 0.2
+done
+replies "listTodos lists the todos in the stored order" "$listed_todos" "$stored_todos"
 
 note_id="$(sqlite3 "$db" "SELECT id FROM items WHERE title = 'IPC-NOTE'")"
 # listNotes answers from the widget's cache, which catches up on the reload after the write.
