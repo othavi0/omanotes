@@ -95,13 +95,16 @@ Item {
     }
 
     function onKey(event) {
-        if (event.key === Qt.Key_Down || event.key === Qt.Key_J || event.text === "j") {
+        var mods = event.modifiers
+        var text = mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier) ? ""
+            : mods & Qt.ShiftModifier ? event.text : event.text.toLowerCase()
+        if (event.key === Qt.Key_Down || text === "j") {
             root.moveSelection(1); event.accepted = true
-        } else if (event.key === Qt.Key_Up || event.key === Qt.Key_K || event.text === "k") {
+        } else if (event.key === Qt.Key_Up || text === "k") {
             root.moveSelection(-1); event.accepted = true
-        } else if (event.text === "d") {
+        } else if (text === "d") {
             root.armDelete(); event.accepted = true
-        } else if (event.text === "c") {
+        } else if (text === "c") {
             root.clearHistory(); event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
             if (root.deleteArmed) { root.cancelDelete(); event.accepted = true }
