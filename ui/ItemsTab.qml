@@ -67,11 +67,11 @@ FocusScope {
     function dragTo(item, x, y) {
         root.dragId = Number(item.id)
         root.dragPoint = Qt.point(x, y)
-        var done = ItemJs.isReadOrCompleted(item)
+        var readOrCompleted = ItemJs.isReadOrCompleted(item)
         var start = -1
         var end = 0
         for (var i = 0; i < root.itemList.length; ++i) {
-            if (ItemJs.isReadOrCompleted(root.itemList[i]) !== done) continue
+            if (ItemJs.isReadOrCompleted(root.itemList[i]) !== readOrCompleted) continue
             if (start < 0) start = i
             end = i + 1
         }

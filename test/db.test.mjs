@@ -310,6 +310,14 @@ test("addSql puts a new item at the top of the first block, whatever the other i
   assert.deepEqual(order(db), [other, id, 2, 1, 3, 5, 4])
 })
 
+test("addSql puts a new item above items reopened before it", (t) => {
+  const db = seeded(t)
+  db.write(atT0(() => Db.setStatusSql(5, 0)))
+  db.write(atT0(() => Db.setStatusSql(4, 0)))
+  const id = Db.parseId(db.write(atT0(() => Db.addSql("note", "Buy milk", ""))))
+  assert.deepEqual(order(db), [id, 4, 5, 2, 1, 3])
+})
+
 test("setStatusSql: a read or completed item goes to the top of the second block, a reopened one to the top of the first", (t) => {
   const db = seeded(t)
   db.write(Db.moveSql(4, 5, false))

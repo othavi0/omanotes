@@ -194,9 +194,9 @@ function moveSql(id, anchorId, after) {
   var aid = sqlId(anchorId)
   var key = function(moved, other) { return "CASE i.id WHEN " + nid + " THEN " + moved + " ELSE " + other + " END" }
   return transaction([
-    "UPDATE items SET position = moved.rank FROM (SELECT i.id, ROW_NUMBER() OVER (ORDER BY "
+    "UPDATE items SET position = moved.position FROM (SELECT i.id, ROW_NUMBER() OVER (ORDER BY "
       + key("a.position", "i.position") + ", " + key("a.id", "i.id") + " DESC, " + key(after ? 2 : 0, 1)
-      + ") AS rank FROM items i JOIN items a ON a.id = " + aid + " AND a.status = i.status"
+      + ") AS position FROM items i JOIN items a ON a.id = " + aid + " AND a.status = i.status"
       + " JOIN items m ON m.id = " + nid + " AND m.status = a.status AND m.id <> a.id) AS moved"
       + " WHERE items.id = moved.id",
     CHANGES
@@ -298,8 +298,8 @@ var MIGRATIONS = [
   // Numbers each block in the order the list showed before (ADR-0014).
   [
     "ALTER TABLE items ADD COLUMN position INTEGER NOT NULL DEFAULT 0",
-    "UPDATE items SET position = shown.rank FROM (SELECT id, ROW_NUMBER() OVER"
-      + " (PARTITION BY status ORDER BY updated_at DESC, id DESC) AS rank FROM items) AS shown"
+    "UPDATE items SET position = shown.position FROM (SELECT id, ROW_NUMBER() OVER"
+      + " (PARTITION BY status ORDER BY updated_at DESC, id DESC) AS position FROM items) AS shown"
       + " WHERE items.id = shown.id",
     "DROP INDEX IF EXISTS idx_items_sort",
     "CREATE INDEX idx_items_order ON items(status, position)"

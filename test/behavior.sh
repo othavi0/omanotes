@@ -1018,13 +1018,14 @@ sqlite3 "$db" "INSERT INTO items (id, type, title, body, status, created_at, upd
   (303, 'note', 'Charlie note', '', 0, $now - 30, $now - 30),
   (304, 'todo', 'Delta todo', '', 0, $now - 40, $now - 40),
   (305, 'note', 'Echo read', '', 1, $now - 50, $now - 50),
-  (306, 'todo', 'Foxtrot done', '', 1, $now - 60, $now - 60);"
+  (306, 'todo', 'Foxtrot completed', '', 1, $now - 60, $now - 60);"
 run_db_js migrate
-cat > "$cfg_dir/shell.qml" <<'QML'
+cat > "$cfg_dir/drag.qml" <<'QML'
 import QtQuick
 import QtTest
 import Quickshell
 import "data" as Data
+import "ui/Icons.js" as Icons
 
 ShellRoot {
   id: sr
@@ -1048,21 +1049,38 @@ ShellRoot {
     var row = sr.rowOf(id)
     return row.mapToItem(sr.listView(), row.width / 2, row.height * fy)
   }
-  function press(id) {
-    sr.at = sr.pointIn(id, 0.5)
-    keys.mousePress(sr.listView(), sr.at.x, sr.at.y, Qt.LeftButton, Qt.NoModifier, -1)
+  // The middle of row `id`'s status glyph, in the list's coordinates.
+  function glyphPoint(id) {
+    var glyph = sr.findWhere(sr.rowOf(id), function(it) {
+      return it.text === Icons.note || it.text === Icons.boxOff || it.text === Icons.boxOn
+    })
+    return glyph.mapToItem(sr.listView(), glyph.width / 2, glyph.height / 2)
+  }
+  function press(id) { sr.pressAt(sr.pointIn(id, 0.5)) }
+  function pressAt(p) {
+    sr.at = p
+    keys.mousePress(sr.listView(), p.x, p.y, Qt.LeftButton, Qt.NoModifier, -1)
   }
   function moveTo(y) {
     sr.at = Qt.point(sr.at.x, y)
     keys.mouseMove(sr.listView(), sr.at.x, y, -1, Qt.LeftButton, Qt.NoModifier)
   }
   // Presses row `id` and moves in steps to `y`, holding the button.
-  function drag(id, y) {
+  function drag(id, y) { sr.dragFrom(sr.pointIn(id, 0.5), y) }
+  function dragFrom(p, y) {
+    sr.pressAt(p)
+    sr.moveTo(p.y + 3)
+    sr.moveTo((p.y + y) / 2)
+    sr.moveTo(y)
+  }
+  function flick(id, dy) {
     sr.press(id)
     var from = sr.at.y
-    sr.moveTo(from + 3)
-    sr.moveTo((from + y) / 2)
-    sr.moveTo(y)
+    for (var d = 5; d <= dy; d += 5) {
+      sr.at = Qt.point(sr.at.x, from - d)
+      keys.mouseMove(sr.listView(), sr.at.x, sr.at.y, 10, Qt.LeftButton, Qt.NoModifier)
+    }
+    sr.release()
   }
   function release() { keys.mouseRelease(sr.listView(), sr.at.x, sr.at.y, Qt.LeftButton, Qt.NoModifier, -1) }
   function named(name) { return sr.findWhere(itemsTab, function(it) { return it.objectName === name }) }
@@ -1087,9 +1105,33 @@ ShellRoot {
     var rows = itemsTab.itemList.filter(function(i) { return Number(i.status) === 0 })
     return rows[rows.length - 1].id
   }
-  function firstDone() { return itemsTab.itemList.filter(function(i) { return Number(i.status) === 1 })[0].id }
+  function firstCompleted() { return itemsTab.itemList.filter(function(i) { return Number(i.status) === 1 })[0].id }
+  function statusOf(id) { return itemsTab.itemList.filter(function(i) { return Number(i.id) === id })[0].status }
 
-  readonly property var steps: [
+  readonly property var steps: Quickshell.env("OMANOTES_RUN") === "long" ? sr.longSteps : sr.dragSteps
+
+  readonly property var longSteps: [
+    function() { itemsTab.searchText = "row" },
+    function() {
+      console.log("LONG-SEARCH " + itemsTab.itemList.length)
+      sr.flick(405, 120)
+    },
+    function() {
+      console.log("SEARCH-FLICK scrolled=" + (sr.listView().contentY > 0) + " float=" + sr.floatText() + " write=[" + db._writeKind + "]")
+      itemsTab.searchText = ""
+    },
+    function() { sr.listView().positionViewAtBeginning() },
+    function() { sr.dragFrom(sr.glyphPoint(404), sr.pointIn(401, 0.25).y) },
+    function() {
+      console.log("GLYPH-DRAG float=" + sr.floatText())
+      sr.release()
+    },
+    function() { console.log("AFTER-GLYPH-DRAG " + sr.order().split(",").slice(0, 4).join(",") + " selected=" + itemsTab.selectedId) },
+    function() { sr.pressAt(sr.glyphPoint(402)); sr.release() },
+    function() { console.log("GLYPH-CLICK status=" + sr.statusOf(402) + " selected=" + itemsTab.selectedId) }
+  ]
+
+  readonly property var dragSteps: [
     function() {
       console.log("START " + sr.order())
       sr.drag(304, sr.pointIn(302, 0.25).y)
@@ -1110,13 +1152,13 @@ ShellRoot {
 
     function() { sr.drag(306, 1) },
     function() {
-      console.log("UP-PAST-BLOCK line=" + sr.lineBetween(sr.lastPending(), sr.firstDone()) + " edge=" + sr.lineBetween(-1, 301))
+      console.log("UP-PAST-BLOCK line=" + sr.lineBetween(sr.lastPending(), sr.firstCompleted()) + " edge=" + sr.lineBetween(-1, 301))
       sr.release()
     },
     function() { console.log("AFTER-UP-PAST-BLOCK " + sr.order()) },
     function() { sr.drag(301, sr.listView().height - 2) },
     function() {
-      console.log("DOWN-PAST-BLOCK line=" + sr.lineBetween(sr.lastPending(), sr.firstDone()))
+      console.log("DOWN-PAST-BLOCK line=" + sr.lineBetween(sr.lastPending(), sr.firstCompleted()))
       sr.release()
     },
     function() { console.log("AFTER-DOWN-PAST-BLOCK " + sr.order()) },
@@ -1196,6 +1238,7 @@ ShellRoot {
   TestEvent { id: keys }
 }
 QML
+cp "$cfg_dir/drag.qml" "$cfg_dir/shell.qml"
 log_file="$cfg_dir/qs-drag.log"
 run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
 
@@ -1245,6 +1288,23 @@ QML
 log_file="$cfg_dir/qs-restart.log"
 run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
 logged "the order survives a shell restart" "RESTART 304,302,303,301,306,305$"
+
+# A sixth run takes the drag shell through a list longer than the panel: 40
+# pending rows, 401 first.
+rm -f "$db"
+run_db_js v0
+sqlite3 "$db" "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 40)
+  INSERT INTO items (id, type, title, body, status, created_at, updated_at)
+  SELECT 400 + i, CASE i % 2 WHEN 1 THEN 'note' ELSE 'todo' END, 'Row ' || i, '', 0, $now - i, $now - i FROM n;"
+run_db_js migrate
+cp "$cfg_dir/drag.qml" "$cfg_dir/shell.qml"
+log_file="$cfg_dir/qs-long.log"
+env OMANOTES_RUN=long "${qs_cmd[@]}" > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
+logged "the search lists all 40 rows" "LONG-SEARCH 40$"
+logged "while the search has text, dragging a row scrolls the list" "SEARCH-FLICK scrolled=true float=none write=\[\]$"
+logged "a press on the status glyph that moves 6 px drags the row" "GLYPH-DRAG float=Row 4$"
+logged "and drops it there" "AFTER-GLYPH-DRAG 404,401,402,403 selected=404$"
+logged "a click on the status glyph toggles the item and keeps the selection" "GLYPH-CLICK status=1 selected=404$"
 
 echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))

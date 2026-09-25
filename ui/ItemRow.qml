@@ -37,12 +37,22 @@ Rectangle {
         ? Style.selectedFillFor(root.foreground, Color.accent)
         : (rowMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent")
 
+    // The glyph and 6 px around it, in this row's coordinates.
+    function onGlyph(x, y) {
+        var m = Style.space(6)
+        return x >= glyph.x - m && x <= glyph.x + glyph.width + m && y >= glyph.y - m && y <= glyph.y + glyph.height + m
+    }
+
+    // One MouseArea for the whole row, glyph included, so a press anywhere
+    // can become a drag.
     MouseArea {
         id: rowMouse
         anchors.fill: parent
         hoverEnabled: true
-        // The list would otherwise take a vertical drag as a flick.
-        preventStealing: true
+        cursorShape: root.onGlyph(rowMouse.mouseX, rowMouse.mouseY) ? Qt.PointingHandCursor : Qt.ArrowCursor
+        // A draggable row keeps a vertical drag from the list, which would
+        // take it as a flick. Other rows let the list scroll.
+        preventStealing: root.draggable
 
         property point pressedAt
         property bool dragging: false
@@ -65,7 +75,11 @@ Rectangle {
             rowMouse.dragging = false
             root.dragCanceled()
         }
-        onClicked: if (!rowMouse.dragging) root.picked()
+        onClicked: {
+            if (rowMouse.dragging) return
+            if (root.onGlyph(rowMouse.pressedAt.x, rowMouse.pressedAt.y)) root.toggled()
+            else root.picked()
+        }
     }
 
     Text {
@@ -76,14 +90,6 @@ Rectangle {
         color: root.readOrCompleted ? Util.alpha(root.foreground, Tone.muted) : (root.todo ? root.foreground : Color.accent)
         font.family: Style.font.family
         font.pixelSize: Style.font.icon
-
-        MouseArea {
-            anchors.fill: parent
-            anchors.margins: -Style.space(6)
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.toggled()
-        }
     }
 
     Rectangle {

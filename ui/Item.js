@@ -75,8 +75,8 @@ function neighbourId(rows, id) {
 function dropMove(rows, id, slot) {
   var idx = indexOfId(rows, id)
   if (idx < 0) return null
-  var done = isReadOrCompleted(rows[idx])
-  var block = rows.filter(function(row) { return isReadOrCompleted(row) === done })
+  var readOrCompleted = isReadOrCompleted(rows[idx])
+  var block = rows.filter(function(row) { return isReadOrCompleted(row) === readOrCompleted })
   var from = indexOfId(block, id)
   var at = Math.max(0, Math.min(block.length, slot))
   if (at === from || at === from + 1) return null

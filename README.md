@@ -6,7 +6,7 @@ Notes and todos in one panel on the Omarchy bar. Everything is stored in a local
 
 ## Features
 
-- One list for notes and todos. Unread notes and pending todos come first, read notes and completed todos after them, and you set the order inside each group by dragging.
+- One list for notes and todos. Unread notes and pending todos come first, read notes and completed todos after them, and you set the order inside each of those two blocks by dragging.
 - The right-hand pane is the editor: a title field and a body. Leaving the editor saves it.
 - Driven by the mouse, with Esc to close the panel.
 - A History tab that logs every change (`added`, `edited`, `completed`, `reopened`, `converted`, `deleted`). Entries can be deleted one by one or cleared.
@@ -31,7 +31,7 @@ Everything is on screen. `Esc` closes the panel from anywhere in it, and closing
 
 - **New** opens a menu with Note and Todo. Each opens a draft of that type in the editor.
 - Click a row to open it in the editor. Its box toggles the status. The search field and the All, Notes and Todos buttons narrow the list.
-- Drag a row to put it somewhere else in its group. The drag starts after the pointer moves 6 px, so a click still only opens the row. A new or reopened item goes to the top of the first group, and an item you mark read or complete goes to the top of the second. Editing or converting an item leaves it where it is. In Notes or Todos, a dropped row lands next to the rows you see and the hidden ones keep their places. Rows don't drag while the search field has text.
+- Drag a row, from anywhere on it, to put it somewhere else in its block. The drag starts after the pointer moves 6 px, so a click still opens the row, or toggles it on the status icon. A new or reopened item goes to the top of the first block, and an item you mark read or complete goes to the top of the second. Editing or converting an item leaves it where it is. In Notes or Todos, a dropped row lands next to the rows you see and the hidden ones keep their places. Rows don't drag while the search field has text.
 - The editor saves when you leave it: another row, the Save button, another tab or closing the panel. Discard throws the changes away. In the title, `Tab` and `Enter` move to the body; in the body, `Enter` starts a new line and `Shift+Tab` goes back to the title.
 - A draft with a body and no title can't be saved. It stays open with the warning "New item needs a title" until you type a title or discard it.
 - The buttons under the editor toggle the status, convert between note and todo, copy the item and delete it.

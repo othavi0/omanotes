@@ -1,6 +1,6 @@
 # Keep the manual order as a position inside each block
 
-The list used to sort by `status ASC, updated_at DESC`, so the last item edited jumped to the top and the user could not choose the order. The Order in `CONTEXT.md` keeps the two blocks (unread notes and pending todos first, read notes and completed todos after) and lets the user set the order inside each block by dragging. Each item stores an integer `position`, and the list reads `ORDER BY status ASC, position ASC, id DESC` (`listSql` in `data/Db.js`). The panel, `allItems` and the IPC `list*` methods all read that order, and every filter shows the same order.
+The list used to be ordered by `status ASC, updated_at DESC`, so the last item edited jumped to the top and the user could not choose the order. The Order in `CONTEXT.md` keeps the two blocks (unread notes and pending todos first, read notes and completed todos after) and lets the user set the order inside each block by dragging. Each item stores an integer `position`, and the list reads `ORDER BY status ASC, position ASC, id DESC` (`listSql` in `data/Db.js`). The panel, `allItems` and the IPC `list*` methods all read that order, and every filter shows the same order.
 
 ## Consequences
 
@@ -11,4 +11,5 @@ The list used to sort by `status ASC, updated_at DESC`, so the last item edited 
 - A move is not an action (`CONTEXT.md`), so it writes no history entry and leaves `updated_at` alone.
 - `Db.move` reorders its cached `items` right away, so the dropped row does not jump back until the reload. The reload after the write replaces that list.
 - A reload during a drag rebuilds every row of the list, so the drag ends there without a move.
+- A draggable row keeps a vertical drag from the list, so the list does not scroll under a drag. While the search has text the rows do not drag, and a vertical drag scrolls the list.
 - Rows written with `sqlite3` outside Omanotes get the column default, 0, and rows with the same position fall back to the newest id first. Unlike the search copy (ADR-0012), no trigger places them.

@@ -173,6 +173,10 @@ for _ in $(seq 50); do
 done
 replies "the bar tooltip and the panel header count unread notes and pending todos" "$counts" "$want_counts"
 
+# Reopens leave positions under the column default of 0, and a new item that
+# took the default would land below them.
+sqlite3 "$db" "UPDATE items SET position = -5 WHERE id = 2"
+
 replies "addNote answers ok" "$(ipc scratchpad addNote "IPC-NOTE" "ipc body")" '{"ok":true}'
 expect "addNote writes the note" \
   "SELECT type || '|' || body || '|' || status FROM items WHERE title = 'IPC-NOTE'" "note|ipc body|0"
