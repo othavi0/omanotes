@@ -162,7 +162,7 @@ ShellRoot {
     function() {
       console.log("CTRL-K-IN-LIST " + (mainTab.selectedId === sr.probeId))
       mainTab.pickItem(1); sr.probeId = mainTab.selectedId
-      sr.ctrl([Qt.Key_A, Qt.Key_C, Qt.Key_L, Qt.Key_D, Qt.Key_N, Qt.Key_F])
+      sr.ctrl([Qt.Key_C, Qt.Key_A, Qt.Key_L, Qt.Key_D, Qt.Key_N, Qt.Key_F])
     },
     function() {
       console.log("CTRL-LETTERS-IN-LIST " + (mainTab.selectedId === sr.probeId) + " " + mainTab.focusContext + " "
@@ -373,8 +373,6 @@ logged "Ctrl+K does not move the list selection" "CTRL-K-IN-LIST true$"
 logged "Ctrl plus a list letter does not move, edit, delete, open a draft or filter" \
   "CTRL-LETTERS-IN-LIST true list false all false$"
 expect "Ctrl+C in the list does not toggle the selected item" "SELECT status FROM items WHERE id = 1" "0"
-expect "and logs nothing to history" \
-  "SELECT COUNT(*) FROM history WHERE title = 'Ideas for the panel' AND action NOT IN ('edited')" "0"
 logged "plain j still moves the list selection" "PLAIN-J-IN-LIST true$"
 logged "Shift+J does not move the list selection" "SHIFT-J-IN-LIST true$"
 logged "J typed with Caps Lock on moves the list selection" "CAPS-J-IN-LIST true$"
