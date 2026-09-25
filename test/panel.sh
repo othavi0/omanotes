@@ -96,7 +96,7 @@ ipc() { qs -p "$cfg_dir" ipc call "$@" 2>&1; }
 
 up=0
 for _ in $(seq 50); do
-  [[ "$(ipc scratchpad ping)" == "ok" ]] && { up=1; break; }
+  [[ "$(ipc scratchpad ping)" == '{"ok":true}' ]] && { up=1; break; }
   sleep 0.2
 done
 if (( ! up )); then cat "$cfg_dir/qs.log"; echo "the bar widget never answered ping"; exit 2; fi
@@ -122,6 +122,8 @@ by_id() { node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).sort((
 all_of() {
   by_id "$(sqlite3 "$db" "SELECT json_group_array(json_object('id', id, 'type', type, 'title', title, 'body', COALESCE(body, ''), 'status', status)) FROM items WHERE type = '$1'")"
 }
+
+replies "ping answers JSON" "$(ipc scratchpad ping)" '{"ok":true}'
 
 replies "addNote answers ok" "$(ipc scratchpad addNote "IPC-NOTE" "ipc body")" '{"ok":true}'
 expect "addNote writes the note" \
@@ -153,6 +155,19 @@ expect "the reopen is logged in history" \
   "SELECT COUNT(*) FROM history WHERE action = 'reopened' AND title = 'Renew the domain'" "1"
 replies "toggleTodo on a missing id is refused" "$(ipc scratchpad toggleTodo 999)" '{"ok":false,"error":"item not found: 999"}'
 
+replies "toggleStatus answers ok for a note" "$(ipc scratchpad toggleStatus 1)" '{"ok":true}'
+expect "toggleStatus marks the unread note read" "SELECT status FROM items WHERE id = 1" "1"
+expect "toggleStatus is logged in history" \
+  "SELECT COUNT(*) FROM history WHERE action = 'completed' AND title = 'Ideas for the panel'" "1"
+for _ in $(seq 50); do
+  node -e 'process.exit(JSON.parse(process.argv[1]).some(n => n.id === 1 && n.status === 1) ? 0 : 1)' \
+    "$(ipc scratchpad listNotes)" && break
+  sleep 0.2
+done
+replies "toggleTodo, kept as an alias, answers ok for a note" "$(ipc scratchpad toggleTodo 1)" '{"ok":true}'
+expect "toggleTodo marks the read note unread" "SELECT status FROM items WHERE id = 1" "0"
+replies "toggleStatus on a missing id is refused" "$(ipc scratchpad toggleStatus 999)" '{"ok":false,"error":"item not found: 999"}'
+
 # The panel shares the widget's Db, so its filter and search must not narrow the IPC.
 replies "the panel takes a filter and a search" "$(ipc omanotes-test filterPanel note coffee)" "ok"
 rows=""
@@ -183,6 +198,7 @@ replies "remove answers ok" "$(ipc scratchpad remove "$note_id")" '{"ok":true}'
 expect "remove deletes the item" "SELECT COUNT(*) FROM items WHERE id = $note_id" "0"
 expect "remove is logged in history" \
   "SELECT COUNT(*) FROM history WHERE action = 'deleted' AND title = 'IPC-NOTE'" "1"
+replies "remove on a missing id is refused" "$(ipc scratchpad remove 999)" '{"ok":false,"error":"item not found: 999"}'
 
 replies "clearHistory answers ok" "$(ipc scratchpad clearHistory)" '{"ok":true}'
 expect "clearHistory empties history" "SELECT COUNT(*) FROM history" "0"

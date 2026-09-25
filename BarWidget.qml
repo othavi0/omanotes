@@ -60,20 +60,27 @@ BarWidget {
         }
         return JSON.stringify(out)
     }
-    function ipcToggle(id) {
+    // The Db reports a missing id only once the queued write has run, after
+    // the reply is gone, so the id is looked up in the last reload instead.
+    function ipcOnItem(id, write) {
         if (!db.allItemsLoaded) return ipcReply("not ready")
         var n = Number(id)
         var list = db.allItems
         for (var i = 0; i < list.length; ++i) {
             if (Number(list[i].id) === n) {
-                var status = Number(list[i].status) === 1 ? 0 : 1
-                return ipcReply(db.fromScript(function() { return db.setStatus(n, status) }))
+                var item = list[i]
+                return ipcReply(db.fromScript(function() { return write(n, item) }))
             }
         }
         return ipcReply("item not found: " + n)
     }
+    function ipcToggle(id) {
+        return ipcOnItem(id, function(n, item) {
+            return db.setStatus(n, Number(item.status) === 1 ? 0 : 1)
+        })
+    }
     function ipcRemove(id) {
-        return ipcReply(db.fromScript(function() { return db.deleteItem(id) }))
+        return ipcOnItem(id, function(n) { return db.deleteItem(n) })
     }
     function ipcClearHistory() {
         return ipcReply(db.fromScript(function() { return db.clearHistory() }))
@@ -116,8 +123,8 @@ BarWidget {
         function toggle(): void { root.togglePanel() }
 
         // `delete` is a reserved word, so the per-row delete is exposed as
-        // `remove`; every call returns JSON on stdout.
-        function ping(): string { return "ok" }
+        // `remove`. Every method that returns a value answers JSON on stdout.
+        function ping(): string { return root.ipcReply("") }
         function addNote(title: string, body: string): string {
             return root.ipcAdd("note", title, body)
         }
@@ -126,6 +133,8 @@ BarWidget {
         }
         function listNotes(): string { return root.ipcList("note") }
         function listTodos(): string { return root.ipcList("todo") }
+        function toggleStatus(id: int): string { return root.ipcToggle(id) }
+        // The old name, kept for scripts that already call it.
         function toggleTodo(id: int): string { return root.ipcToggle(id) }
         function remove(id: int): string { return root.ipcRemove(id) }
         function clearHistory(): string { return root.ipcClearHistory() }
