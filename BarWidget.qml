@@ -30,19 +30,20 @@ BarWidget {
         if ("settings" in target) target.settings = root.settings
         if ("anchorItem" in target) target.anchorItem = button
         if ("hostWidget" in target) target.hostWidget = root
+        if ("db" in target) target.db = db
     }
 
     // Mutations go through the async sqlite3 Process, so each call acks
     // immediately and the FileView watcher's reload converges the change onto
-    // the panels + list() cache afterwards.
+    // the panels + allItems cache afterwards.
     function ipcAdd(type, title, body) {
         var t = String(title || "").trim()
         if (t === "") return JSON.stringify({ ok: false, error: "title is required" })
-        db.add(type, t, String(body || ""))
+        db.fromScript(function() { db.add(type, t, String(body || "")) })
         return JSON.stringify({ ok: true })
     }
     function ipcList(type) {
-        var list = db.items || []
+        var list = db.allItems
         var out = []
         for (var i = 0; i < list.length; ++i) {
             if (String(list[i].type) !== type) continue
@@ -58,21 +59,22 @@ BarWidget {
     }
     function ipcToggle(id) {
         var n = Number(id)
-        var list = db.items || []
+        var list = db.allItems
         for (var i = 0; i < list.length; ++i) {
             if (Number(list[i].id) === n) {
-                db.setStatus(n, Number(list[i].status) === 1 ? 0 : 1)
+                var status = Number(list[i].status) === 1 ? 0 : 1
+                db.fromScript(function() { db.setStatus(n, status) })
                 return JSON.stringify({ ok: true })
             }
         }
         return JSON.stringify({ ok: false, error: "item not found: " + n })
     }
     function ipcRemove(id) {
-        db.deleteItem(Number(id))
+        db.fromScript(function() { db.deleteItem(Number(id)) })
         return JSON.stringify({ ok: true })
     }
     function ipcClearHistory() {
-        db.clearHistory()
+        db.fromScript(function() { db.clearHistory() })
         return JSON.stringify({ ok: true })
     }
 
@@ -82,9 +84,8 @@ BarWidget {
     onBarChanged: injectPanel()
     onSettingsChanged: injectPanel()
 
-    // Owns sqlite3 access, the db file watcher, and the cached counts the bar
-    // tooltip binds to. The panel keeps its own instance — the db file is the
-    // source of truth, and each watcher keeps its view fresh.
+    // The only Db of this widget: the IPC, the bar tooltip and the panel
+    // (through injectPanel) all read and write through it.
     Data.Db {
         id: db
         Component.onCompleted: db.init()

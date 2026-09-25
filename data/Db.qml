@@ -6,8 +6,8 @@ import "Db.js" as Db
 // Omanotes data layer: the single entry point for all database access.
 // Views call this component's methods instead of building SQL or touching
 // sqlite3 directly. Writes are serialized through one Process (one at a
-// time); each read (counts/list/history) uses its own dedicated Process so
-// they refresh independently.
+// time); each read (counts/list/all items/history) uses its own dedicated
+// Process so they refresh independently.
 QtObject {
     id: root
 
@@ -23,6 +23,9 @@ QtObject {
 
     // Cached rows (populated by reads; the UI binds to these).
     property var items: []                     // list() results
+    // Every item, whatever list() last filtered: the IPC reads this, and the
+    // panel sharing this Db narrows `items`.
+    property var allItems: []
     property var history: []                   // historyList() results
     property int unreadNotes: 0                // notes with status 0
     property int inProgressTodos: 0            // todos with status 0
@@ -49,9 +52,23 @@ QtObject {
 
     // Central failure path: surfaces in the journal (console.error) so data-layer
     // errors are visible in the shell logs even before the UI handles them.
-    function fail(message) {
+    function fail(message, fromScript) {
         console.error("omanotes db: " + message)
-        root.failed(message)
+        if (!fromScript) root.failed(message)
+    }
+
+    // The panel answers added, statusChanged, itemDeleted, historyCleared and
+    // failed as if its user acted: it moves the selection, which commits the
+    // open edit, and shows a toast. Writes a script makes inside run() reload
+    // the views but emit none of them.
+    property bool _fromScript: false
+    function fromScript(run) {
+        root._fromScript = true
+        try {
+            run()
+        } finally {
+            root._fromScript = false
+        }
     }
 
     property Process countsProcess: Process {
@@ -93,6 +110,25 @@ QtObject {
         }
     }
 
+    property bool _allItemsStale: false
+    property Process allItemsProcess: Process {
+        stdout: StdioCollector {
+            id: allItemsStdout
+            waitForEnd: true
+        }
+        onExited: function(exitCode) {
+            if (exitCode !== 0) {
+                root.fail("all items read failed (exit " + exitCode + ")")
+                return
+            }
+            if (root._allItemsStale) {
+                Qt.callLater(root.listAll)
+                return
+            }
+            root.allItems = Db.parseRows(allItemsStdout.text)
+        }
+    }
+
     property Process historyProcess: Process {
         stdout: StdioCollector {
             id: historyStdout
@@ -111,6 +147,7 @@ QtObject {
 
     property string _writeKind: ""
     property var _writeArgs: null
+    property bool _writeFromScript: false
     property var _writeQueue: []
 
     property Process writeProcess: Process {
@@ -121,15 +158,18 @@ QtObject {
         onExited: function(exitCode) {
             var kind = root._writeKind
             var args = root._writeArgs
+            var fromScript = root._writeFromScript
             root._writeKind = ""
             root._writeArgs = null
+            root._writeFromScript = false
             Qt.callLater(root._runNextWrite)
 
             if (exitCode !== 0) {
                 var err = String(writeStdout.text || "").trim()
                 if (err === "") err = "sqlite3 exited " + exitCode
-                root.fail(err)
-                if (kind !== "init") postWriteReload.restart()
+                root.fail(err, fromScript)
+                if (kind === "init") initRetry.start()
+                else reloadDebounce.restart()
                 return
             }
 
@@ -139,16 +179,18 @@ QtObject {
                 dbFile.reload()
                 root.load()
             } else {
-                if (kind === "add") root.added(Db.parseId(writeStdout.text))
-                else if (kind === "setStatus") root.statusChanged(args.id, args.status)
-                else if (kind === "update") root.updated(args.id, args.title)
-                else if (kind === "convertType") root.typeChanged(args.id)
-                else if (kind === "deleteItem") root.itemDeleted(args.id)
-                else if (kind === "deleteHistory") root.historyRowDeleted(args.id)
-                else if (kind === "clearHistory") root.historyCleared()
-                // Belt-and-braces alongside the watcher: refresh shortly in
-                // case it misses our own write to the file.
-                postWriteReload.restart()
+                if (!fromScript) {
+                    if (kind === "add") root.added(Db.parseId(writeStdout.text))
+                    else if (kind === "setStatus") root.statusChanged(args.id, args.status)
+                    else if (kind === "update") root.updated(args.id, args.title)
+                    else if (kind === "convertType") root.typeChanged(args.id)
+                    else if (kind === "deleteItem") root.itemDeleted(args.id)
+                    else if (kind === "deleteHistory") root.historyRowDeleted(args.id)
+                    else if (kind === "clearHistory") root.historyCleared()
+                }
+                // The watcher sees this write too; both land on one timer, so
+                // the write reloads once even if the watcher misses it.
+                reloadDebounce.restart()
             }
         }
     }
@@ -156,7 +198,7 @@ QtObject {
     // One sqlite3 process at a time; later writes wait their turn instead of
     // being dropped.
     function _enqueue(kind, command, args) {
-        root._writeQueue.push({ kind: kind, command: command, args: args })
+        root._writeQueue.push({ kind: kind, command: command, args: args, fromScript: root._fromScript })
         root._runNextWrite()
     }
     function _runNextWrite() {
@@ -164,6 +206,7 @@ QtObject {
         var next = root._writeQueue.shift()
         root._writeKind = next.kind
         root._writeArgs = next.args
+        root._writeFromScript = next.fromScript
         root.writeProcess.command = next.command
         root.writeProcess.running = true
     }
@@ -181,23 +224,27 @@ QtObject {
         printErrors: false
         onFileChanged: {
             if (!root.ready) return
-            externalReloadDebounce.restart()
+            reloadDebounce.restart()
         }
     }
 
-    property Timer externalReloadDebounce: Timer {
-        interval: 250
-        repeat: false
-        onTriggered: root.load()
-    }
-
-    property Timer postWriteReload: Timer {
+    property Timer reloadDebounce: Timer {
         interval: 80
         repeat: false
         onTriggered: root.load()
     }
 
-    // Create the data dir + apply the schema (idempotent). Call once at start.
+    property Timer initRetry: Timer {
+        interval: 500
+        repeat: false
+        onTriggered: {
+            interval = Math.min(interval * 2, 30000)
+            root.init()
+        }
+    }
+
+    // Create the data dir + apply the schema (idempotent). Retries until it
+    // succeeds.
     function init() {
         if (root.ready || root._writeKind === "init") return
         root._enqueue("init", Db.initCommand(root.dataDir, root.dbPath), null)
@@ -221,6 +268,14 @@ QtObject {
         root.listProcess.running = true
     }
 
+    function listAll() {
+        if (!root.ready) return
+        if (root.allItemsProcess.running) { root._allItemsStale = true; return }
+        root._allItemsStale = false
+        root.allItemsProcess.command = Db.sqliteCommand(root.dbPath, Db.listSql("all", ""), true)
+        root.allItemsProcess.running = true
+    }
+
     function historyList() {
         if (!root.ready || root.historyProcess.running) return
         root.historyProcess.command = Db.sqliteCommand(root.dbPath, Db.historySql(), true)
@@ -232,6 +287,7 @@ QtObject {
     function load() {
         root.loadCounts()
         root.list(root.listFilter, root.listQuery)
+        root.listAll()
         root.historyList()
     }
 

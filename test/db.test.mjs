@@ -95,21 +95,37 @@ test("initCommand creates the data dir and both tables, and is safe to rerun", (
   assert.deepEqual(tables.map((r) => r.name), ["history", "items"])
 })
 
-test("sqliteCommand: a write waits for a lock held by another process", { timeout: 10000 }, async (t) => {
-  const db = seed(openDb(t))
-  const holder = spawnAsync("sqlite3", [db.path], { stdio: ["pipe", "ignore", "ignore"] })
+// Starts argv while another process holds an exclusive lock on path, releases
+// the lock 300 ms later, and resolves with how argv exited.
+async function runWhileLocked(t, path, argv) {
+  const holder = spawnAsync("sqlite3", [path], { stdio: ["pipe", "ignore", "ignore"] })
   t.after(() => holder.kill())
   holder.stdin.write("BEGIN EXCLUSIVE;\n")
-  while (spawn(["sqlite3", db.path, "SELECT 1"]).status === 0) await sleep(10)
+  while (spawn(["sqlite3", path, "SELECT 1"]).status === 0) await sleep(10)
 
-  const [cmd, ...args] = Db.sqliteCommand(db.path, Db.deleteHistorySql(1), false)
-  const writer = spawnAsync(cmd, args, { stdio: ["ignore", "ignore", "pipe"] })
-  const exited = once(writer, "close")
+  const run = spawnAsync(argv[0], argv.slice(1), { stdio: ["ignore", "ignore", "pipe"] })
+  const exited = once(run, "close")
   let stderr = ""
-  writer.stderr.on("data", (chunk) => { stderr += chunk })
+  run.stderr.on("data", (chunk) => { stderr += chunk })
   await sleep(300)
   holder.stdin.end("COMMIT;\n")
   const [status] = await exited
+  return { status, stderr }
+}
+
+test("initCommand: start-up on a new database waits for a lock held by another process", { timeout: 10000 }, async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "omanotes-db-"))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const path = join(dir, "scratchpad.db")
+  const { status, stderr } = await runWhileLocked(t, path, Db.initCommand(dir, path))
+  assert.equal(status, 0, stderr)
+  const tables = spawn(["sqlite3", path, "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name"])
+  assert.equal(tables.stdout, "history\nitems\n")
+})
+
+test("sqliteCommand: a write waits for a lock held by another process", { timeout: 10000 }, async (t) => {
+  const db = seed(openDb(t))
+  const { status, stderr } = await runWhileLocked(t, db.path, Db.sqliteCommand(db.path, Db.deleteHistorySql(1), false))
   assert.equal(status, 0, stderr)
   assert.deepEqual(ids(db.history()), [2, 3])
 })
