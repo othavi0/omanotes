@@ -3,17 +3,42 @@ import assert from "node:assert/strict"
 import { spawn as spawnAsync, spawnSync } from "node:child_process"
 import { once } from "node:events"
 import { setTimeout as sleep } from "node:timers/promises"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
-const Db = loadQmlLib(new URL("../data/Db.js", import.meta.url), [
+const DB_JS = new URL("../data/Db.js", import.meta.url)
+const NAMES = [
   "q", "likeEscape", "now", "listSql", "countsSql", "addSql", "setStatusSql",
   "updateSql", "deleteItemSql", "convertTypeSql", "historySql", "deleteHistorySql",
-  "clearHistorySql", "sqliteCommand", "initCommand", "parseRows", "parseCounts",
-  "parseId", "parseFound", "errorText"
-])
+  "clearHistorySql", "sqliteCommand", "initCommand", "MIGRATIONS", "migrateSql",
+  "parseVersion", "migrationRaced", "parseRows", "parseCounts", "parseId", "parseFound",
+  "errorText"
+]
+const Db = loadQmlLib(DB_JS, NAMES)
+
+// The schema every database had before it was versioned, as the live one
+// still has it at user_version 0.
+const V0_SCHEMA = "CREATE TABLE IF NOT EXISTS items ("
+  + "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+  + "  type TEXT NOT NULL,"
+  + "  title TEXT NOT NULL,"
+  + "  body TEXT,"
+  + "  status INTEGER NOT NULL DEFAULT 0,"
+  + "  created_at INTEGER NOT NULL,"
+  + "  updated_at INTEGER NOT NULL"
+  + ");"
+  + "CREATE INDEX IF NOT EXISTS idx_items_sort ON items(status, updated_at DESC);"
+  + "CREATE INDEX IF NOT EXISTS idx_items_type_status ON items(type, status);"
+  + "CREATE TABLE IF NOT EXISTS history ("
+  + "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+  + "  type TEXT NOT NULL,"
+  + "  title TEXT NOT NULL,"
+  + "  action TEXT NOT NULL,"
+  + "  ts INTEGER NOT NULL"
+  + ");"
+  + "CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts DESC);"
 
 const T0 = 1700000000
 
@@ -33,15 +58,39 @@ function spawn(argv, env) {
   return r
 }
 
-// A throwaway database initialised by initCommand and driven through
-// sqliteCommand, the same argv Db.qml hands to Process.
-function openDb(t, env) {
+// Start-up as Db.qml runs it: read the version, then migrate from it.
+function start(path, env, lib = Db) {
+  const read = spawn(lib.initCommand(dirname(path), path), env)
+  assert.equal(read.status, 0, read.stderr)
+  const sql = lib.migrateSql(lib.parseVersion(read.stdout))
+  if (sql.length === 0) return
+  const migrate = spawn(lib.sqliteCommand(path, sql, false), env)
+  assert.equal(migrate.status, 0, migrate.stderr)
+}
+
+function tempPath(t) {
   const dir = mkdtempSync(join(tmpdir(), "omanotes-db-"))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
-  const dataDir = join(dir, "omarchy")
-  const path = join(dataDir, "scratchpad.db")
-  const init = spawn(Db.initCommand(dataDir, path), env)
-  assert.equal(init.status, 0, init.stderr)
+  return join(dir, "omarchy", "scratchpad.db")
+}
+
+// A throwaway database made by start-up and driven through sqliteCommand, the
+// same argv Db.qml hands to Process.
+function openDb(t, env) {
+  const path = tempPath(t)
+  start(path, env)
+  return dbAt(path, env)
+}
+
+// A database as the live one is before versioning: the old schema, at version 0.
+function openV0Db(t) {
+  const path = tempPath(t)
+  mkdirSync(dirname(path))
+  assert.equal(spawn(["sqlite3", path, V0_SCHEMA]).status, 0)
+  return dbAt(path)
+}
+
+function dbAt(path, env) {
   const db = {
     path,
     run(sql, json) {
@@ -65,6 +114,12 @@ function openDb(t, env) {
     },
     snapshot() {
       return { items: db.read("SELECT * FROM items ORDER BY id"), history: db.history() }
+    },
+    version() {
+      return db.read("PRAGMA user_version")[0].user_version
+    },
+    bytes() {
+      return readFileSync(path)
     }
   }
   return db
@@ -88,11 +143,76 @@ function ids(rows) {
   return rows.map((r) => r.id)
 }
 
-test("initCommand creates the data dir and both tables, and is safe to rerun", (t) => {
+const TABLES = "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name"
+
+test("start-up on a missing database creates the data dir, both tables and the current version", (t) => {
   const db = openDb(t)
-  assert.equal(spawn(Db.initCommand(join(db.path, ".."), db.path)).status, 0)
-  const tables = db.read("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name")
-  assert.deepEqual(tables.map((r) => r.name), ["history", "items"])
+  assert.deepEqual(db.read(TABLES).map((r) => r.name), ["history", "items"])
+  assert.equal(db.version(), Db.MIGRATIONS.length)
+})
+
+test("start-up takes a version 0 database with rows to the current version and keeps every row", (t) => {
+  const db = seed(openV0Db(t))
+  assert.equal(db.version(), 0)
+  const before = db.snapshot()
+  start(db.path)
+  assert.equal(db.version(), Db.MIGRATIONS.length)
+  assert.deepEqual(db.snapshot(), before)
+})
+
+test("a second start-up changes nothing", (t) => {
+  const db = seed(openV0Db(t))
+  start(db.path)
+  const bytes = db.bytes()
+  assert.deepEqual(Db.migrateSql(Db.MIGRATIONS.length), [])
+  start(db.path)
+  assert.deepEqual(db.bytes(), bytes)
+})
+
+test("a database newer than this Omanotes is left as it is", () => {
+  assert.deepEqual(Db.migrateSql(Db.MIGRATIONS.length + 1), [])
+})
+
+test("a migration appended to MIGRATIONS runs once, on the databases below its version", (t) => {
+  const Next = loadQmlLib(DB_JS, NAMES)
+  Next.MIGRATIONS.push(["ALTER TABLE items ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"])
+  for (const db of [seed(openV0Db(t)), seed(openDb(t))]) {
+    const before = db.snapshot()
+    start(db.path, undefined, Next)
+    assert.equal(db.version(), Db.MIGRATIONS.length + 1)
+    assert.deepEqual(db.snapshot(), {
+      items: before.items.map((item) => ({ ...item, pinned: 0 })),
+      history: before.history
+    })
+    const bytes = db.bytes()
+    start(db.path, undefined, Next)
+    assert.deepEqual(db.bytes(), bytes)
+  }
+})
+
+test("a migration built from a version another start-up already moved writes nothing", (t) => {
+  const Next = loadQmlLib(DB_JS, NAMES)
+  Next.MIGRATIONS.push(["ALTER TABLE items ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"])
+  const db = seed(openV0Db(t))
+  const stale = Next.migrateSql(0)
+  start(db.path, undefined, Next)
+  const bytes = db.bytes()
+  const r = db.run(stale, false)
+  assert.notEqual(r.status, 0)
+  assert.equal(Db.migrationRaced(r.stderr), true)
+  assert.deepEqual(db.bytes(), bytes)
+})
+
+test("migrationRaced is false for any other failure", (t) => {
+  const r = openDb(t).run("UPDATE items SET nope = 1", false)
+  assert.equal(Db.migrationRaced(r.stderr), false)
+  assert.equal(Db.migrationRaced("Error: database is locked\n"), false)
+})
+
+test("parseVersion: the integer PRAGMA user_version prints", () => {
+  assert.equal(Db.parseVersion("3\n"), 3)
+  assert.throws(() => Db.parseVersion(""), { message: "unreadable sqlite3 output" })
+  assert.throws(() => Db.parseVersion("x"), { message: "unreadable sqlite3 output" })
 })
 
 // Starts argv while another process holds an exclusive lock on path, releases
@@ -113,14 +233,13 @@ async function runWhileLocked(t, path, argv) {
   return { status, stderr }
 }
 
-test("initCommand: start-up on a new database waits for a lock held by another process", { timeout: 10000 }, async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "omanotes-db-"))
-  t.after(() => rmSync(dir, { recursive: true, force: true }))
-  const path = join(dir, "scratchpad.db")
-  const { status, stderr } = await runWhileLocked(t, path, Db.initCommand(dir, path))
-  assert.equal(status, 0, stderr)
-  const tables = spawn(["sqlite3", path, "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name"])
-  assert.equal(tables.stdout, "history\nitems\n")
+test("start-up waits for a lock held by another process", { timeout: 10000 }, async (t) => {
+  const db = seed(openV0Db(t))
+  const read = await runWhileLocked(t, db.path, Db.initCommand(dirname(db.path), db.path))
+  assert.equal(read.status, 0, read.stderr)
+  const migrate = await runWhileLocked(t, db.path, Db.sqliteCommand(db.path, Db.migrateSql(0), false))
+  assert.equal(migrate.status, 0, migrate.stderr)
+  assert.equal(db.version(), Db.MIGRATIONS.length)
 })
 
 test("sqliteCommand: a write waits for a lock held by another process", { timeout: 10000 }, async (t) => {

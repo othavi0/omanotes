@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Loads one BarWidget per monitor, as the bar does, against a missing database
-# file, with the first schema run failing as a locked database does. Asserts
+# file, with the first migration failing as a locked database does. Asserts
 # that the IPC refuses calls until the database is ready, that list and toggle
 # keep refusing until the first read of every item lands, that every widget
-# runs one Db that its panel shares, that every Db ends ready, and that one
-# write reloads each Db once.
+# runs one Db that its panel shares, that every Db ends ready at the current
+# schema version while the widgets race to migrate, and that one write reloads
+# each Db once.
 
 set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
@@ -13,7 +14,7 @@ stub_keyboard_panel
 rm -rf "$data_home/omarchy"
 monitors=3
 
-# Logs every sqlite3 run, one line each. Schema runs wait for the release
+# Logs every sqlite3 run, one line each. Migrations wait for the release
 # file, and the first one fails. Reads of every item wait for the
 # items-release file.
 real_sqlite3="$(command -v sqlite3)"
@@ -141,9 +142,17 @@ done
 replies "list and toggle answer from the items once read" "$reads" \
   '{"ok":false,"error":"item not found: 1"} [] []'
 
-[[ -d "$cfg_dir/init-failed" ]] && pass "the first schema run failed" || fail "the first schema run failed"
+[[ -d "$cfg_dir/init-failed" ]] && pass "the first migration failed" || fail "the first migration failed"
+replies "each widget migrated from version 0 once, the one that lost the race included" \
+  "$(grep -c "CREATE TABLE" "$cfg_dir/sqlite3.log" || true)" "$monitors"
 tables="$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name" 2>&1 | tr '\n' ' ')"
 replies "the missing database file now has both tables" "$tables" "history items "
+current="$(node --input-type=module -e '
+  const { loadQmlLib } = await import(process.argv[1])
+  process.stdout.write(String(loadQmlLib(process.argv[2], ["MIGRATIONS"]).MIGRATIONS.length))
+' "$worktree/test/lib/load-qml-lib.mjs" "$worktree/data/Db.js" 2>&1 || true)"
+replies "the database is at the current schema version" \
+  "$(sqlite3 "$data_home/omarchy/scratchpad.db" "PRAGMA user_version")" "$current"
 replies "the refused add never lands" \
   "$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT COUNT(*) FROM items WHERE title = 'EARLY'")" "0"
 

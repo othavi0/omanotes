@@ -1,7 +1,7 @@
 # Sourced by the offscreen Quickshell scripts in test/. Builds a
 # throwaway `qs -p` config dir (kit symlinked from the installed shell, ui/ and
 # data/ from this checkout) and a throwaway XDG_DATA_HOME holding a seeded
-# scratchpad.db.
+# scratchpad.db at the current schema version.
 
 worktree="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 shell_root="${OMARCHY_PATH:-/usr/share/omarchy}/shell"
@@ -29,7 +29,7 @@ mkdir -p "$data_home/omarchy"
 db="$data_home/omarchy/scratchpad.db"
 node --input-type=module -e '
   const { loadQmlLib } = await import(process.argv[1])
-  process.stdout.write(loadQmlLib(process.argv[2], ["SCHEMA"]).SCHEMA)
+  process.stdout.write(loadQmlLib(process.argv[2], ["migrateSql"]).migrateSql(0).join(";\n") + ";\n")
 ' "$worktree/test/lib/load-qml-lib.mjs" "$worktree/data/Db.js" | sqlite3 "$db"
 
 now="$(date +%s)"
