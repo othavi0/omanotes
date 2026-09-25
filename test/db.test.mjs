@@ -83,11 +83,11 @@ function openDb(t, env) {
 }
 
 // A database as the live one is before versioning: the old schema, at version 0.
-function openV0Db(t) {
+function openV0Db(t, env) {
   const path = tempPath(t)
   mkdirSync(dirname(path))
   assert.equal(spawn(["sqlite3", path, V0_SCHEMA]).status, 0)
-  return dbAt(path)
+  return dbAt(path, env)
 }
 
 function dbAt(path, env) {
@@ -139,8 +139,26 @@ function seed(db) {
   return db
 }
 
+// The seeded rows as the live database has them: written before a start-up,
+// which then migrates them to the current version.
+function seeded(t, env) {
+  const db = seed(openV0Db(t, env))
+  start(db.path, env)
+  return db
+}
+
 function ids(rows) {
   return rows.map((r) => r.id)
+}
+
+// An item from before the search copy, as start-up leaves it. The seeded
+// texts are plain ASCII, so the copy is the text in lower case.
+function withSearch(item) {
+  return {
+    search_title: item.title.toLowerCase(),
+    search_body: item.body === null ? null : item.body.toLowerCase(),
+    ...item
+  }
 }
 
 const TABLES = "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name"
@@ -157,7 +175,7 @@ test("start-up takes a version 0 database with rows to the current version and k
   const before = db.snapshot()
   start(db.path)
   assert.equal(db.version(), Db.MIGRATIONS.length)
-  assert.deepEqual(db.snapshot(), before)
+  assert.deepEqual(db.snapshot(), { items: before.items.map(withSearch), history: before.history })
 })
 
 test("a second start-up changes nothing", (t) => {
@@ -176,12 +194,12 @@ test("a database newer than this Omanotes is left as it is", () => {
 test("a migration appended to MIGRATIONS runs once, on the databases below its version", (t) => {
   const Next = loadQmlLib(DB_JS, NAMES)
   Next.MIGRATIONS.push(["ALTER TABLE items ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"])
-  for (const db of [seed(openV0Db(t)), seed(openDb(t))]) {
+  for (const db of [seed(openV0Db(t)), seeded(t)]) {
     const before = db.snapshot()
     start(db.path, undefined, Next)
     assert.equal(db.version(), Db.MIGRATIONS.length + 1)
     assert.deepEqual(db.snapshot(), {
-      items: before.items.map((item) => ({ ...item, pinned: 0 })),
+      items: before.items.map((item) => ({ ...withSearch(item), pinned: 0 })),
       history: before.history
     })
     const bytes = db.bytes()
@@ -243,43 +261,139 @@ test("start-up waits for a lock held by another process", { timeout: 10000 }, as
 })
 
 test("sqliteCommand: a write waits for a lock held by another process", { timeout: 10000 }, async (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   const { status, stderr } = await runWhileLocked(t, db.path, Db.sqliteCommand(db.path, Db.deleteHistorySql(1), false))
   assert.equal(status, 0, stderr)
   assert.deepEqual(ids(db.history()), [2, 3])
 })
 
 test("listSql: all items, status 0 (unread or pending) first, then most recent", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   assert.deepEqual(ids(db.read(Db.listSql("all", ""))), [2, 1, 3, 5, 4])
 })
 
 test("listSql: type filter", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   assert.deepEqual(ids(db.read(Db.listSql("todo", ""))), [2, 3, 5])
   assert.deepEqual(ids(db.read(Db.listSql("note", ""))), [1, 4])
 })
 
 test("listSql: an invalid filter lists every item", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   assert.deepEqual(ids(db.read(Db.listSql("bogus", ""))), [2, 1, 3, 5, 4])
   assert.deepEqual(ids(db.read(Db.listSql("note' OR 1=1 --", ""))), [2, 1, 3, 5, 4])
 })
 
 test("listSql: search matches title or body and ignores ASCII case", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   assert.deepEqual(ids(db.read(Db.listSql("all", "DOMAIN"))), [2])
   assert.deepEqual(ids(db.read(Db.listSql("all", "grind"))), [4])
   assert.deepEqual(ids(db.read(Db.listSql("note", "domain"))), [])
   assert.deepEqual(ids(db.read(Db.listSql("all", "   "))), [2, 1, 3, 5, 4])
 })
 
+function searchIds(db, filterType, query) {
+  return ids(db.read(Db.listSql(filterType, query)))
+}
+
+// Every spelling of a word finds the item, whatever its case and accents, and
+// an accent typed as a separate combining mark counts the same.
+function assertAccentedSearch(db, titleId, bodyId) {
+  for (const query of ["CAFÉ", "cafe", "Cafe", "café", "CAFE", "cafe\u0301"]) {
+    assert.deepEqual(searchIds(db, "all", query), [titleId], query)
+  }
+  for (const query of ["AÇÃO", "ação", "acao", "Acao", "PÃO", "pao"]) {
+    assert.deepEqual(searchIds(db, "all", query), [bodyId], query)
+  }
+  assert.deepEqual(searchIds(db, "todo", "cafe"), [])
+  assert.deepEqual(searchIds(db, "all", "cafes"), [])
+}
+
+test("listSql: search ignores case and accents in items from before the migration", (t) => {
+  const db = openV0Db(t)
+  db.write("INSERT INTO items (id, type, title, body, status, created_at, updated_at) VALUES"
+    + " (1, 'note', 'Café', NULL, 0, " + T0 + ", " + T0 + "),"
+    + " (2, 'todo', 'Padaria', 'Revisar a AÇÃO do pão', 0, " + (T0 - 1) + ", " + (T0 - 1) + ")")
+  start(db.path)
+  assertAccentedSearch(db, 1, 2)
+})
+
+test("listSql: search ignores case and accents in items added or edited after it", (t) => {
+  const db = seeded(t)
+  const cafe = Db.parseId(db.write(atT0(() => Db.addSql("note", "Café", ""))))
+  db.write(atT0(() => Db.updateSql(2, "Padaria", "Revisar a AÇÃO do pão")))
+  assertAccentedSearch(db, cafe, 2)
+  db.write(atT0(() => Db.updateSql(cafe, "Chá", "")))
+  assert.deepEqual(searchIds(db, "all", "cafe"), [])
+  assert.deepEqual(searchIds(db, "all", "CHA"), [cafe])
+})
+
+test("listSql: search finds items inserted or edited with sqlite3 after the migration", (t) => {
+  const db = openDb(t)
+  db.write(Db.addSql("note", "Buy milk", ""))
+  db.write("INSERT INTO items (type, title, body, status, created_at, updated_at)"
+    + " VALUES ('todo', 'Renew the domain', 'Pagar a AÇÃO', 0, " + T0 + ", " + T0 + ")")
+  db.write("UPDATE items SET title = 'Call the bank' WHERE id = 1")
+  assert.deepEqual(searchIds(db, "all", "domain"), [2])
+  assert.deepEqual(searchIds(db, "all", "acao"), [2])
+  assert.deepEqual(searchIds(db, "all", "CALL"), [1])
+  assert.deepEqual(searchIds(db, "all", "milk"), [])
+  db.write("UPDATE items SET body = 'Due day 30' WHERE id = 2")
+  assert.deepEqual(searchIds(db, "all", "acao"), [])
+  assert.deepEqual(searchIds(db, "all", "DUE"), [2])
+})
+
+// Every character of the Basic Multilingual Plane except NUL and the
+// surrogate halves, plus combining marks, a final sigma and characters
+// outside the plane, which the fold must treat the same in JS and SQL.
+function searchSamples() {
+  const samples = []
+  let chunk = ""
+  for (let u = 1; u < 0x10000; u++) {
+    if (u >= 0xd800 && u <= 0xdfff) continue
+    chunk += String.fromCharCode(u)
+    if (chunk.length === 1024) {
+      samples.push(chunk)
+      chunk = ""
+    }
+  }
+  samples.push(chunk, "", "Ὀδυσσεύς ΟΔΟΣ", "e\u0301 A\u030a \ud801\udc00\ud83d\ude00 İstanbul Ǆ ß ﬁ")
+  return samples
+}
+
+function insertRaw(db, samples) {
+  db.write(["BEGIN"].concat(samples.map((text, i) =>
+    "INSERT INTO items (type, title, body, status, created_at, updated_at) VALUES ('note', "
+      + Db.q(text) + ", " + (text === "" ? "NULL" : Db.q(text)) + ", 0, " + i + ", " + i + ")"), ["COMMIT"]))
+}
+
+test("the migration and sqlite3 writes fold items exactly as addSql does", (t) => {
+  const samples = searchSamples()
+  const added = openDb(t)
+  for (const text of samples) added.write(Db.addSql("note", text, text))
+  const copies = "SELECT title, body, search_title, search_body FROM items ORDER BY id"
+  const expected = added.read(copies)
+
+  const old = openV0Db(t)
+  insertRaw(old, samples)
+  start(old.path)
+  assert.deepEqual(old.read(copies), expected, "migrated")
+
+  const inserted = openDb(t)
+  insertRaw(inserted, samples)
+  assert.deepEqual(inserted.read(copies), expected, "inserted with sqlite3")
+
+  const edited = openDb(t)
+  insertRaw(edited, samples.map(() => "x"))
+  edited.write(["BEGIN"].concat(samples.map((text, i) =>
+    "UPDATE items SET title = " + Db.q(text) + ", body = " + (text === "" ? "NULL" : Db.q(text))
+      + " WHERE id = " + (i + 1)), ["COMMIT"]))
+  assert.deepEqual(edited.read(copies), expected, "edited with sqlite3")
+})
+
 test("listSql: a quote and LIKE wildcards in the search are matched literally", (t) => {
   const db = openDb(t)
-  db.write("INSERT INTO items (id, type, title, status, created_at, updated_at) VALUES"
-    + " (1, 'note', 'it''s 100% done', 0, 1, 1),"
-    + " (2, 'note', 'it''s 1000 done', 0, 2, 2),"
-    + " (3, 'note', 'a\\b', 0, 3, 3)")
+  for (const title of ["it's 100% done", "it's 1000 done", "a\\b"]) db.write(Db.addSql("note", title, ""))
   assert.deepEqual(ids(db.read(Db.listSql("all", "it's 100%"))), [1])
   assert.deepEqual(ids(db.read(Db.listSql("all", "_"))), [])
   assert.deepEqual(ids(db.read(Db.listSql("all", "a\\b"))), [3])
@@ -291,16 +405,17 @@ test("countsSql: empty database counts zero", (t) => {
 })
 
 test("countsSql: unread notes, pending todos and totals per type", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 1, inProgressTodos: 2, notes: 2, todos: 3, history: 3 }])
 })
 
 test("addSql: stores the item, prints its id and logs it as added", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   const id = Db.parseId(db.write(atT0(() => Db.addSql("todo", "Jane's list", "milk, 'eggs'"))))
   assert.equal(id, 6)
   assert.deepEqual(db.item(id), {
-    id: 6, type: "todo", title: "Jane's list", body: "milk, 'eggs'", status: 0, created_at: T0, updated_at: T0
+    id: 6, type: "todo", title: "Jane's list", body: "milk, 'eggs'", status: 0, created_at: T0, updated_at: T0,
+    search_title: "jane's list", search_body: "milk, 'eggs'"
   })
   assert.deepEqual(db.history().at(-1), { id: 4, type: "todo", title: "Jane's list", action: "added", ts: T0 })
 })
@@ -309,11 +424,12 @@ test("addSql: an empty body is stored as NULL and an unknown type as a note", (t
   const db = openDb(t)
   const id = Db.parseId(db.write(atT0(() => Db.addSql("bogus", "Buy milk", ""))))
   assert.equal(db.item(id).body, null)
+  assert.equal(db.item(id).search_body, null)
   assert.equal(db.item(id).type, "note")
 })
 
 test("setStatusSql: completing a todo", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   db.write(atT0(() => Db.setStatusSql(2, 1)))
   assert.equal(db.item(2).status, 1)
   assert.equal(db.item(2).updated_at, T0)
@@ -321,14 +437,14 @@ test("setStatusSql: completing a todo", (t) => {
 })
 
 test("setStatusSql: marking a read note unread logs it as reopened", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   db.write(atT0(() => Db.setStatusSql(4, 0)))
   assert.equal(db.item(4).status, 0)
   assert.deepEqual(db.history().at(-1), { id: 4, type: "note", title: "Buy coffee", action: "reopened", ts: T0 })
 })
 
 test("setStatusSql: setting the status an item already has records nothing", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   const before = db.snapshot()
   assert.equal(Db.parseFound(db.write(atT0(() => Db.setStatusSql(4, 1)))), true)
   assert.equal(Db.parseFound(db.write(atT0(() => Db.setStatusSql(2, 0)))), true)
@@ -342,7 +458,7 @@ for (const [name, build] of [
   ["deleteItemSql", (id) => Db.deleteItemSql(id)]
 ]) {
   test(name + ": reports whether the item exists, and a missing id records nothing", (t) => {
-    const db = seed(openDb(t))
+    const db = seeded(t)
     const before = db.snapshot()
     assert.equal(Db.parseFound(db.write(atT0(() => build(99)))), false)
     assert.deepEqual(db.snapshot(), before)
@@ -358,7 +474,7 @@ test("sqliteCommand: the user's sqliterc does not change what reads and writes p
   mkdirSync(join(home, "sqlite3"))
   writeFileSync(join(home, "sqlite3", "sqliterc"), rc)
   writeFileSync(join(home, ".sqliterc"), rc)
-  const db = seed(openDb(t, { ...process.env, HOME: home, XDG_CONFIG_HOME: home }))
+  const db = seeded(t, { ...process.env, HOME: home, XDG_CONFIG_HOME: home })
 
   assert.equal(Db.parseId(db.write(atT0(() => Db.addSql("todo", "Renew the car", "")))), 6)
   assert.equal(Db.parseFound(db.write(atT0(() => Db.setStatusSql(2, 1)))), true)
@@ -370,7 +486,7 @@ test("sqliteCommand: the user's sqliterc does not change what reads and writes p
 })
 
 test("updateSql: new title and body, logged with the new title", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   db.write(atT0(() => Db.updateSql(3, "Answer the review", "by Friday")))
   const row = db.item(3)
   assert.deepEqual([row.title, row.body, row.updated_at, row.created_at], ["Answer the review", "by Friday", T0, T0 - 10800])
@@ -378,13 +494,14 @@ test("updateSql: new title and body, logged with the new title", (t) => {
 })
 
 test("updateSql: an emptied body is stored as NULL", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   db.write(atT0(() => Db.updateSql(1, "Ideas for the panel", "")))
   assert.equal(db.item(1).body, null)
+  assert.equal(db.item(1).search_body, null)
 })
 
 test("deleteItemSql: removes the item and logs its title", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   db.write(atT0(() => Db.deleteItemSql(4)))
   assert.equal(db.item(4), undefined)
   assert.deepEqual(ids(db.read(Db.listSql("all", ""))), [2, 1, 3, 5])
@@ -392,7 +509,7 @@ test("deleteItemSql: removes the item and logs its title", (t) => {
 })
 
 test("convertTypeSql: flips the type, keeps the status and logs the new type", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   db.write(atT0(() => Db.convertTypeSql(4)))
   assert.deepEqual([db.item(4).type, db.item(4).status, db.item(4).updated_at], ["todo", 1, T0])
   assert.deepEqual(db.history().at(-1), { id: 4, type: "todo", title: "Buy coffee", action: "converted", ts: T0 })
@@ -415,7 +532,7 @@ test("an id that is not a whole number is refused before any SQL is built", () =
 })
 
 test("a numeric id is accepted as a number or as digits", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   db.write(Db.deleteHistorySql("2"))
   db.write(Db.deleteHistorySql(3))
   assert.deepEqual(ids(db.history()), [1])
@@ -429,7 +546,7 @@ for (const [name, build, failOn] of [
   ["deleteItemSql", () => Db.deleteItemSql(2), "DELETE ON items"]
 ]) {
   test(name + ": a failing second change writes nothing", (t) => {
-    const db = seed(openDb(t))
+    const db = seeded(t)
     db.write("CREATE TRIGGER fail_second BEFORE " + failOn + " BEGIN SELECT RAISE(ABORT, 'forced'); END")
     const before = db.snapshot()
     const r = db.run(atT0(build), false)
@@ -440,7 +557,7 @@ for (const [name, build, failOn] of [
 }
 
 test("historySql: newest first, capped at 500 rows", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   assert.deepEqual(ids(db.read(Db.historySql())), [1, 2, 3])
   db.write("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 600)"
     + " INSERT INTO history (type, title, action, ts) SELECT 'note', 'bulk', 'added', " + T0 + " + i FROM n")
@@ -451,7 +568,7 @@ test("historySql: newest first, capped at 500 rows", (t) => {
 })
 
 test("deleteHistorySql removes one row, clearHistorySql all of them, items stay", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   db.write(Db.deleteHistorySql(2))
   assert.deepEqual(ids(db.history()), [1, 3])
   db.write(Db.clearHistorySql())
@@ -512,7 +629,7 @@ test("likeEscape escapes the backslash first, then the wildcards", () => {
 })
 
 test("countsSql: the history count is the real total, past the 500 rows historySql reads", (t) => {
-  const db = seed(openDb(t))
+  const db = seeded(t)
   db.write("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 600)"
     + " INSERT INTO history (type, title, action, ts) SELECT 'note', 'bulk', 'added', " + T0 + " + i FROM n")
   assert.equal(db.read(Db.historySql()).length, 500)

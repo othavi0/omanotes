@@ -105,7 +105,7 @@ Restricting the list to all items, only notes or only todos.
 _Avoid_: tab, view
 
 **Search**:
-Restricting the list to items whose title or body contains the typed text.
+Restricting the list to items whose title or body contains the typed text, ignoring case and accents.
 _Avoid_: query (in user-facing text)
 
 **Scratchpad**:
