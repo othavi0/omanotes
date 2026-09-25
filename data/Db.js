@@ -191,8 +191,11 @@ var SCHEMA = "CREATE TABLE IF NOT EXISTS items ("
 // the session: it makes sqlite wait up to 5s on a locked db instead of failing,
 // and — unlike `PRAGMA busy_timeout=...` — it prints nothing, so it cannot
 // corrupt the -json output.
+//
+// `-init /dev/null` skips the user's sqliterc, which the CLI reads even when not
+// interactive: a `.headers on` there turns a write's "1" into "changes()\n1".
 function sqliteCommand(dbPath, sql, json) {
-  var cmd = ["sqlite3"]
+  var cmd = ["sqlite3", "-init", "/dev/null"]
   if (json) cmd.push("-json")
   return cmd.concat(String(dbPath), ".timeout 5000", sql)
 }

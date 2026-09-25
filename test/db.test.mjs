@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { spawn as spawnAsync, spawnSync } from "node:child_process"
 import { once } from "node:events"
 import { setTimeout as sleep } from "node:timers/promises"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
@@ -27,25 +27,25 @@ function atT0(fn) {
   }
 }
 
-function spawn(argv) {
-  const r = spawnSync(argv[0], argv.slice(1), { encoding: "utf8" })
+function spawn(argv, env) {
+  const r = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", env })
   if (r.error) throw r.error
   return r
 }
 
 // A throwaway database initialised by initCommand and driven through
 // sqliteCommand, the same argv Db.qml hands to Process.
-function openDb(t) {
+function openDb(t, env) {
   const dir = mkdtempSync(join(tmpdir(), "omanotes-db-"))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   const dataDir = join(dir, "omarchy")
   const path = join(dataDir, "scratchpad.db")
-  const init = spawn(Db.initCommand(dataDir, path))
+  const init = spawn(Db.initCommand(dataDir, path), env)
   assert.equal(init.status, 0, init.stderr)
   const db = {
     path,
     run(sql, json) {
-      return spawn(Db.sqliteCommand(path, sql, json))
+      return spawn(Db.sqliteCommand(path, sql, json), env)
     },
     read(sql) {
       const r = db.run(sql, true)
@@ -231,6 +231,24 @@ for (const [name, build] of [
     assert.notDeepEqual(db.snapshot(), before)
   })
 }
+
+test("sqliteCommand: the user's sqliterc does not change what reads and writes print", (t) => {
+  const home = mkdtempSync(join(tmpdir(), "omanotes-home-"))
+  t.after(() => rmSync(home, { recursive: true, force: true }))
+  const rc = ".headers on\n.mode column\n"
+  mkdirSync(join(home, "sqlite3"))
+  writeFileSync(join(home, "sqlite3", "sqliterc"), rc)
+  writeFileSync(join(home, ".sqliterc"), rc)
+  const db = seed(openDb(t, { ...process.env, HOME: home, XDG_CONFIG_HOME: home }))
+
+  assert.equal(Db.parseId(db.write(atT0(() => Db.addSql("todo", "Renew the car", "")))), 6)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.setStatusSql(2, 1)))), true)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.updateSql(3, "Answer the review", "")))), true)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.convertTypeSql(1)))), true)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.deleteItemSql(4)))), true)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.setStatusSql(99, 1)))), false)
+  assert.deepEqual(ids(db.read(Db.listSql("all", ""))), [6, 3, 1, 2, 5])
+})
 
 test("updateSql: new title and body, logged with the new title", (t) => {
   const db = seed(openDb(t))
