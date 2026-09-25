@@ -47,8 +47,11 @@ ShellRoot {
   property int keepId: -1
   property int beforeLastId: -1
   property int hiddenId: -1
+  property int probeId: -1
+  property int probeRows: -1
   property var panel: null
   property var mainTab: null
+  property var historyTab: null
   property var header: null
   property var toast: null
   readonly property var db: sr.mainTab ? sr.mainTab.db : null
@@ -151,10 +154,72 @@ ShellRoot {
     function() { console.log("AFTER-NEW-CLICK " + mainTab.draftNew + " [" + mainTab.editorTitle + "]") },
     function() { mainTab.discardEditor() },
 
+    function() { sr.probeId = mainTab.itemList[1].id; mainTab.pickItem(sr.probeId); sr.ctrl([Qt.Key_J]) },
+    function() {
+      console.log("CTRL-J-IN-LIST " + (mainTab.selectedId === sr.probeId))
+      sr.probeId = mainTab.selectedId; sr.ctrl([Qt.Key_K])
+    },
+    function() {
+      console.log("CTRL-K-IN-LIST " + (mainTab.selectedId === sr.probeId))
+      mainTab.pickItem(1); sr.probeId = mainTab.selectedId
+      sr.ctrl([Qt.Key_C, Qt.Key_A, Qt.Key_L, Qt.Key_D, Qt.Key_N, Qt.Key_F])
+    },
+    function() {
+      console.log("CTRL-LETTERS-IN-LIST " + (mainTab.selectedId === sr.probeId) + " " + mainTab.focusContext + " "
+        + mainTab.draftNew + " " + mainTab.filterType + " " + mainTab.deleteArmed)
+      keys.keyClickChar("j", Qt.NoModifier, -1)
+    },
+    function() {
+      console.log("PLAIN-J-IN-LIST " + (mainTab.selectedId !== sr.probeId))
+      sr.probeId = mainTab.itemList[0].id; mainTab.pickItem(sr.probeId); keys.keyClickChar("J", Qt.ShiftModifier, -1)
+    },
+    function() { console.log("SHIFT-J-IN-LIST " + (mainTab.selectedId === sr.probeId)); keys.keyClickChar("J", Qt.NoModifier, -1) },
+    function() { console.log("CAPS-J-IN-LIST " + (mainTab.selectedId !== sr.probeId)); sr.click(sr.findByText(header, "History")) },
+    function() {
+      historyTab.moveSelection(1); sr.probeRows = historyTab.rowList.length; sr.probeId = historyTab.selectedId
+      sr.ctrl([Qt.Key_J])
+    },
+    function() {
+      console.log("CTRL-J-IN-HISTORY " + (historyTab.selectedId === sr.probeId))
+      sr.probeId = historyTab.selectedId; sr.ctrl([Qt.Key_K])
+    },
+    function() { console.log("CTRL-K-IN-HISTORY " + (historyTab.selectedId === sr.probeId)); sr.ctrl([Qt.Key_D, Qt.Key_C]) },
+    function() {
+      console.log("CTRL-LETTERS-IN-HISTORY " + (historyTab.rowList.length === sr.probeRows) + " "
+        + (historyTab.selectedId === sr.probeId) + " " + historyTab.deleteArmed)
+      keys.keyClickChar("j", Qt.NoModifier, -1)
+    },
+    function() {
+      console.log("PLAIN-J-IN-HISTORY " + (historyTab.selectedId !== sr.probeId))
+      sr.probeId = historyTab.selectedId; keys.keyClickChar("J", Qt.NoModifier, -1)
+    },
+    function() { console.log("CAPS-J-IN-HISTORY " + (historyTab.selectedId !== sr.probeId)); sr.click(sr.findByText(header, "Items")) },
+
+    function() { mainTab.pickItem(1); mainTab.focusEditor() },
+    function() { console.log("EDITOR-TITLE-HINTS " + sr.hintKeys()); keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1) },
+    function() { console.log("EDITOR-BODY-HINTS " + sr.hintKeys()); keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
+    function() { keys.keyClickChar("n", Qt.NoModifier, -1) },
+    function() { sr.type("tomar") },
+    function() { console.log("DRAFT-TYPED [" + mainTab.editorTitle + "] " + mainTab.draftType); sr.ctrl([Qt.Key_T]) },
+    function() {
+      console.log("DRAFT-AFTER-CTRL-T-IN-TITLE [" + mainTab.editorTitle + "] " + mainTab.draftType)
+      console.log("DRAFT-TITLE-HINTS " + sr.hintKeys())
+      keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1)
+    },
+    function() { sr.ctrl([Qt.Key_T]) },
+    function() {
+      console.log("DRAFT-AFTER-CTRL-T-IN-BODY [" + mainTab.editorBody + "] " + mainTab.draftType)
+      console.log("DRAFT-BODY-HINTS " + sr.hintKeys())
+      keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
+    },
+
     function() { mainTab.cycleFilter() },
     function() { console.log("FILTER-AFTER-F " + mainTab.filterType + " rows=" + db.items.filter(function(i) { return i.type !== "note" }).length) }
   ]
 
+  function ctrl(keyList) {
+    for (var i = 0; i < keyList.length; ++i) keys.keyClick(keyList[i], Qt.ControlModifier, -1)
+  }
   function type(text) {
     for (var i = 0; i < text.length; ++i) keys.keyClickChar(text[i], Qt.NoModifier, -1)
   }
@@ -202,6 +267,7 @@ ShellRoot {
       sr.header = sr.findType(content, "PanelHeader")
       sr.toast = sr.findType(content, "Toast")
       sr.mainTab = sr.findType(content, "MainTab")
+      sr.historyTab = sr.findType(content, "HistoryTab")
       sr.panel = item
       item.open()
     }
@@ -274,8 +340,8 @@ logged "an item added outside the filter does not hijack the selection later" "S
 logged "a draft opened in the same tick as a discard stays open" "DRAFT-AFTER-DISCARD true$"
 logged "Esc on a draft with a body and no title keeps it open in the title field, with the warning" \
   "UNTITLED-DRAFT-AFTER-ESC true \[orphan body\] draft toast=New item needs a title$"
-logged "the hints for that draft offer Shift+Esc to discard and no longer promise save and back" \
-  "UNTITLED-DRAFT-HINTS Tab next field,Shift\+Enter new line,Shift\+Esc discard,t note/todo$"
+logged "the title hints for that draft offer Shift+Esc to discard and no longer promise save and back" \
+  "UNTITLED-DRAFT-HINTS Enter/Tab to body,Shift\+Esc discard,Ctrl\+T note/todo$"
 logged "Enter in the body of that draft keeps it open too" \
   "UNTITLED-DRAFT-AFTER-ENTER true \[orphan body\] draft toast=New item needs a title$"
 logged "clicking a row keeps that draft open and its title focused" \
@@ -302,6 +368,31 @@ logged "Esc on an empty draft drops it without the warning" "EMPTY-DRAFT-AFTER-E
 expect "the New button commits the open draft first" \
   "SELECT COUNT(*) FROM items WHERE title = 'first draft'" "1"
 logged "and then opens an empty draft" "AFTER-NEW-CLICK true \[\]$"
+logged "Ctrl+J does not move the list selection" "CTRL-J-IN-LIST true$"
+logged "Ctrl+K does not move the list selection" "CTRL-K-IN-LIST true$"
+logged "Ctrl plus a list letter does not move, edit, delete, open a draft or filter" \
+  "CTRL-LETTERS-IN-LIST true list false all false$"
+expect "Ctrl+C in the list does not toggle the selected item" "SELECT status FROM items WHERE id = 1" "0"
+logged "plain j still moves the list selection" "PLAIN-J-IN-LIST true$"
+logged "Shift+J does not move the list selection" "SHIFT-J-IN-LIST true$"
+logged "J typed with Caps Lock on moves the list selection" "CAPS-J-IN-LIST true$"
+logged "Ctrl+J does not move the History selection" "CTRL-J-IN-HISTORY true$"
+logged "Ctrl+K does not move the History selection" "CTRL-K-IN-HISTORY true$"
+logged "Ctrl plus a History letter does not clear, move or arm a delete" "CTRL-LETTERS-IN-HISTORY true true false$"
+expect "Ctrl+C in History leaves the log in the db" "SELECT COUNT(*) > 0 FROM history" "1"
+logged "plain j still moves the History selection" "PLAIN-J-IN-HISTORY true$"
+logged "J typed with Caps Lock on moves the History selection" "CAPS-J-IN-HISTORY true$"
+logged "the title hints of an item show Enter and Tab moving to the body" \
+  "EDITOR-TITLE-HINTS Enter/Tab to body,Esc save and back,Shift\+Esc discard$"
+logged "the body hints of an item show Enter and Tab saving and going back" \
+  "EDITOR-BODY-HINTS Enter/Tab save and back,Shift\+Enter new line,Shift\+Tab to title,Esc save and back,Shift\+Esc discard$"
+logged "a draft title starting with t keeps the t and the type" "DRAFT-TYPED \[tomar\] note$"
+logged "Ctrl+T in the draft title converts it to todo and types nothing" "DRAFT-AFTER-CTRL-T-IN-TITLE \[tomar\] todo$"
+logged "the draft title hints offer Ctrl+T" \
+  "DRAFT-TITLE-HINTS Enter/Tab to body,Esc save and back,Shift\+Esc discard,Ctrl\+T note/todo$"
+logged "Ctrl+T in the draft body converts it back to note and types nothing" "DRAFT-AFTER-CTRL-T-IN-BODY \[\] note$"
+logged "the draft body hints offer Ctrl+T" \
+  "DRAFT-BODY-HINTS Enter/Tab save and back,Shift\+Enter new line,Shift\+Tab to title,Esc save and back,Shift\+Esc discard,Ctrl\+T note/todo$"
 logged "f cycles the type filter and the list follows" "FILTER-AFTER-F note rows=0$"
 logged "no write was rejected during the whole run" "WRITE-FAILURES 0$"
 

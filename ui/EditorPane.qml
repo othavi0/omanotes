@@ -33,7 +33,7 @@ ColumnLayout {
     readonly property bool unsaved: root.draft || root.dirty
 
     signal leaveRequested()               // Esc/Backtab from title, Esc/Tab/Enter from body — autosave and back to the list
-    signal toggleDraftTypeRequested(string v)
+    signal convertDraftRequested(string type)
     signal toggleRequested()
     signal convertRequested()
     signal copyRequested()
@@ -66,6 +66,13 @@ ColumnLayout {
     function focusTitle() { titleField.forceActiveFocus() }
     function focusBody() { bodyField.forceActiveFocus() }
 
+    function isDraftTypeKey(event) {
+        return root.draft && event.key === Qt.Key_T && event.modifiers === Qt.ControlModifier
+    }
+    function convertDraft() {
+        root.convertDraftRequested(root.draftType === "todo" ? "note" : "todo")
+    }
+
     spacing: Style.spacing.lg
 
     RowLayout {
@@ -81,7 +88,7 @@ ColumnLayout {
             ]
             value: root.draftType
             foreground: root.foreground
-            onPicked: function(v) { root.toggleDraftTypeRequested(v) }
+            onPicked: function(v) { root.convertDraftRequested(v) }
         }
 
         Row {
@@ -156,9 +163,8 @@ ColumnLayout {
                 root.discardRequested(); event.accepted = true
             } else if (event.key === Qt.Key_Backtab || event.key === Qt.Key_Escape) {
                 root.leaveRequested(); event.accepted = true
-            } else if (event.text === "t" && root.draft
-                && String(titleField.text) === "" && !event.modifiers) {
-                root.toggleDraftTypeRequested(root.draftType === "todo" ? "note" : "todo"); event.accepted = true
+            } else if (root.isDraftTypeKey(event)) {
+                root.convertDraft(); event.accepted = true
             }
         }
     }
@@ -195,6 +201,8 @@ ColumnLayout {
                 root.discardRequested(); event.accepted = true
             } else if (event.key === Qt.Key_Escape) {
                 root.leaveRequested(); event.accepted = true
+            } else if (root.isDraftTypeKey(event)) {
+                root.convertDraft(); event.accepted = true
             }
         }
     }
