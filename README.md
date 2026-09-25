@@ -79,7 +79,7 @@ Writes are asynchronous. A `list*` call right after an `add*` can miss the new i
 
 ## Data
 
-The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is `SCHEMA` in `data/Db.js`: an `items` table for notes and todos and a `history` table. `data/schema.sql` is a copy that the test harness applies.
+The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is `SCHEMA` in `data/Db.js`: an `items` table for notes and todos and a `history` table. The plugin applies it at start, and the test harness seeds its database from the same constant.
 
 ## Development
 

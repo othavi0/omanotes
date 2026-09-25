@@ -137,11 +137,8 @@ function clearHistorySql() {
   return "DELETE FROM history"
 }
 
-// Full schema, applied idempotently on first run (every statement uses
-// IF NOT EXISTS). Mirrors data/schema.sql, which stays as the human-readable
-// reference — this constant is the runtime source of truth: it lives entirely
-// inside the JS module, so init() needs no filesystem path for the schema
-// (QML file:// and qs:// VFS URLs cannot be handed to the sqlite3 CLI).
+// A string rather than a .sql file: QML file:// and qs:// VFS URLs cannot be
+// handed to the sqlite3 CLI, so init() must not need a filesystem path.
 var SCHEMA = "CREATE TABLE IF NOT EXISTS items ("
   + "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
   + "  type TEXT NOT NULL,"
