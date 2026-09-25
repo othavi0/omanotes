@@ -52,9 +52,23 @@ QtObject {
 
     // Central failure path: surfaces in the journal (console.error) so data-layer
     // errors are visible in the shell logs even before the UI handles them.
-    function fail(message) {
+    function fail(message, fromScript) {
         console.error("omanotes db: " + message)
-        root.failed(message)
+        if (!fromScript) root.failed(message)
+    }
+
+    // The panel answers added, statusChanged, itemDeleted, historyCleared and
+    // failed as if its user acted: it moves the selection, which commits the
+    // open edit, and shows a toast. Writes a script makes inside run() reload
+    // the views but emit none of them.
+    property bool _fromScript: false
+    function fromScript(run) {
+        root._fromScript = true
+        try {
+            run()
+        } finally {
+            root._fromScript = false
+        }
     }
 
     property Process countsProcess: Process {
@@ -104,7 +118,7 @@ QtObject {
         }
         onExited: function(exitCode) {
             if (exitCode !== 0) {
-                root.fail("list read failed (exit " + exitCode + ")")
+                root.fail("all items read failed (exit " + exitCode + ")")
                 return
             }
             if (root._allItemsStale) {
@@ -133,6 +147,7 @@ QtObject {
 
     property string _writeKind: ""
     property var _writeArgs: null
+    property bool _writeFromScript: false
     property var _writeQueue: []
 
     property Process writeProcess: Process {
@@ -143,14 +158,16 @@ QtObject {
         onExited: function(exitCode) {
             var kind = root._writeKind
             var args = root._writeArgs
+            var fromScript = root._writeFromScript
             root._writeKind = ""
             root._writeArgs = null
+            root._writeFromScript = false
             Qt.callLater(root._runNextWrite)
 
             if (exitCode !== 0) {
                 var err = String(writeStdout.text || "").trim()
                 if (err === "") err = "sqlite3 exited " + exitCode
-                root.fail(err)
+                root.fail(err, fromScript)
                 if (kind === "init") initRetry.start()
                 else reloadDebounce.restart()
                 return
@@ -162,13 +179,15 @@ QtObject {
                 dbFile.reload()
                 root.load()
             } else {
-                if (kind === "add") root.added(Db.parseId(writeStdout.text))
-                else if (kind === "setStatus") root.statusChanged(args.id, args.status)
-                else if (kind === "update") root.updated(args.id, args.title)
-                else if (kind === "convertType") root.typeChanged(args.id)
-                else if (kind === "deleteItem") root.itemDeleted(args.id)
-                else if (kind === "deleteHistory") root.historyRowDeleted(args.id)
-                else if (kind === "clearHistory") root.historyCleared()
+                if (!fromScript) {
+                    if (kind === "add") root.added(Db.parseId(writeStdout.text))
+                    else if (kind === "setStatus") root.statusChanged(args.id, args.status)
+                    else if (kind === "update") root.updated(args.id, args.title)
+                    else if (kind === "convertType") root.typeChanged(args.id)
+                    else if (kind === "deleteItem") root.itemDeleted(args.id)
+                    else if (kind === "deleteHistory") root.historyRowDeleted(args.id)
+                    else if (kind === "clearHistory") root.historyCleared()
+                }
                 // The watcher sees this write too; both land on one timer, so
                 // the write reloads once even if the watcher misses it.
                 reloadDebounce.restart()
@@ -179,7 +198,7 @@ QtObject {
     // One sqlite3 process at a time; later writes wait their turn instead of
     // being dropped.
     function _enqueue(kind, command, args) {
-        root._writeQueue.push({ kind: kind, command: command, args: args })
+        root._writeQueue.push({ kind: kind, command: command, args: args, fromScript: root._fromScript })
         root._runNextWrite()
     }
     function _runNextWrite() {
@@ -187,6 +206,7 @@ QtObject {
         var next = root._writeQueue.shift()
         root._writeKind = next.kind
         root._writeArgs = next.args
+        root._writeFromScript = next.fromScript
         root.writeProcess.command = next.command
         root.writeProcess.running = true
     }

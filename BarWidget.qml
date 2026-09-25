@@ -39,7 +39,7 @@ BarWidget {
     function ipcAdd(type, title, body) {
         var t = String(title || "").trim()
         if (t === "") return JSON.stringify({ ok: false, error: "title is required" })
-        db.add(type, t, String(body || ""))
+        db.fromScript(function() { db.add(type, t, String(body || "")) })
         return JSON.stringify({ ok: true })
     }
     function ipcList(type) {
@@ -62,18 +62,19 @@ BarWidget {
         var list = db.allItems
         for (var i = 0; i < list.length; ++i) {
             if (Number(list[i].id) === n) {
-                db.setStatus(n, Number(list[i].status) === 1 ? 0 : 1)
+                var status = Number(list[i].status) === 1 ? 0 : 1
+                db.fromScript(function() { db.setStatus(n, status) })
                 return JSON.stringify({ ok: true })
             }
         }
         return JSON.stringify({ ok: false, error: "item not found: " + n })
     }
     function ipcRemove(id) {
-        db.deleteItem(Number(id))
+        db.fromScript(function() { db.deleteItem(Number(id)) })
         return JSON.stringify({ ok: true })
     }
     function ipcClearHistory() {
-        db.clearHistory()
+        db.fromScript(function() { db.clearHistory() })
         return JSON.stringify({ ok: true })
     }
 

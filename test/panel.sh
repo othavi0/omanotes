@@ -55,6 +55,19 @@ ShellRoot {
       var mainTab = sr.find(widget.item.panelItem, "MainTab")
       return mainTab ? mainTab.itemList.length : -1
     }
+    function editItem(id: int, title: string): string {
+      var mainTab = sr.find(widget.item.panelItem, "MainTab")
+      if (!mainTab) return "no MainTab"
+      mainTab.pickItem(id)
+      mainTab.editorTitle = title
+      mainTab.toast.text = ""
+      return "ok"
+    }
+    function editorState(): string {
+      var mainTab = sr.find(widget.item.panelItem, "MainTab")
+      if (!mainTab) return "no MainTab"
+      return mainTab.selectedId + "|" + mainTab.editorTitle + "|toast:" + mainTab.toast.text
+    }
     function quit(): void { Qt.exit(0) }
   }
 }
@@ -159,6 +172,38 @@ expect "remove is logged in history" \
 replies "clearHistory answers ok" "$(ipc scratchpad clearHistory)" '{"ok":true}'
 expect "clearHistory empties history" "SELECT COUNT(*) FROM history" "0"
 expect "clearHistory keeps the items" "SELECT COUNT(*) FROM items" "6"
+
+# A script writing while the user edits in the open panel must not move the
+# selection, commit the half-typed title or raise the panel's toasts.
+ipc scratchpad open > /dev/null
+rows=""
+for _ in $(seq 50); do
+  rows="$(ipc omanotes-test panelRows)"
+  [[ "$rows" == "6" ]] && break
+  sleep 0.2
+done
+# Panel.qml refills the editor 120 ms after opening (focusPrimeTimer).
+sleep 0.5
+replies "the open panel edits item 2" "$(ipc omanotes-test editItem 2 "Renew the domain HALF-TYPED")" "ok"
+ipc scratchpad toggleTodo 2 > /dev/null
+ipc scratchpad clearHistory > /dev/null
+ipc scratchpad addNote "FROM-SCRIPT" "" > /dev/null
+# Writes run in order, so the reload that shows the last one follows them all.
+for _ in $(seq 50); do
+  rows="$(ipc omanotes-test panelRows)"
+  [[ "$rows" == "7" ]] && break
+  sleep 0.2
+done
+replies "the panel lists the script's note" "$rows" "7"
+replies "script writes leave the selection, the editor and the toast alone" \
+  "$(ipc omanotes-test editorState)" "2|Renew the domain HALF-TYPED|toast:"
+# A write queued behind any commit the panel made lands after it.
+ipc scratchpad toggleTodo 3 > /dev/null
+expect "a later script write lands" "SELECT status FROM items WHERE id = 3" "0"
+replies "script writes do not commit the open edit" \
+  "$(sqlite3 "$db" "SELECT title FROM items WHERE id = 2")" "Renew the domain"
+ipc scratchpad close > /dev/null
+expect "closing the panel commits the edit" "SELECT title FROM items WHERE id = 2" "Renew the domain HALF-TYPED"
 
 ipc scratchpad open > /dev/null
 replies "the open panel takes a draft" "$(ipc omanotes-test typeDraft "DRAFT-ON-CLOSE")" "ok"
