@@ -3,16 +3,11 @@ import Quickshell
 import Quickshell.Wayland
 import qs.Commons
 
-// The ring card's window, one per screen: a passive overlay like the
-// notifications popups. It takes no keyboard focus and handles no key
-// (ADR-0013), ignores exclusion zones, and is click-through outside the card.
 PanelWindow {
     id: win
 
     required property var modelData
-    // The service that created this window, found by walking up from the
-    // Variants that holds it, so the Component needs no closure over it.
-    readonly property QtObject service: win.parent && "ringView" in win.parent ? win.parent : null
+    property QtObject service: null
 
     screen: modelData
     WlrLayershell.namespace: "omanotes-ring"
@@ -23,8 +18,6 @@ PanelWindow {
     anchors { top: true; bottom: true; left: true; right: true }
     mask: Region { item: card }
 
-    // Centred under a top bar, above a bottom bar, in the top corner beside
-    // a side bar, always the bar's clearance away from it.
     RingCard {
         id: card
         readonly property string position: win.service ? win.service.barPosition : "top"

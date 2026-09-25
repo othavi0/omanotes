@@ -10,7 +10,7 @@ const A = loadQmlLib(new URL("../data/Alarm.js", import.meta.url), [
   "alarmNextAt", "alarmDue", "nextAlarm", "tick", "snoozePatch", "expire",
   "MAX_ALARMS", "MAX_LABEL", "DEFAULT_RING_MINUTES", "MIN_RING_MINUTES", "MAX_RING_MINUTES",
   "ringMinutes", "parseTime", "parseFields", "newAlarm", "editPatch", "enablePatch", "isOn",
-  "withPatch", "ringWith", "ringWithout"
+  "withPatch", "ringWith", "ringWithout", "lostOutside"
 ])
 
 const MIN = 60 * 1000
@@ -213,8 +213,6 @@ test("three automatic expirations each schedule a snooze and the fourth does not
   assert.equal(A.alarmNextAt(a, clock), 0, "the one-shot has nothing left to ring")
 })
 
-// ------------------------------------------------- the service's helpers
-
 const FIELDS = { time: "07:30", label: "Wake up", days: [1, 2, 3, 4, 5], snoozeMinutes: 9, ringMinutes: 5 }
 
 test("the limits hold the product defaults", () => {
@@ -285,6 +283,13 @@ test("enablePatch arms an alarm that is switched on and quiets one that is switc
   assert.deepEqual(A.enablePatch(alarm({ snoozedUntil: NOW + 5 * MIN }), false, NOW), { enabled: false, snoozedUntil: 0 })
   assert.equal(A.alarmDue(A.withPatch(alarm({ armedAt: at(-1, 12, 0) }), A.enablePatch(a, true, NOW)), NOW), null,
     "switching on does not ring the occurrence that passed while it was off")
+})
+
+test("lostOutside is a ringing alarm that a reload shows gone, or a repeating one switched off", () => {
+  assert.equal(A.lostOutside(null), true)
+  assert.equal(A.lostOutside(alarm({ days: [1], enabled: false })), true)
+  assert.equal(A.lostOutside(alarm({ days: [1], enabled: true })), false)
+  assert.equal(A.lostOutside(alarm({ days: [], enabled: false })), false, "a one-shot is off because it rang")
 })
 
 test("isOn is the switch: enabled, or snoozed into the future", () => {

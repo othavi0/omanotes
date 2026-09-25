@@ -37,7 +37,6 @@ ColumnLayout {
     readonly property var fields: Alarm.parseFields({ time: root.timeText, label: root.labelText, days: root.days,
         snoozeMinutes: root.snoozeText, ringMinutes: root.ringText })
     readonly property bool on: !!root.alarm && Alarm.isOn(root.alarm, root.nowMs)
-    // When the alarm as edited rings next, for the line beside the time.
     readonly property real nextAt: root.fields
         ? Alarm.alarmNextAt(root.draft || !root.alarm ? Alarm.newAlarm(root.fields, root.nowMs)
             : Alarm.withPatch(root.alarm, Alarm.editPatch(root.alarm, root.fields, root.nowMs)), root.nowMs)
@@ -59,7 +58,6 @@ ColumnLayout {
         root._base = root._current
     }
     function openDraft() { root.openAlarm(null) }
-    // Opens a draft holding the fields a failed insert carried.
     function reopenDraft(record) {
         root.openAlarm(null)
         timeField.text = Alarms.timeText(record.hour, record.minute)
@@ -68,7 +66,6 @@ ColumnLayout {
         snoozeField.text = String(record.snoozeMinutes)
         ringField.text = String(record.ringMinutes)
     }
-    // Marks what the controls hold as saved.
     function markSaved() { root._base = root._current }
     function focusTime() { timeField.focusInput() }
 

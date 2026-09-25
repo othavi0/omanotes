@@ -54,7 +54,6 @@ ShellRoot {
   }
   function dbsIn(obj, found) { return sr.typesIn(obj, "Db", found) }
 
-  // The service, as the shell mounts it: once, with its own clock.
   Loader {
     id: svc
     source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/Service.qml"

@@ -75,29 +75,16 @@ function nextSummary(at, nowMs) {
 
 // The days, then the state that matters most: a snooze ahead, off, or when
 // the next ring lands.
-function rowDetail(alarm, nowMs) {
+// `nextAt` is Alarm.alarmNextAt(alarm, nowMs), computed by the caller.
+function rowDetail(alarm, nextAt, nowMs) {
   var days = daysText(alarm.days)
   var snoozed = Number(alarm.snoozedUntil) || 0
   if (snoozed > nowMs) {
     var s = new Date(snoozed)
     return days + " · snoozed to " + timeText(s.getHours(), s.getMinutes())
   }
-  if (!alarm.enabled) return days + " · off"
-  var next = nextOccurrence(alarm, nowMs)
-  return days + " · " + (sameLocalDay(next, nowMs) ? "today" : "next " + dayName(new Date(next).getDay()))
-}
-
-// The next wall-clock occurrence after nowMs, walking a week ahead, for the
-// row detail alone. The scheduling maths stays in data/Alarm.js.
-function nextOccurrence(alarm, nowMs) {
-  var list = (alarm.days || []).map(Number)
-  var base = new Date(nowMs)
-  for (var offset = 0; offset <= 7; offset++) {
-    var c = new Date(base.getFullYear(), base.getMonth(), base.getDate() + offset, alarm.hour, alarm.minute, 0, 0)
-    if (c.getTime() <= nowMs) continue
-    if (list.length === 0 || list.indexOf(c.getDay()) >= 0) return c.getTime()
-  }
-  return nowMs
+  if (!alarm.enabled || !(nextAt > 0)) return days + " · off"
+  return days + " · " + (sameLocalDay(nextAt, nowMs) ? "today" : "next " + dayName(new Date(nextAt).getDay()))
 }
 
 function eventsOf(ring) {

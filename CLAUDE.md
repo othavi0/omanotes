@@ -21,7 +21,7 @@ Omarchy shell plugin (Quickshell/QML) with a bar widget and a service: notes and
 - Use the vocabulary in `CONTEXT.md`, in code and in user-facing text.
 - Read the ADRs in `docs/adr/` that touch the area before changing it. Say so when a change contradicts one.
 - All SQL is built in `data/Db.js` (ADR-0002). `Db.js`, `Alarm.js`, `Item.js` and `Alarms.js` stay free of QML imports so Node can load them (ADR-0009).
-- Only `Service.qml` writes the `alarms` table, through its own `Data.Db { scope: "alarms" }` (ADR-0015). Time inside the service comes from `tick(nowMs)`, never `Date.now()`.
+- Only `Service.qml` writes the `alarms` table, through its own `Data.Db { scope: "alarms" }` (ADR-0015). Alarm time inside the service comes from `tick(nowMs)`, never `Date.now()`; only the player latch reads the wall clock.
 - The database file and IPC target keep the `scratchpad` name (ADR-0003). `NOTICE` is not removed (ADR-0010).
 
 ## Agent skills

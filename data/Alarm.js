@@ -47,6 +47,13 @@ function isRepeating(alarm) {
   return !!alarm && normalizeDays(alarm.days).length > 0
 }
 
+// Whether a reload shows that a ringing alarm was taken away outside: the
+// row is gone, or a repeating alarm was switched off. A one-shot is switched
+// off by its own ring, so `enabled` says nothing about it.
+function lostOutside(alarm) {
+  return !alarm || (!alarm.enabled && isRepeating(alarm))
+}
+
 function instant(value) {
   return Number(value) || 0
 }
@@ -175,7 +182,6 @@ function parseFields(input) {
   }
 }
 
-// A new record, without id: enabled, armed now, nothing consumed.
 function newAlarm(fields, nowMs) {
   return {
     hour: fields.hour, minute: fields.minute, label: fields.label, days: fields.days, enabled: true,

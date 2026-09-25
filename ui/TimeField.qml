@@ -2,8 +2,7 @@ import QtQuick
 import qs.Commons
 import "Tone.js" as Tone
 
-// The big time entry of the alarm editor (prototype C, 44 px digits). Like
-// the editor body, it is not a Field: it draws the kit's control fill and
+// Like the editor body, it is not a Field: it draws the kit's control fill and
 // border itself and takes the height its digits need, the one single-line
 // exception to ADR-0008. The text is whatever the user typed; the editor
 // parses it with Alarm.parseTime.

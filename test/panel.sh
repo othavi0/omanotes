@@ -120,7 +120,6 @@ ShellRoot {
       var header = sr.findText(sr.find(widget.item.panelItem, "PanelHeader"), " unread · ")
       return (button ? button.tooltipText : "no WidgetButton") + "|" + (header ? header.text : "no count")
     }
-    // The chip and the Alarms tab without a service.
     function noService(): string {
       var button = sr.find(widget.item, "WidgetButton")
       var alarmsTab = sr.find(widget.item.panelItem, "AlarmsTab")

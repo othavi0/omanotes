@@ -69,13 +69,14 @@ test("nextSummary is the header line", () => {
   assert.equal(T.nextSummary(0, NOW), "no alarm set")
 })
 
-test("rowDetail is the days, then the state that matters most", () => {
-  assert.equal(T.rowDetail(alarm({ days: [1, 2, 3, 4, 5] }), NOW), "weekdays · next Mon")
-  assert.equal(T.rowDetail(alarm({ days: [0, 1, 2, 3, 4, 5, 6], snoozedUntil: at(0, 14, 11) }), NOW), "every day · snoozed to 14:11")
-  assert.equal(T.rowDetail(alarm({ enabled: false }), NOW), "once · off")
-  assert.equal(T.rowDetail(alarm({ hour: 16, minute: 30 }), NOW), "once · today")
-  assert.equal(T.rowDetail(alarm({ days: [0, 6] }), NOW), "weekends · next Sat")
-  assert.equal(T.rowDetail(alarm({ enabled: false, snoozedUntil: at(0, 14, 11) }), NOW), "once · snoozed to 14:11", "a snooze outranks off")
+test("rowDetail is the days, then the state that matters most, with the next ring from Alarm.js", () => {
+  assert.equal(T.rowDetail(alarm({ days: [1, 2, 3, 4, 5] }), at(3, 7, 30), NOW), "weekdays · next Mon")
+  assert.equal(T.rowDetail(alarm({ days: [0, 1, 2, 3, 4, 5, 6], snoozedUntil: at(0, 14, 11) }), at(0, 14, 11), NOW), "every day · snoozed to 14:11")
+  assert.equal(T.rowDetail(alarm({ enabled: false }), 0, NOW), "once · off")
+  assert.equal(T.rowDetail(alarm({ hour: 16, minute: 30 }), at(0, 16, 30), NOW), "once · today")
+  assert.equal(T.rowDetail(alarm({ days: [0, 6] }), at(1, 7, 30), NOW), "weekends · next Sat")
+  assert.equal(T.rowDetail(alarm({ enabled: false, snoozedUntil: at(0, 14, 11) }), at(0, 14, 11), NOW), "once · snoozed to 14:11", "a snooze outranks off")
+  assert.equal(T.rowDetail(alarm(), 0, NOW), "once · off", "an alarm with nothing left to ring reads off")
 })
 
 test("ringTitle is the label, the time when there is no label, and a count for several", () => {

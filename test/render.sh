@@ -26,7 +26,7 @@ out_dir="${1:-$cfg_dir/shots}"
 mkdir -p "$out_dir"
 out_dir="$(cd "$out_dir" && pwd)"
 
-# The alarms of prototype C, seen at 14:02 today and armed at midnight, so
+# The alarms, seen at 14:02 today and armed at midnight, so
 # no earlier occurrence is owed. The service's clock is off and every scene
 # ticks NOW_MS. The player and the notification are stubbed away.
 day="$(date +%F)"
@@ -315,7 +315,6 @@ ShellRoot {
         }
       }
 
-      // The ring card as it sits under the bar, over the panel.
       Ui.RingCard {
         id: ringCard
         visible: sr.currentScene === "ringcard"

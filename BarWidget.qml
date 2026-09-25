@@ -9,8 +9,6 @@ BarWidget {
     id: root
     moduleName: "othavi0.omanotes"
 
-    // The plugin's alarm service, once the shell has created it (ADR-0015).
-    // A plain property, so a test can hand the widget a service it loaded.
     property var service: bar && bar.shell && typeof bar.shell.serviceFor === "function"
         ? bar.shell.serviceFor(root.moduleName) : null
     readonly property bool ringing: !!service && service.ringing !== null
@@ -106,7 +104,6 @@ BarWidget {
 
     onBarChanged: injectPanel()
     onSettingsChanged: injectPanel()
-    // The service can appear after the panel loaded.
     onServiceChanged: injectPanel()
 
     // The only Db of this widget: the IPC, the bar tooltip and the panel
@@ -153,8 +150,7 @@ BarWidget {
         function clearHistory(): string { return root.ipcClearHistory() }
     }
 
-    // WidgetButton, because BarIconButton draws no text. With no alarm the
-    // chip keeps the icon slot; a vertical bar shows the glyph alone.
+    // WidgetButton, because BarIconButton draws no text.
     WidgetButton {
         id: button
         anchors.fill: parent
@@ -165,7 +161,6 @@ BarWidget {
         tooltipText: "Omanotes: " + db.unreadNotes + " unread · " + db.pendingTodos + " pending"
             + (root.nextLabel !== "" ? " · next alarm " + root.nextLabel : "")
 
-        // While an alarm rings, any button stops it and the panel stays as it is.
         onPressed: function(b) {
             if (root.ringing) { root.service.stop(); return }
             if (b === Qt.LeftButton) root.togglePanel()

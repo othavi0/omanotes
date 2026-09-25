@@ -264,7 +264,6 @@ function maskDays(mask) {
 var ALARM_COLUMNS = "id, hour, minute, label, days, enabled, snooze_minutes, ring_minutes,"
   + " snoozed_until_ms, last_fired_at_ms, armed_at_ms, auto_snoozes"
 
-// Every alarm in the Alarms tab's order: time of day, then id.
 function alarmsSql() {
   return "SELECT " + ALARM_COLUMNS + " FROM alarms ORDER BY hour, minute, id"
 }

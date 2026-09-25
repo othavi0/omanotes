@@ -14,7 +14,7 @@ import "ui/Icons.js" as Icons
 Item {
     id: root
 
-    // Injected by the shell (PluginShellApi). Only the card placement reads it.
+    // Injected by the shell (PluginShellApi).
     property var shell: null
 
     // Inputs a test overrides when it creates the service. The ring window
@@ -55,13 +55,9 @@ Item {
     }
 
     signal alarmAdded(int id)
-    signal insertFailed(var record)   // the record a failed insert carried, so the tab reopens the draft
+    signal insertFailed(var record)
     signal failed(string message)
 
-    // One clock step: sets nowMs and, once the alarms are loaded, saves every
-    // patch the tick owes (laid over at once), sends one notification for the
-    // missed alarms, adds the due ones to the card and expires the events
-    // that rang their length.
     function tick(nowMs) {
         root.nowMs = nowMs
         if (!root.loaded) return
@@ -76,7 +72,7 @@ Item {
         root._expire()
     }
 
-    // CRUD for the Alarms tab. Each returns "" or why it was refused.
+    // Each returns "" or why it was refused.
     function addAlarm(fields) {
         if (!root.loaded) return "not ready"
         if (root.alarms.length >= Alarm.MAX_ALARMS) return Alarm.MAX_ALARMS + " alarms is the limit"
@@ -104,7 +100,6 @@ Item {
         return store.deleteAlarm(id)
     }
 
-    // The card and the chip.
     function snooze() {
         if (!root.ringing) return false
         var events = root.ringing.events
@@ -148,9 +143,6 @@ Item {
         Quickshell.execDetached(["omarchy-notification-send", "-g", Icons.alarm, text.headline, text.body])
     }
 
-    // A reload can show that a ringing alarm was deleted outside, or that a
-    // repeating one was switched off outside. A one-shot is switched off by
-    // its own ring, so only a repeating alarm can be judged by `enabled`.
     // The lookup reads `alarms` itself: inside this handler the alarmsById
     // binding still holds the list from before the change.
     onAlarmsChanged: {
@@ -159,7 +151,7 @@ Item {
         for (var i = 0; i < events.length; ++i) {
             var alarm = null
             for (var j = 0; j < root.alarms.length; ++j) if (root.alarms[j].id === events[i].id) alarm = root.alarms[j]
-            if (!alarm || (!alarm.enabled && Alarm.isRepeating(alarm))) root._drop(events[i].id)
+            if (Alarm.lostOutside(alarm)) root._drop(events[i].id)
         }
     }
 
@@ -186,14 +178,16 @@ Item {
         onDateChanged: root.tick(clock.date.getTime())
     }
 
-    // Chime's player chain (MIT, see NOTICE): the first installed of pw-play,
-    // paplay, mpv and ffplay. Exit 3 means nothing can play this file.
-    readonly property string soundScript: 'f="$1"; [[ -f "$f" && -r "$f" ]] || { sleep 2; exit 3; }; '
+    // Chime's player chain (MIT, see NOTICE).
+    readonly property int unplayableExit: 3
+    readonly property string soundScript: 'f="$1"; [[ -f "$f" && -r "$f" ]] || { sleep 2; exit ' + unplayableExit + '; }; '
         + 'if command -v pw-play >/dev/null 2>&1; then exec pw-play -- "$f"; fi; '
         + 'if command -v paplay >/dev/null 2>&1; then exec paplay -- "$f"; fi; '
         + 'if command -v mpv >/dev/null 2>&1; then exec mpv --no-video --no-terminal --really-quiet -- "$f"; fi; '
         + 'if command -v ffplay >/dev/null 2>&1; then exec ffplay -nodisp -autoexit -loglevel quiet "$f"; fi; '
-        + 'sleep 2; exit 3'
+        + 'sleep 2; exit ' + unplayableExit
+    readonly property int quickFailureMs: 1500
+    readonly property int maxQuickFailures: 3
     property double soundStartedAt: 0
     property int soundFailures: 0
 
@@ -206,13 +200,10 @@ Item {
 
     Process {
         id: sound
-        // The loop restarts the player when a play-through ends. A player
-        // that fails at once must not be restarted hundreds of times a
-        // minute, so three quick failures in a row latch the sound off.
         onExited: function(exitCode) {
             if (!root.ringing) return
-            var quickFailure = exitCode !== 0 && Date.now() - root.soundStartedAt < 1500
-            if (exitCode === 3 || (quickFailure && ++root.soundFailures >= 3)) {
+            var quickFailure = exitCode !== 0 && Date.now() - root.soundStartedAt < root.quickFailureMs
+            if (exitCode === root.unplayableExit || (quickFailure && ++root.soundFailures >= root.maxQuickFailures)) {
                 root.soundBroken = true
                 console.warn("omanotes: cannot play " + root.soundFile + "; ringing silently")
                 return
@@ -228,10 +219,17 @@ Item {
         onTriggered: root._ensureSound()
     }
 
-    // One card window per screen while ringing, none otherwise.
+    // A window has no visual parent to reach the service through, so each
+    // instance is handed it, as BarWidget.injectPanel hands the panel its Db.
     Variants {
+        id: ringWindows
         model: root.ringing !== null && root.ringWindow !== null ? root.screens : []
         delegate: root.ringWindow
+        onInstancesChanged: {
+            for (var i = 0; i < ringWindows.instances.length; ++i) {
+                if ("service" in ringWindows.instances[i]) ringWindows.instances[i].service = root
+            }
+        }
     }
 
     Component.onCompleted: {

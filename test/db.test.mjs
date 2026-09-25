@@ -779,8 +779,6 @@ test("countsSql: the history count is the real total, past the 500 rows historyS
   assert.equal(Db.parseCounts(r.stdout).history, 603)
 })
 
-// ------------------------------------------------------------------ alarms
-
 const ALARM_COLUMNS = "id, hour, minute, label, days, enabled, snooze_minutes, ring_minutes,"
   + " snoozed_until_ms, last_fired_at_ms, armed_at_ms, auto_snoozes"
 

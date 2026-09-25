@@ -31,6 +31,7 @@ cat > "$cfg_dir/bin/sqlite3" <<SH
 printf '%s\n' "\$*" >> "$cfg_dir/sqlite3.log"
 if [[ "\$*" == *"UPDATE alarms"* ]]; then
   for _ in \$(seq 400); do [[ -e "$cfg_dir/hold-writes" ]] || break; sleep 0.05; done
+  if [[ -e "$cfg_dir/fail-writes" ]]; then echo "Error: disk I/O error" >&2; exit 10; fi
 fi
 if [[ "\$*" == *"INSERT INTO alarms"* && -e "$cfg_dir/fail-insert" ]]; then echo "Error: disk I/O error" >&2; exit 10; fi
 if [[ "\$*" == *"FROM alarms ORDER BY"* && -e "$cfg_dir/hold-reads" ]]; then
@@ -79,7 +80,6 @@ ShellRoot {
   id: sr
   property var cards: []
 
-  // Three bar widgets, as three monitors, each handed the one service.
   Variants {
     id: monitors
     model: [1, 2, 3]
@@ -97,16 +97,16 @@ ShellRoot {
     }
   }
 
-  // The ring window a test can create offscreen: a plain window holding the
-  // shipped card.
   Component {
     id: stubRing
     FloatingWindow {
       id: win
       required property var modelData
+      // Handed by the service, as the shipped window is.
+      property QtObject service: null
       implicitWidth: 400
       implicitHeight: 220
-      Ui.RingCard { service: svc.item }
+      Ui.RingCard { service: win.service }
       Component.onCompleted: sr.cards = sr.cards.concat([win])
       Component.onDestruction: sr.cards = sr.cards.filter(function(w) { return w !== win })
     }
@@ -146,7 +146,6 @@ ShellRoot {
     var del = sr.find(editor, "ActionButton").filter(function(b) { return b.visible && (b.text === "Delete" || b.text === "Confirm") })
     return tab.selectedId + "|draft:" + tab.draftNew + "|" + editor.timeText + "|" + (del.length ? del[0].text : "-") + "|toast:" + tab.toast.text
   }
-  // The chip's text with each glyph named, and whether it is painted active.
   function chips() {
     var out = []
     for (var i = 1; i <= 3; ++i) {
@@ -168,13 +167,11 @@ ShellRoot {
       return sr.chips() + " open=" + monitors.instances[n - 1].widget.opened
     }
     function closePanel(n: int): void { monitors.instances[n - 1].widget.close() }
-    // What the Items tab of widget 1 shows, which alarm writes must not change.
     function itemsState(): string {
       var w = monitors.instances[0].widget
       var itemsTab = sr.find(w.panelItem, "ItemsTab")[0]
       return w.panelItem.db.items.length + "|" + w.panelItem.db.totalHistory + "|toast:" + itemsTab.toast.text
     }
-    // The Alarms tab of widget 1, driven as its user does.
     function openAlarms(): string {
       var w = monitors.instances[0].widget
       w.open()
@@ -198,7 +195,6 @@ ShellRoot {
     function discard(): string { sr.alarmsTab().discardEditor(); return sr.editorState() }
     function clearToast(): void { sr.alarmsTab().toast.text = "" }
     function editorState(): string { return sr.editorState() }
-    // Clicks the button whose text starts with `label` on the card of screen `n`.
     function click(n: int, label: string): string {
       var win = sr.cards[n - 1]
       if (!win) return "no card " + n
@@ -251,7 +247,6 @@ expect() {
   done
   fail "$what: want '$want', got '$got'"
 }
-# Polls state() until it contains `want`.
 state_has() {
   local what="$1" want="$2" got=""
   for _ in $(seq 50); do
@@ -400,9 +395,19 @@ state_editor() {
 state_editor "the new alarm is selected once the insert lands" "$gym|draft:false|06:45|Delete|toast:Added alarm"
 ipc toggleRow "$gym" > /dev/null
 expect "the row switch turns the alarm off" "SELECT enabled || ':' || snoozed_until_ms FROM alarms WHERE id = $gym" "0:0"
-armed_before="$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT armed_at_ms FROM alarms WHERE id = $gym")"
 ipc toggleRow "$gym" > /dev/null
 expect "and back on, armed at the last tick" "SELECT enabled || ':' || armed_at_ms FROM alarms WHERE id = $gym" "1:$(ms "$day 09:30")"
+# A save that fails is shown at once, kept, and retried until it lands.
+touch "$cfg_dir/fail-writes"
+on_before="$(ipc state | grep -o '"on":[0-9]*')"
+ipc toggleRow "$gym" > /dev/null
+replies "a switch whose write fails still shows off at once" "$(ipc state | grep -o '"on":[0-9]*')" "\"on\":$(( ${on_before#*:} - 1 ))"
+sleep 1.2
+replies "while the row on disk is still on" "$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT enabled FROM alarms WHERE id = $gym")" "1"
+rm "$cfg_dir/fail-writes"
+expect "and the retry lands once the write can" "SELECT enabled FROM alarms WHERE id = $gym" "0"
+ipc toggleRow "$gym" > /dev/null
+expect "the next switch lands at once" "SELECT enabled FROM alarms WHERE id = $gym" "1"
 ipc setEditor "06:50" "Gym" "1,2,3,4,5" "10" "2" > /dev/null
 contains "editing the time saves it" "$(ipc leave)" "$gym|draft:false|06:50|Delete|"
 expect "a changed time re-arms the alarm and switches it on" "SELECT hour || ':' || minute || ':' || enabled FROM alarms WHERE id = $gym" "6:50:1"
@@ -435,7 +440,10 @@ replies "the alarm edits wrote no history row" "$(sqlite3 -cmd ".timeout 5000" "
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
-replies "only the injected insert failure is logged" "$(grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | tr '\n' ';' || true)" "disk I/O error;"
+logged_failures="$(grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | sort -u | tr '\n' ';' || true)"
+replies "only the injected failures are logged" "$logged_failures" "disk I/O error;"
+replies "the failed save was retried at least once before it landed" \
+  "$(( $(grep -c "omanotes db: disk I/O error" "$cfg_dir/qs.log" || true) >= 3 ))" "1"
 replies "the broken player is logged once" "$(grep -c "omanotes: cannot play" "$cfg_dir/qs.log" || true)" "1"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"

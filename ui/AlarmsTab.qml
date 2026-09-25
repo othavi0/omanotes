@@ -10,8 +10,7 @@ import "Icons.js" as Icons
 import "Item.js" as ItemJs
 import "Tone.js" as Tone
 
-// The Alarms tab (prototype C): the list on the left, the editor on the
-// right. It never touches SQL or a Db: every write goes through the alarm
+// It never touches SQL or a Db: every write goes through the alarm
 // service, with the fields the editor already parsed. Like the Items tab,
 // every way out of the editor except Discard commits it (ADR-0007).
 FocusScope {
@@ -31,13 +30,12 @@ FocusScope {
     readonly property double nowMs: root.service ? root.service.nowMs : 0
     readonly property bool deleteArmed: confirm.isArmedFor(root.selectedId)
     readonly property bool draftNeedsTime: root.draftNew && !editor.fields
+    readonly property bool fieldFocused: editor.fieldFocused
 
-    // A field commits when focus leaves it, one turn later, as in ItemsTab.
     onFieldFocusedChanged: {
         if (editor.fieldFocused || !editor.unsaved) return
         Qt.callLater(function() { if (!editor.fieldFocused) root.commitIfDirty() })
     }
-    readonly property bool fieldFocused: editor.fieldFocused
 
     onSelectedIdChanged: {
         confirm.cancel()
@@ -70,7 +68,6 @@ FocusScope {
         listView.positionViewAtIndex(root.selectedIndex, ListView.Center)
     }
 
-    // "+ Alarm". A draft that cannot be committed stays open.
     function startNew() {
         if (!root.service) return
         root.commitIfDirty()
@@ -81,9 +78,6 @@ FocusScope {
         Qt.callLater(editor.focusTime)
     }
 
-    // An edit of an existing alarm. An emptied or unreadable time keeps the
-    // saved time and still saves the rest, as an emptied title keeps the
-    // saved title.
     function saveEdit() {
         if (!editor.dirty || !root.service) return
         var alarm = root.alarmList[ItemJs.indexOfId(root.alarmList, editor.editingId)]
@@ -146,8 +140,6 @@ FocusScope {
         if (error !== "" && root.toast) root.toast.show("Error: " + error, true)
     }
 
-    // Keeps a valid selection after a reload: the alarm just added, the one
-    // still selected, or the first row.
     function onAlarmsSynced() {
         if (root.draftNew) return
         var list = root.alarmList

@@ -5,9 +5,6 @@ import qs.Ui
 import "Icons.js" as Icons
 import "Tone.js" as Tone
 
-// The card that drops under the bar while an alarm rings (prototype
-// "Ringing · card"): bell and clock in the urgent colour, the title, the
-// detail line, a meter that fills over the ring length, Snooze and Stop.
 // Mouse only: the window it sits in takes no focus (ADR-0013).
 BorderSurface {
     id: root
@@ -78,7 +75,6 @@ BorderSurface {
             color: Util.alpha(Color.urgent, Style.selectedFillAlpha)
 
             Rectangle {
-                objectName: "ringMeter"
                 width: parent.width * (root.view ? root.view.progress : 0)
                 height: parent.height
                 color: Color.urgent

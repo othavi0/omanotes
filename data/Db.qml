@@ -252,8 +252,6 @@ QtObject {
         root.alarmsProcess.running = true
     }
 
-    // Drops every pending entry whose write ended before this read started
-    // and is not waiting for a retry, then lays the rest over the rows.
     function _alarmsLanded(rows) {
         root._alarmRows = rows
         var pending = root._alarmPending

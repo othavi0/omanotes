@@ -36,7 +36,6 @@ RowLayout {
 
     Item { Layout.fillWidth: true }
 
-    // The Alarms tab's summary is the next alarm; the other tabs keep the counts.
     Text {
         text: root.activeTab === Tabs.alarms && root.service ? root.service.nextSummary
             : (root.db ? root.db.unreadNotes : 0) + " unread · " + (root.db ? root.db.pendingTodos : 0) + " pending"

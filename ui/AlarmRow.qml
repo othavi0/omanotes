@@ -1,12 +1,10 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../data/Alarm.js" as Alarm
 import "Alarms.js" as Alarms
 import "Tone.js" as Tone
 
-// One row of the Alarms list (prototype C): the time in large digits, the
-// label with the days and state under it, and the switch. An alarm that is
-// off is dimmed. Clicking the row selects it; the switch toggles it.
 Rectangle {
     id: root
 
@@ -65,7 +63,7 @@ Rectangle {
         }
         Text {
             width: parent.width
-            text: Alarms.rowDetail(root.alarm, root.nowMs)
+            text: Alarms.rowDetail(root.alarm, Alarm.alarmNextAt(root.alarm, root.nowMs), root.nowMs)
             wrapMode: Text.Wrap
             maximumLineCount: 2
             elide: Text.ElideRight
