@@ -192,7 +192,6 @@ QtObject {
         onTriggered: root.load()
     }
 
-    // A failed start-up tries again, waiting twice as long each time up to 30 s.
     property Timer initRetry: Timer {
         interval: 500
         repeat: false

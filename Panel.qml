@@ -27,7 +27,7 @@ Panel {
             return
         }
         root.activeTab = 0
-        if (root.db) root.db.load()
+        root.db.load()
         root.resetTabFocus()
         focusPrimeTimer.restart()
     }
