@@ -31,7 +31,15 @@ FloatingWindow {
   implicitWidth: contentWidth
   implicitHeight: contentHeight
   visible: open
-  onOpenChanged: if (open && focusTarget) Qt.callLater(function() { if (open && focusTarget) focusTarget.forceActiveFocus() })
+  // The map hands keyboard focus to focusTarget alone, as the kit documents.
+  // Window focus set before the map is taken away first, so a panel that
+  // relies on it and not on focusTarget loses the first keys.
+  Item { id: beforeMap }
+  onOpenChanged: if (open) Qt.callLater(function() {
+    if (!open) return
+    beforeMap.forceActiveFocus()
+    if (focusTarget) focusTarget.forceActiveFocus()
+  })
 }
 QML
 
@@ -309,7 +317,6 @@ ShellRoot {
     }
   ]
 
-  // Runs each function 15 ms after the one before it.
   property var burstSteps: []
   property int burstIndex: 0
   function burst(list) { sr.burstSteps = list; sr.burstIndex = 0; burstTimer.start() }

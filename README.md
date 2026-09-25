@@ -59,7 +59,7 @@ A draft with a body and no title can't be saved. It stays open with the warning 
 
 Search field: `Enter`, `Tab` or `Shift+Tab` return to the list, `Esc` clears the search and returns. While a draft is open, they return to the draft's title instead.
 
-History tab: `j` / `k` move, `d` `d` deletes an entry and selects the next one, `c` `c` clears the whole history, `1` / `2` show the Items tab or the History tab, `Esc` cancels an armed delete or clear, or closes the panel. The Clear history button also needs a second click. As in the list, the second press must come within 2 seconds, moving the selection cancels the first, and the letters do nothing with `Ctrl`, `Alt` or `Super` held.
+History tab: `j` / `k` move, `d` `d` deletes an entry and selects the next one, `c` `c` clears the whole history, `1` / `2` show the Items tab or the History tab, `Esc` cancels an armed delete or clear, or closes the panel. The Clear history button also needs a second click. As in the list, the second press must come within 2 seconds, moving the selection cancels the first, and the letter and number shortcuts do nothing with `Ctrl`, `Alt` or `Super` held.
 
 The History tab shows a note marked read as `read` and a note marked unread as `unread`. The database stores them as `completed` and `reopened`, like a todo's.
 
