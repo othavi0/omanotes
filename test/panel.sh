@@ -128,6 +128,15 @@ replies "toggleTodo answers ok" "$(ipc scratchpad toggleTodo 2)" '{"ok":true}'
 expect "toggleTodo completes the pending todo" "SELECT status FROM items WHERE id = 2" "1"
 expect "toggleTodo is logged in history" \
   "SELECT COUNT(*) FROM history WHERE action = 'completed' AND title = 'Renew the domain'" "1"
+for _ in $(seq 50); do
+  node -e 'process.exit(JSON.parse(process.argv[1]).some(t => t.id === 2 && t.status === 1) ? 0 : 1)' \
+    "$(ipc scratchpad listTodos)" && break
+  sleep 0.2
+done
+replies "toggleTodo again answers ok" "$(ipc scratchpad toggleTodo 2)" '{"ok":true}'
+expect "toggleTodo again reopens the completed todo" "SELECT status FROM items WHERE id = 2" "0"
+expect "the reopen is logged in history" \
+  "SELECT COUNT(*) FROM history WHERE action = 'reopened' AND title = 'Renew the domain'" "1"
 replies "toggleTodo on a missing id is refused" "$(ipc scratchpad toggleTodo 999)" '{"ok":false,"error":"item not found: 999"}'
 
 replies "remove answers ok" "$(ipc scratchpad remove "$note_id")" '{"ok":true}'
