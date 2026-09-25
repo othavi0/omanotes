@@ -4,4 +4,6 @@ The kit's `Button` sizes itself to its content plus padding and border, so a but
 
 ## Consequences
 
-- Every button and single-line field in the panel goes through these wrappers. The editor body is a plain `TextArea` that fills the remaining height. `test/render.sh` fails if any control in its scenes is taller or shorter than `Style.spacing.controlHeight`.
+- Every button and single-line field in the panel goes through these wrappers. The editor body is a plain `TextArea` that fills the remaining height and draws the kit's control fill and border, so it matches the title `Field`. `test/render.sh` fails if any control in its scenes is taller or shorter than `Style.spacing.controlHeight`.
+- `Field` sets `verticalPadding: 0`, the kit's documented way to a short field, so the kit still adds the border width to the padding.
+- The wrappers and the rest of the panel take colours from the kit: `Style` for fill, border, hover and selection, `PanelSeparator` for rules and `PanelSectionHeader` for column labels. The kit has no token for secondary text, so the two emphasis levels live in `ui/Tone.js`. `test/tokens.test.mjs` fails on a number literal passed to `Util.alpha`.

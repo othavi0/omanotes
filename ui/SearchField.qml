@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "Icons.js" as Icons
+import "Tone.js" as Tone
 
 // Field with a leading search glyph and a trailing clear (x) that only
 // shows once there's text to clear.
@@ -14,7 +15,7 @@ Field {
         x: Style.space(10)
         anchors.verticalCenter: parent.verticalCenter
         text: Icons.search
-        color: Util.alpha(root.foreground, 0.6)
+        color: Util.alpha(root.foreground, Tone.secondary)
         font.family: Style.font.family
         font.pixelSize: Style.font.icon
     }
@@ -25,13 +26,13 @@ Field {
         anchors.rightMargin: Style.space(9)
         anchors.verticalCenter: parent.verticalCenter
         text: Icons.close
-        color: Util.alpha(root.foreground, 0.7)
+        color: Util.alpha(root.foreground, Tone.secondary)
         font.family: Style.font.family
         font.pixelSize: Style.font.icon
 
         MouseArea {
             anchors.fill: parent
-            anchors.margins: -6
+            anchors.margins: -Style.space(6)
             cursorShape: Qt.PointingHandCursor
             onClicked: root.text = ""
         }

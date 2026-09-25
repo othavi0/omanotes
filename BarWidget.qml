@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell.Io
 import qs.Ui
 import "data" as Data
+import "ui/Icons.js" as Icons
 
 BarWidget {
     id: root
@@ -143,10 +144,7 @@ BarWidget {
         id: button
         anchors.fill: parent
         bar: root.bar
-        // md-note_text (Nerd Font / Material Design Icons) — notepad with text lines.
-        // QML string literals have no \U escape; encode the astral char as its
-        // UTF-16 surrogate pair (U+F039E) so it parses to the real code point.
-        text: "\uDB80\uDF9E"
+        text: Icons.noteFilled
         tooltipText: "Omanotes (" + root.unreadNotes + " / " + root.inProgressTodos + ")"
 
         onPressed: function(b) {
