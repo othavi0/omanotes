@@ -26,6 +26,7 @@ Panel {
     // once, and KeyboardPanel gives the tab keyboard focus when it maps.
     onOpenedChanged: {
         if (!root.opened) {
+            header.closeMenu()
             itemsTab.commitIfDirty()
             return
         }
@@ -63,25 +64,24 @@ Panel {
             anchors.margins: Style.space(16)
             spacing: Style.space(12)
 
-            // Keys a tab leaves unhandled bubble up here. Text fields take 1
-            // and 2 as text, so only the lists switch tabs.
+            // Esc is the panel's only key (ADR-0013). The text fields leave it
+            // unhandled, so it reaches here from anywhere in the panel.
             Keys.onPressed: function(event) {
-                if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return
-                if (event.text === "1") root.activeTab = Tabs.items
-                else if (event.text === "2") root.activeTab = Tabs.history
-                else return
+                if (event.key !== Qt.Key_Escape || (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) return
+                root.close()
                 event.accepted = true
             }
 
             Ui.PanelHeader {
+                id: header
                 Layout.fillWidth: true
                 db: root.db
                 activeTab: root.activeTab
                 foreground: root.barForeground
                 onTabPicked: function(index) { root.activeTab = index }
-                onNewRequested: {
+                onNewRequested: function(type) {
                     root.activeTab = Tabs.items
-                    itemsTab.startNew("note")
+                    itemsTab.startNew(type)
                 }
             }
 
@@ -95,7 +95,6 @@ Panel {
                     db: root.db
                     toast: toast
                     foreground: root.barForeground
-                    onCloseRequested: root.close()
                 }
 
                 Ui.HistoryTab {
@@ -103,7 +102,6 @@ Panel {
                     db: root.db
                     toast: toast
                     foreground: root.barForeground
-                    onCloseRequested: root.close()
                 }
             }
         }

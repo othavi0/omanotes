@@ -11,9 +11,9 @@ import "Tone.js" as Tone
 // "History" tab: the log Db writes on every action (added, edited, completed,
 // reopened, converted, deleted), rendered as a table of
 // `type | title | action | timestamp` rows (newest-first, from db.history).
-// Entries are never edited; the user can only delete one or clear them all.
-// Title and row count live in PanelHeader's tab Segment, not here. The Toast
-// is owned by Panel.qml and injected here.
+// Entries are never edited; the user can only delete one with the trash on
+// its row or clear them all. Title and row count live in PanelHeader's tab
+// Segment, not here. The Toast is owned by Panel.qml and injected here.
 FocusScope {
     id: root
 
@@ -21,10 +21,7 @@ FocusScope {
     property var toast: null                // ui/Toast instance (Panel-owned)
     property color foreground: Color.foreground
 
-    signal closeRequested()                 // Esc in the list closes the panel
-
     property int selectedId: -1
-    readonly property bool deleteArmed: confirm.isArmedFor(root.selectedId)
     readonly property bool clearArmed: confirm.isArmedFor("clear")
     readonly property bool clearButtonEnabled: root.db ? root.db.history.length > 0 : false
 
@@ -34,13 +31,13 @@ FocusScope {
 
     readonly property var rowList: root.db ? (root.db.history || []) : []
     readonly property int selectedIndex: ItemJs.indexOfId(root.rowList, root.selectedId)
-    readonly property var selectedRow: root.selectedIndex >= 0 ? root.rowList[root.selectedIndex] : null
 
     // Column widths shared by the header and every delegate so cells stay in
     // vertical alignment (title is the only elastic column).
     readonly property int colTypeW: Style.space(34)
     readonly property int colActionW: Style.space(76)
     readonly property int colTsW: Style.space(128)
+    readonly property int colTrashW: Style.spacing.controlHeight
 
 
     // Unix seconds -> "YYYY-MM-DD HH:MM".
@@ -61,51 +58,21 @@ FocusScope {
         return Util.alpha(root.foreground, Tone.secondary)
     }
 
-    function focusList() { pump.forceActiveFocus() }
+    function focusList() { focusSink.forceActiveFocus() }
     function resetFocus() {
         confirm.cancel()
         root.focusList()
     }
 
-    function moveSelection(delta) {
-        var rows = root.rowList
-        var n = rows.length
-        if (n === 0) return
-        var cur = root.selectedIndex
-        var next = Math.max(0, Math.min(n - 1, cur + delta))
-        if (cur < 0 || next === cur) return
-        root.selectedId = rows[next].id
-        listView.positionViewAtIndex(next, ListView.Center)
-    }
-
-    function armDelete() {
-        if (!root.db || !root.selectedRow) return
-        if (confirm.press(root.selectedId)) root.db.deleteHistory(root.selectedId)
+    function armDelete(id) {
+        if (!root.db) return
+        if (confirm.press(id)) root.db.deleteHistory(id)
         else if (root.toast) root.toast.show("Delete again to confirm")
     }
     function clearHistory() {
         if (!root.db || root.rowList.length === 0) return
         if (confirm.press("clear")) root.db.clearHistory()
         else if (root.toast) root.toast.show("Clear again to confirm")
-    }
-
-    function onKey(event) {
-        var mods = event.modifiers
-        var text = mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier) ? ""
-            : mods & Qt.ShiftModifier ? event.text : event.text.toLowerCase()
-        if (event.key === Qt.Key_Down || text === "j") {
-            root.moveSelection(1); event.accepted = true
-        } else if (event.key === Qt.Key_Up || text === "k") {
-            root.moveSelection(-1); event.accepted = true
-        } else if (text === "d") {
-            root.armDelete(); event.accepted = true
-        } else if (text === "c") {
-            root.clearHistory(); event.accepted = true
-        } else if (event.key === Qt.Key_Escape) {
-            if (confirm.armed) confirm.cancel()
-            else root.closeRequested()
-            event.accepted = true
-        }
     }
 
     // Keep a valid selection after refreshes (watcher/via db): when the
@@ -123,11 +90,12 @@ FocusScope {
         }
     }
 
+    // Holds focus for the tab, so KeyboardPanel's focusTarget lands inside
+    // it and Esc reaches Panel.qml.
     Item {
-        id: pump
+        id: focusSink
         anchors.fill: parent
         focus: true
-        Keys.onPressed: function(event) { root.onKey(event) }
     }
 
     ColumnLayout {
@@ -144,6 +112,7 @@ FocusScope {
             PanelSectionHeader { Layout.fillWidth: true; text: "Title"; foreground: root.foreground }
             PanelSectionHeader { Layout.preferredWidth: root.colActionW; text: "Action"; foreground: root.foreground }
             PanelSectionHeader { Layout.preferredWidth: root.colTsW; text: "Timestamp"; foreground: root.foreground }
+            Item { Layout.preferredWidth: root.colTrashW }
         }
 
         PanelSeparator {
@@ -175,14 +144,18 @@ FocusScope {
                 model: root.rowList
 
                 delegate: Rectangle {
+                    id: historyRow
                     required property var modelData
                     required property int index
+                    readonly property bool armed: confirm.isArmedFor(Number(modelData.id))
                     width: listView.width
                     height: rowRow.implicitHeight + Style.space(10)
                     radius: Style.cornerRadius
                     color: Number(modelData.id) === root.selectedId
                         ? Style.selectedFillFor(root.foreground, Color.accent)
-                        : rowMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+                        : rowHover.hovered ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+
+                    HoverHandler { id: rowHover }
 
                     RowLayout {
                         id: rowRow
@@ -223,19 +196,20 @@ FocusScope {
                             font.pixelSize: Style.font.bodySmall
                         }
 
+                        // An armed trash reads Confirm and grows over this column.
                         Text {
                             Layout.preferredWidth: root.colTsW
-                            text: root.formatTs(modelData.ts)
+                            text: historyRow.armed ? "" : root.formatTs(modelData.ts)
                             color: Util.alpha(root.foreground, Tone.secondary)
                             font.family: Style.font.family
                             font.pixelSize: Style.font.bodySmall
                         }
+
+                        Item { Layout.preferredWidth: root.colTrashW }
                     }
 
                     MouseArea {
-                        id: rowMouse
                         anchors.fill: parent
-                        hoverEnabled: true
                         acceptedButtons: Qt.LeftButton
                         onClicked: {
                             root.selectedId = modelData.id
@@ -243,6 +217,22 @@ FocusScope {
                             root.focusList()
                             listView.positionViewAtIndex(index, ListView.Center)
                         }
+                    }
+
+                    ActionButton {
+                        id: trash
+                        visible: rowHover.hovered || historyRow.armed
+                        anchors.right: parent.right
+                        anchors.rightMargin: Style.spacing.controlPaddingX
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: historyRow.armed ? implicitWidth : root.colTrashW
+                        horizontalPadding: historyRow.armed ? Style.spacing.controlPaddingX : 0
+                        bordered: historyRow.armed
+                        iconText: Icons.trash
+                        text: historyRow.armed ? "Confirm" : ""
+                        tooltipText: historyRow.armed ? "" : "Delete entry"
+                        foreground: historyRow.armed || trash.hot ? Color.urgent : Util.alpha(root.foreground, Tone.secondary)
+                        onClicked: root.armDelete(Number(modelData.id))
                     }
                 }
             }
@@ -257,14 +247,7 @@ FocusScope {
             Layout.fillWidth: true
             spacing: Style.spacing.md
 
-            HintBar {
-                Layout.fillWidth: true
-                foreground: root.foreground
-                urgent: root.deleteArmed || root.clearArmed
-                hints: root.deleteArmed ? [["d", "press again to delete"]]
-                    : root.clearArmed ? [["c", "press again to clear"]]
-                    : [["j/k", "move"], ["d d", "delete"], ["c c", "clear"], ["1/2", "tabs"], ["Esc", "close"]]
-            }
+            Item { Layout.fillWidth: true }
 
             ActionButton {
                 text: root.clearArmed ? "Confirm" : "Clear history"

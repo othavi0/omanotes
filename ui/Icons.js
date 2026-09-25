@@ -18,3 +18,4 @@ var noteFilled = g(0xF039E)  // md-note_text, the bar icon
 var copy = g(0xF018F)        // md-content_copy
 var swap = g(0xF04E1)        // md-swap_horizontal
 var all = g(0xF0279)         // md-format_list_bulleted
+var chevronDown = g(0xF0140) // md-chevron_down

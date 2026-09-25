@@ -2,13 +2,13 @@
 
 ![Omanotes preview](preview.png)
 
-Notes and todos in one keyboard-driven panel on the Omarchy bar. Everything is stored in a local SQLite database, and a History tab logs each change.
+Notes and todos in one panel on the Omarchy bar. Everything is stored in a local SQLite database, and a History tab logs each change.
 
 ## Features
 
 - One list for notes and todos. Unread notes and pending todos sort first, then the most recently updated.
 - The right-hand pane is the editor: a title field and a body. Leaving the editor saves it.
-- Keyboard-driven, with a hint bar that shows the keys for the current context.
+- Driven by the mouse, with Esc to close the panel.
 - A History tab that logs every change (`added`, `edited`, `completed`, `reopened`, `converted`, `deleted`). Entries can be deleted one by one or cleared.
 - The panel reloads when the database file changes, so edits from the IPC or from `sqlite3` show up without reopening it.
 - An IPC target to add, list, toggle and remove items from scripts.
@@ -25,41 +25,18 @@ omarchy plugin add https://github.com/othavi0/omanotes.git --enable
 omarchy plugin remove othavi0.omanotes
 ```
 
-## Keys
+## Using the panel
 
-Items tab, list:
+Everything is on screen. `Esc` closes the panel from anywhere in it, and closing saves what the editor holds.
 
-| Key | Action |
-|---|---|
-| `j` / `k`, `↓` / `↑` | Move the selection |
-| `Enter`, `l`, `→`, `Tab` | Edit the selected item, or start a note draft when nothing is selected |
-| `n`, `a` | New note draft |
-| `Space`, `c` | Toggle status (read/unread, completed/pending) |
-| `d` `d` | Delete. The second press must come within 2 seconds, and moving the selection or switching tabs cancels the first |
-| `/` | Focus search |
-| `f` | Cycle the filter: all, notes, todos |
-| `1` / `2` | Show the Items tab or the History tab |
-| `Esc` | Cancel an armed delete, or close the panel |
+- **New** opens a menu with Note and Todo. Each opens a draft of that type in the editor.
+- Click a row to open it in the editor. Its box toggles the status. The search field and the All, Notes and Todos buttons narrow the list.
+- The editor saves when you leave it: another row, the Save button, another tab or closing the panel. Discard throws the changes away. In the title, `Tab` and `Enter` move to the body; in the body, `Enter` starts a new line and `Shift+Tab` goes back to the title.
+- A draft with a body and no title can't be saved. It stays open with the warning "New item needs a title" until you type a title or discard it.
+- The buttons under the editor toggle the status, convert between note and todo, copy the item and delete it.
+- In History, a trash button shows on the row under the pointer.
 
-Every list shortcut, letters and numbers as well as `Space`, `Enter`, `Tab`, the arrows and `Esc`, does nothing while `Ctrl`, `Alt` or `Super` is held. So `Ctrl+C` and `Ctrl+Space` in the list do not toggle the selected item, and `Ctrl+Enter` does not open it. `Shift` keeps its meaning. Letters still work with Caps Lock on. In the search field and the editor, `1` and `2` are typed as text.
-
-Items tab, editor:
-
-| Key | Title field | Body |
-|---|---|---|
-| `Enter` | Move to the body | Save and return to the list |
-| `Shift+Enter` | | New line |
-| `Tab` | Move to the body | Save and return to the list |
-| `Shift+Tab` | Save and return to the list | Move to the title |
-| `Esc` | Save and return to the list | Save and return to the list |
-| `Shift+Esc` | Discard and return to the list | Discard and return to the list |
-| `Ctrl+T` | On a draft, convert between note and todo | On a draft, convert between note and todo |
-
-A draft with a body and no title can't be saved. It stays open with the warning "New item needs a title" until you type a title or discard it.
-
-Search field: `Enter`, `Tab` or `Shift+Tab` return to the list, `Esc` clears the search and returns. While a draft is open, they return to the draft's title instead.
-
-History tab: `j` / `k` move, `d` `d` deletes an entry and selects the next one, `c` `c` clears the whole history, `1` / `2` show the Items tab or the History tab, `Esc` cancels an armed delete or clear, or closes the panel. The Clear history button also needs a second click. As in the list, the second press must come within 2 seconds, moving the selection or switching tabs cancels the first, and the letter and number shortcuts do nothing with `Ctrl`, `Alt` or `Super` held.
+Delete, the History trash and Clear history each need a second click on the same button, which reads Confirm, within 2 seconds. Selecting another row, switching tabs or closing the panel cancels the first click.
 
 The History tab shows a note marked read as `read` and a note marked unread as `unread`. The database stores them as `completed` and `reopened`, like a todo's.
 

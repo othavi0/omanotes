@@ -5,8 +5,9 @@
 # (the dev's hard rule: a button with an icon must never be taller than a
 # plain text button). Some scenes also check their own layout: the toast
 # wraps a long title inside the panel, History draws the kit's separators and
-# section headers and shows the same EmptyState as Items, and the no-match
-# button names what it clears. Exits non-zero if any check fails.
+# section headers and shows the same EmptyState as Items, the no-match
+# button names what it clears, the New menu lists Note and Todo, and an armed
+# History trash reads Confirm. Exits non-zero if any check fails.
 #
 # Usage: test/render.sh [output-dir]
 #
@@ -41,7 +42,7 @@ ShellRoot {
   property int sceneIndex: 0
   readonly property var scenes: Quickshell.env("SCENES").split(",")
   // A scene that finds fewer controls than this measured nothing.
-  readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3 })
+  readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3, menu: 11, trash: 4 })
   readonly property string longTitle: "Renew the domain before the card on file expires, then move the DNS records to the new registrar, check the MX entries, and write down every step so the next renewal takes five minutes instead of an afternoon"
   readonly property string outDir: Quickshell.env("OUT_DIR")
 
@@ -100,7 +101,29 @@ ShellRoot {
       sr.expect(sceneName, sr.find(historyTab, /^PanelSectionHeader$/).length === 4, "History column headers are PanelSectionHeader")
     } else if (sceneName === "historyblank") {
       sr.expect(sceneName, sr.find(historyTab, /^EmptyState$/).length === 1, "empty History shows EmptyState")
+    } else if (sceneName === "menu") {
+      var entries = sr.find(frame, /^ActionButton$/).map(function(b) { return b.item.text })
+      sr.expect(sceneName, entries.indexOf("Note") >= 0 && entries.indexOf("Todo") >= 0, "the New menu shows Note and Todo")
+    } else if (sceneName === "trash") {
+      var armed = sr.find(historyTab, /^ActionButton$/).filter(function(b) { return b.item.text === "Confirm" })
+      sr.expect(sceneName, armed.length === 1, "one armed trash reads Confirm")
     }
+  }
+
+  // A Popup is not an Item child, so it is looked up through `data`.
+  function menuItem(obj) {
+    obj = obj || header
+    if (/^(QQuick)?Popup[_(]/.test(String(obj))) return obj.contentItem.parent
+    var kids = obj.data || []
+    for (var i = 0; i < kids.length; ++i) {
+      var hit = sr.menuItem(kids[i])
+      if (hit) return hit
+    }
+    return null
+  }
+
+  function newButton() {
+    return sr.find(header, /^ActionButton$/).filter(function(b) { return b.item.text.indexOf("New") === 0 })[0].item
   }
 
   function checkHeights(sceneName, rootItem) {
@@ -136,10 +159,13 @@ ShellRoot {
     itemsTab.searchText = ""
     itemsTab.focusList()
     toast.hide()
-    sr.activeTab = (name === "history" || name === "historyblank") ? Tabs.history : Tabs.items
+    header.closeMenu()
+    sr.activeTab = (name === "history" || name === "historyblank" || name === "trash") ? Tabs.history : Tabs.items
     if (name === "draft") itemsTab.startNew("todo")
     else if (name === "empty") itemsTab.searchText = "zzz_no_match_xyz"
     else if (name === "toast") toast.show("Deleted — " + sr.longTitle)
+    else if (name === "menu") sr.newButton().clicked()
+    else if (name === "trash") historyTab.armDelete(Number(db.history[1].id))
     settleTimer.restart()
   }
 
@@ -152,6 +178,10 @@ ShellRoot {
 
   function captureScene() {
     var name = sr.currentScene
+    // An open popup draws in the window's overlay, outside the frame, and
+    // grabToImage cannot grab the window itself. The frame starts at the
+    // window's origin, so the popup keeps its place when moved under it.
+    if (name === "menu") sr.menuItem().parent = frame
     sr.checkHeights(name, frame)
     sr.checkLayout(name)
     frame.grabToImage(function(r) {
@@ -176,6 +206,7 @@ ShellRoot {
         spacing: Style.space(12)
 
         Ui.PanelHeader {
+          id: header
           Layout.fillWidth: true
           db: db
           activeTab: sr.activeTab
@@ -214,7 +245,7 @@ if [[ -n "${1:-}" ]]; then
   echo "output dir: $out_dir"
 fi
 status=0
-SCENES=browse,draft,empty,toast,history OUT_DIR="$out_dir" run_qs || status=1
+SCENES=browse,draft,empty,toast,history,menu,trash OUT_DIR="$out_dir" run_qs || status=1
 sqlite3 "$db" "DELETE FROM items; DELETE FROM history;"
 SCENES=blank,historyblank OUT_DIR="$out_dir" run_qs || status=1
 exit "$status"
