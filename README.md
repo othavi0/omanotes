@@ -72,17 +72,20 @@ qs -p /usr/share/omarchy/shell ipc call scratchpad addTodo "Renew the domain" "D
 qs -p /usr/share/omarchy/shell ipc call scratchpad listTodos
 ```
 
-| Method | Returns |
-|---|---|
-| `addNote(title, body)`, `addTodo(title, body)` | `{"ok":true}` for a non-empty title, `{"ok":false,"error":"title is required"}` otherwise. The write is dropped if the database has not finished starting |
-| `listNotes()`, `listTodos()` | JSON array of `{id, type, title, body, status}` from the bar widget's last reload |
-| `toggleTodo(id)` | Flips the status of any item, note or todo, and returns `{"ok":true}`, or `{"ok":false,"error":"item not found: <id>"}` |
-| `remove(id)` | Deletes an item and returns `{"ok":true}`, even for an unknown id |
-| `clearHistory()` | Deletes every history entry and returns `{"ok":true}` |
-| `open()`, `close()`, `show()`, `hide()`, `toggle()` | Nothing. They open, close or toggle the panel |
-| `ping()` | `ok` |
+| Method | What it does | Replies |
+|---|---|---|
+| `addNote(title, body)`, `addTodo(title, body)` | Adds a note or a todo | `{"ok":true}`, `{"ok":false,"error":"title is required"}` for an empty title |
+| `listNotes()`, `listTodos()` | Lists every note or every todo, from the bar widget's last reload | A JSON array of `{id, type, title, body, status}` |
+| `toggleStatus(id)` | Toggles the status of any item, note or todo | `{"ok":true}`, `{"ok":false,"error":"item not found: <id>"}` |
+| `toggleTodo(id)` | The old name of `toggleStatus`, kept for existing scripts. It also toggles notes | Same as `toggleStatus` |
+| `remove(id)` | Deletes an item | `{"ok":true}`, `{"ok":false,"error":"item not found: <id>"}` |
+| `clearHistory()` | Deletes every history entry and keeps the items | `{"ok":true}` |
+| `ping()` | Checks that the bar widget answers | `{"ok":true}` |
+| `open()`, `close()`, `show()`, `hide()`, `toggle()` | Opens, closes or toggles the panel. `show` and `hide` are the same as `open` and `close` | Nothing |
 
-Writes are asynchronous. A `list*` call right after an `add*` can miss the new item until the panel reloads.
+Every method except `ping` and the panel methods can also reply `{"ok":false,"error":"not ready"}` while the database is starting.
+
+Writes are asynchronous. `{"ok":true}` means the write is queued. A write that fails later is logged to the journal with the `omanotes db:` prefix. `toggleStatus`, `toggleTodo` and `remove` look the id up in the bar widget's last reload, so an item added or deleted a moment before can still be missing or found. A `list*` call right after an `add*` can miss the new item until the bar widget reloads.
 
 ## Data
 

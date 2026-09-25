@@ -11,7 +11,7 @@ trap 'rm -rf "$sandbox"' EXIT
 copy="$sandbox/omanotes"
 mkdir "$copy"
 cp -r "$src/Panel.qml" "$src/data" "$src/ui" "$src/test" "$copy/"
-sed 's/function ping(): string { return "ok" }/function ping(): string { return "down" }/' \
+sed 's/function ping(): string { return root.ipcReply("") }/function ping(): string { return "down" }/' \
   "$src/BarWidget.qml" > "$copy/BarWidget.qml"
 
 status=0
