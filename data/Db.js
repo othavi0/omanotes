@@ -53,6 +53,13 @@ function countsSql() {
     + "(SELECT COUNT(*) FROM items WHERE type = 'todo') AS todos"
 }
 
+// One argument per statement: the CLI stops at the first failing argument and
+// the open transaction rolls back, while statements joined in one argument keep
+// running past a failure (ADR-0001). IMMEDIATE takes the write lock up front.
+function transaction(statements) {
+  return ["BEGIN IMMEDIATE"].concat(statements, ["COMMIT"])
+}
+
 // Insert a new item (status 0) + "added" history row, and return its id.
 // The `SELECT last_insert_rowid()` sits between the two INSERTs so it captures
 // the items row (a later history INSERT would otherwise move last_insert_rowid).
@@ -60,13 +67,13 @@ function addSql(type, title, body) {
   var t = (type === "todo") ? "todo" : "note"
   var ts = now()
   var b = (body === null || body === undefined || body === "") ? "NULL" : q(body)
-  return "BEGIN;"
-    + " INSERT INTO items (type, title, body, status, created_at, updated_at) VALUES ("
-    + q(t) + ", " + q(title) + ", " + b + ", 0, " + ts + ", " + ts + ");"
-    + " SELECT last_insert_rowid() AS id;"
-    + " INSERT INTO history (type, title, action, ts) VALUES ("
-    + q(t) + ", " + q(title) + ", 'added', " + ts + ");"
-    + " COMMIT;"
+  return transaction([
+    "INSERT INTO items (type, title, body, status, created_at, updated_at) VALUES ("
+      + q(t) + ", " + q(title) + ", " + b + ", 0, " + ts + ", " + ts + ")",
+    "SELECT last_insert_rowid() AS id",
+    "INSERT INTO history (type, title, action, ts) VALUES ("
+      + q(t) + ", " + q(title) + ", 'added', " + ts + ")"
+  ])
 }
 
 // Set an item's status (0 or 1) + record "completed"/"reopened" history.
@@ -77,11 +84,11 @@ function setStatusSql(id, status) {
   var ts = now()
   var action = (s === 1) ? "completed" : "reopened"
   var nid = Number(id)
-  return "BEGIN;"
-    + " UPDATE items SET status = " + s + ", updated_at = " + ts + " WHERE id = " + nid + ";"
-    + " INSERT INTO history (type, title, action, ts) "
-    + "SELECT type, title, " + q(action) + ", " + ts + " FROM items WHERE id = " + nid + ";"
-    + " COMMIT;"
+  return transaction([
+    "UPDATE items SET status = " + s + ", updated_at = " + ts + " WHERE id = " + nid,
+    "INSERT INTO history (type, title, action, ts) "
+      + "SELECT type, title, " + q(action) + ", " + ts + " FROM items WHERE id = " + nid
+  ])
 }
 
 // Update an item's title/body (bump updated_at, type is fixed on edit) +
@@ -91,36 +98,36 @@ function updateSql(id, title, body) {
   var nid = Number(id)
   var b = (body === null || body === undefined || body === "") ? "NULL" : q(body)
   var ts = now()
-  return "BEGIN;"
-    + " UPDATE items SET title = " + q(title) + ", body = " + b + ", updated_at = " + ts
-    + " WHERE id = " + nid + ";"
-    + " INSERT INTO history (type, title, action, ts) "
-    + "SELECT type, title, 'edited', " + ts + " FROM items WHERE id = " + nid + ";"
-    + " COMMIT;"
+  return transaction([
+    "UPDATE items SET title = " + q(title) + ", body = " + b + ", updated_at = " + ts
+      + " WHERE id = " + nid,
+    "INSERT INTO history (type, title, action, ts) "
+      + "SELECT type, title, 'edited', " + ts + " FROM items WHERE id = " + nid
+  ])
 }
 
 // Permanently delete an item + record "deleted" history (title captured first).
 function deleteItemSql(id) {
   var ts = now()
   var nid = Number(id)
-  return "BEGIN;"
-    + " INSERT INTO history (type, title, action, ts) "
-    + "SELECT type, title, 'deleted', " + ts + " FROM items WHERE id = " + nid + ";"
-    + " DELETE FROM items WHERE id = " + nid + ";"
-    + " COMMIT;"
+  return transaction([
+    "INSERT INTO history (type, title, action, ts) "
+      + "SELECT type, title, 'deleted', " + ts + " FROM items WHERE id = " + nid,
+    "DELETE FROM items WHERE id = " + nid
+  ])
 }
 
 // Flip an item's type (note<->todo), bump updated_at, keep status, and
-// record a "converted" history row — all in the same transaction.
+// record a "converted" history row.
 function convertTypeSql(id) {
   var nid = Number(id)
   var ts = now()
-  return "BEGIN;"
-    + " UPDATE items SET type = CASE type WHEN 'note' THEN 'todo' ELSE 'note' END, updated_at = " + ts
-    + " WHERE id = " + nid + ";"
-    + " INSERT INTO history (type, title, action, ts) "
-    + "SELECT type, title, 'converted', " + ts + " FROM items WHERE id = " + nid + ";"
-    + " COMMIT;"
+  return transaction([
+    "UPDATE items SET type = CASE type WHEN 'note' THEN 'todo' ELSE 'note' END, updated_at = " + ts
+      + " WHERE id = " + nid,
+    "INSERT INTO history (type, title, action, ts) "
+      + "SELECT type, title, 'converted', " + ts + " FROM items WHERE id = " + nid
+  ])
 }
 
 // Newest-first history rows. Capped to keep the table light.
@@ -159,7 +166,8 @@ var SCHEMA = "CREATE TABLE IF NOT EXISTS items ("
   + ");"
   + "CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts DESC);"
 
-// argv for a read or write via the sqlite3 CLI. `json` enables -json output.
+// argv for a read or write via the sqlite3 CLI. `sql` is one statement or a
+// transaction() array, one argument per statement. `json` enables -json output.
 //
 // `.timeout 5000` is a CLI dot-command (not SQL) that sets the busy timeout for
 // the session: it makes sqlite wait up to 5s on a locked db instead of failing,
@@ -168,8 +176,7 @@ var SCHEMA = "CREATE TABLE IF NOT EXISTS items ("
 function sqliteCommand(dbPath, sql, json) {
   var cmd = ["sqlite3"]
   if (json) cmd.push("-json")
-  cmd.push(String(dbPath), ".timeout 5000", String(sql))
-  return cmd
+  return cmd.concat(String(dbPath), ".timeout 5000", sql)
 }
 
 // argv for first-run init: ensure the data dir exists, then apply the schema

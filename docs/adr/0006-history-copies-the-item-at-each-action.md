@@ -5,4 +5,4 @@ Each write that changes an item also inserts a `history` row with a copy of the 
 ## Consequences
 
 - A history entry cannot link back to its item. An `edited` entry carries the title after the edit.
-- The history row is written in the same SQL string as the item change, so it inherits the atomicity gap described in ADR-0001.
+- The history row is written in the same transaction as the item change (ADR-0001), so either both land or neither does.
