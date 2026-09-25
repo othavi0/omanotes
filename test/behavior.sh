@@ -128,7 +128,7 @@ ShellRoot {
     function() { console.log("DRAFT-AFTER-DISCARD " + itemsTab.draftNew); itemsTab.discardEditor() },
 
     function() {
-      console.log("HINT-BARS " + (sr.findType(itemsTab, "HintBar") === null) + " " + (sr.findType(historyTab, "HintBar") === null))
+      console.log("ITEMS-KEY-LEGEND [" + sr.keyLegend(itemsTab) + "]")
       var editor = sr.editor()
       var bottom = editor.mapToItem(itemsTab, 0, editor.height).y
       console.log("EDITOR-REACHES-BOTTOM " + (Math.abs(itemsTab.height - bottom) <= 1))
@@ -239,6 +239,10 @@ ShellRoot {
     },
     function() { console.log("LIST-KEYS " + sr.sameState(sr.before, sr.listState())); if (!panel.opened) panel.open() },
     function() { sr.click(sr.findByText(header, "History")) },
+    function() {
+      var clear = sr.button(historyTab, "Clear history")
+      console.log("HISTORY-KEY-LEGEND [" + sr.keyLegend(historyTab) + "] footer=" + (clear.parent.height === clear.height))
+    },
     function() {
       sr.click(sr.historyRow(historyTab.rowList[1].id))
       sr.before = sr.historyState()
@@ -490,6 +494,15 @@ ShellRoot {
   function findByText(item, text) {
     return sr.findWhere(item, function(it) { return it.text === text })
   }
+  function keyLegend(item) {
+    var keyName = /^(Esc|Enter|Tab|Space|(Ctrl|Alt|Shift|Super)\+\S+|[a-z]( [a-z])?|\w\/\w)$/
+    var found = []
+    sr.findWhere(item, function(it) {
+      if (it.visible && keyName.test(it.text)) found.push(it.text)
+      return false
+    })
+    return found
+  }
 
   function highlighted(item) {
     var ids = []
@@ -585,7 +598,9 @@ expect "three writes fired in one tick all land (edit, convert, toggle)" \
 logged "an item added outside the filter does not hijack the selection later" "SELECTION-AFTER-WIDENING kept$"
 logged "a draft opened in the same tick as a discard stays open" "DRAFT-AFTER-DISCARD true$"
 
-logged "neither tab has a hint bar" "HINT-BARS true true$"
+logged "the Items tab shows no key legend" "ITEMS-KEY-LEGEND \[\]$"
+logged "the History tab shows no key legend, and its footer is only as tall as Clear history" \
+  "HISTORY-KEY-LEGEND \[\] footer=true$"
 logged "the editor reaches the bottom of the Items tab" "EDITOR-REACHES-BOTTOM true$"
 logged "New opens a menu with Note and Todo, opens no draft by itself and has no shortcut tooltip" \
   "NEW-MENU true true true draft=false tooltip=\[\]$"

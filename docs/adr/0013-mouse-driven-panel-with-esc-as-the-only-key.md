@@ -5,7 +5,8 @@ The panel had a shortcut for every action: letters to move, edit, toggle, delete
 ## Consequences
 
 - Inside the editor only text keys remain. Tab and Enter in the title move to the body, Shift+Tab in the body moves back to the title, and Enter in the body inserts a new line. Everything else is the text field's own behaviour.
-- The two actions that only had a key get a control. New opens a menu with Note and Todo, each opening a draft of that type (`newMenu` in `ui/PanelHeader.qml`). Each History entry shows a trash button while the pointer is over its row, armed like the other destructive buttons (Arm in `CONTEXT.md`).
+- Deleting one History entry was the only action with just a key (`d d`). Each History entry now shows a trash button while the pointer is over its row, armed like the other destructive buttons (Arm in `CONTEXT.md`).
+- New opens a menu with Note and Todo, each opening a draft of that type (`newMenu` in `ui/PanelHeader.qml`). A todo already had a control, the Note/Todo switch in the draft editor, but New always opened a note first. The menu makes a todo one choice away.
 - Choosing Note or Todo while a draft with a body and no title is open keeps that draft and gives it the chosen type, since the draft cannot be committed.
 - The tabs keep a focus holder with no key handler (`focusSink`), so the kit's `KeyboardPanel.focusTarget` still has something inside the tab to give focus to, and Esc reaches `Panel.qml` from there.
 - `ui/HintBar.qml` and `ui/Keycap.qml` are gone, and the Items tab gives their height to the list and the editor.
