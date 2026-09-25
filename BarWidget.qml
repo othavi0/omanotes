@@ -134,7 +134,6 @@ BarWidget {
         function listNotes(): string { return root.ipcList("note") }
         function listTodos(): string { return root.ipcList("todo") }
         function toggleStatus(id: int): string { return root.ipcToggle(id) }
-        // The old name, kept for scripts that already call it.
         function toggleTodo(id: int): string { return root.ipcToggle(id) }
         function remove(id: int): string { return root.ipcRemove(id) }
         function clearHistory(): string { return root.ipcClearHistory() }
