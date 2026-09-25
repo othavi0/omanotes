@@ -209,7 +209,8 @@ function copiesSql(row) {
 // built only when a database needs this step.
 // The triggers fold the rows written with sqlite3, which leave the copy empty
 // on insert or as it was on update. addSql and updateSql write it themselves,
-// so the triggers skip them.
+// but an edit that changes only case or accents leaves the copy equal to the
+// old one, so the update trigger folds it again (ADR-0012).
 function searchCopyMigration() {
   var rows = []
   for (var u = 0; u < 0x10000; u++) {
