@@ -22,10 +22,32 @@ function offending(pattern) {
 
 test("transparency comes from Style or Tone.js, never a number literal", () => {
   assert.deepEqual(offending(/Util\.alpha\([^,]+,\s*[0-9.]+\s*\)/), [])
+  assert.deepEqual(offending(/\bopacity:.*(?<![\w.])0?\.\d*[1-9]/), [])
+  assert.deepEqual(offending(/Qt\.rgba\((?:[^,]+,){3}\s*[0-9.]+\s*\)/), [])
 })
 
+// Like offending(), but only hits whose innermost enclosing QML object is
+// named `type`. Braces are counted line by line, so a one-line
+// `Rectangle { width: 1 }` counts too.
+function offendingInside(type, pattern) {
+  const hits = []
+  for (const file of files) {
+    const stack = []
+    file.src.split("\n").forEach(function(line, i) {
+      const at = line.search(pattern)
+      for (let j = 0; j <= line.length; j++) {
+        if (j === at && stack[stack.length - 1] === type) hits.push(file.name + ":" + (i + 1) + ": " + line.trim())
+        if (line[j] === "{") stack.push((line.slice(0, j).match(/([A-Z]\w*)\s*$/) || [])[1])
+        else if (line[j] === "}") stack.pop()
+      }
+    })
+  }
+  return hits
+}
+
 test("hand-drawn 1px rules are PanelSeparator", () => {
-  assert.deepEqual(offending(/^\s*height:\s*1\s*$/), [])
+  const size = "(?:width|height|implicitWidth|implicitHeight|Layout\\.(?:preferred|minimum|maximum)(?:Width|Height))"
+  assert.deepEqual(offendingInside("Rectangle", new RegExp("(?<![\\w.])" + size + "\\s*:\\s*1\\s*(?:$|[;}])")), [])
 })
 
 test("corners follow Style.cornerRadius", () => {

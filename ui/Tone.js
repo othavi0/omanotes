@@ -1,7 +1,7 @@
 .pragma library
 
-// Text emphasis over the panel foreground. Style has alpha tokens for fills,
-// borders and selection but none for secondary text, so the two levels the
-// panel uses live here.
+// Text emphasis as an alpha over the panel foreground. The kit's Color.muted
+// ignores the bar text colour, and Qt.darker strengthens a light theme's dark
+// text, so the panel fades its foreground instead (ADR-0008).
 var secondary = 0.62   // captions, metadata, column labels
-var muted = 0.45       // placeholders, finished items, idle marks
+var muted = 0.45       // placeholders, finished items, idle marks, disabled buttons

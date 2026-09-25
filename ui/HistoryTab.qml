@@ -270,8 +270,7 @@ Item {
                 text: root.clearArmed ? "Confirm" : "Clear history"
                 bordered: true
                 enabled: root.clearButtonEnabled
-                opacity: root.clearButtonEnabled ? 1 : 0.5
-                foreground: root.foreground
+                foreground: root.clearButtonEnabled ? root.foreground : Util.alpha(root.foreground, Tone.muted)
                 onClicked: { root.clearHistory(); root.focusList() }
             }
         }
