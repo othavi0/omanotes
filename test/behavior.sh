@@ -126,7 +126,7 @@ ShellRoot {
     function() { sr.click(sr.findByText(header, "Items")) },
     function() { console.log("UNTITLED-DRAFT-AFTER-TAB-SWITCH " + sr.draftState()); sr.click(sr.findByText(header, "New")) },
     function() { console.log("UNTITLED-DRAFT-AFTER-NEW " + sr.draftState()); sr.clickSearch() },
-    function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
+    function() { console.log("SEARCH-HINTS-WITH-DRAFT " + sr.hintKeys()); keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
     function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-ESC " + sr.draftState()); sr.clickSearch() },
     function() { keys.keyClick(Qt.Key_Return, Qt.NoModifier, -1) },
     function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-ENTER " + sr.draftState()); sr.clickSearch() },
@@ -286,6 +286,8 @@ logged "switching to History and back shows that draft again, focused" \
   "UNTITLED-DRAFT-AFTER-TAB-SWITCH true \[orphan body\] draft"
 logged "New on that draft keeps it and its body, focused" \
   "UNTITLED-DRAFT-AFTER-NEW true \[orphan body\] draft"
+logged "the search hints with that draft open point Enter at the draft, not the list" \
+  "SEARCH-HINTS-WITH-DRAFT Enter to draft,Esc clear$"
 logged "Esc in the search field returns to that draft, not to the list behind it" \
   "UNTITLED-DRAFT-AFTER-SEARCH-ESC true \[orphan body\] draft"
 logged "Enter in the search field returns to that draft" \

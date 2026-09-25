@@ -15,7 +15,8 @@ import "Item.js" as ItemJs
 //   editor: fields own printable keys · Tab title→body, body→save+list
 //           · Enter in body saves · Esc saves (auto-save on leaving)
 //           · Shift+Esc discards · `t` on an empty draft title toggles note/todo
-//   search: Esc/Shift+Tab return to the list
+//   search: Enter/Tab/Shift+Tab return to the list, Esc clears and returns;
+//           with a draft open they return to its title instead
 Item {
     id: root
 
@@ -60,6 +61,7 @@ Item {
         list: [["j/k", "move"], ["Enter", "edit"], ["n", "new"], ["Space", "toggle"],
             ["d d", "delete"], ["/", "search"], ["f", "filter"], ["Esc", "close"]],
         search: [["Enter", "to list"], ["Esc", "clear"]],
+        searchWithDraft: [["Enter", "to draft"], ["Esc", "clear"]],
         editor: [["Tab", "next field"], ["Enter", "save"], ["Shift+Enter", "new line"], ["Esc", "save and back"], ["Shift+Esc", "discard"]],
         draft: [["Tab", "next field"], ["Enter", "save"], ["Shift+Enter", "new line"], ["Esc", "save and back"], ["Shift+Esc", "discard"], ["t", "note/todo"]],
         draftNeedsTitle: [["Tab", "next field"], ["Shift+Enter", "new line"], ["Shift+Esc", "discard"], ["t", "note/todo"]],
@@ -68,6 +70,7 @@ Item {
     readonly property var hints: {
         if (root.deleteArmed) return root.hintSets.deleteArmed
         if (root.focusContext === "draft" && root.draftNeedsTitle) return root.hintSets.draftNeedsTitle
+        if (root.focusContext === "search" && root.draftNew) return root.hintSets.searchWithDraft
         return root.hintSets[root.focusContext]
     }
 
@@ -180,7 +183,7 @@ Item {
     }
 
     // Every way out of the editor lands here. Keys and the Save button hand
-    // focus back to the list; a save caused by focus already having moved
+    // focus back through focusList; a save caused by focus already having moved
     // (a click into the search field, the panel closing) leaves focus alone.
     function commitEditor(returnFocus) {
         if (root.draftNeedsTitle) {
