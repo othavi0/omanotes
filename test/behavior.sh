@@ -7,6 +7,8 @@ source "$(dirname "$0")/lib/harness.sh"
 
 cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
+import QtQuick.Layouts
+import QtTest
 import Quickshell
 import qs.Commons
 import "data" as Data
@@ -76,9 +78,55 @@ ShellRoot {
     function() { mainTab.editorBody = "THROWN-AWAY"; mainTab.discardEditor(); mainTab.startNew("note") },
     function() { console.log("DRAFT-AFTER-DISCARD " + mainTab.draftNew); mainTab.discardEditor() },
 
+    function() { mainTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1) },
+    function() { keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1); sr.type("orphan body") },
+    function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-ESC " + sr.draftState()) },
+    function() { keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1) },
+    function() { keys.keyClick(Qt.Key_Return, Qt.NoModifier, -1) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-ENTER " + sr.draftState()) },
+    function() { var row = sr.firstRow(mainTab); keys.mouseClick(row, row.width / 2, row.height / 2, Qt.LeftButton, Qt.NoModifier, -1) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-ROW-CLICK " + sr.draftState()) },
+    function() { mainTab.focusSearch(); mainTab.resetFocus() },
+    function() { console.log("UNTITLED-DRAFT-AFTER-REOPEN " + sr.draftState()) },
+    function() { mainTab.discardEditor() },
+
+    function() { mainTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1) },
+    function() { sr.type("first draft") },
+    function() { sr.clickNew() },
+    function() { console.log("AFTER-NEW-CLICK " + mainTab.draftNew + " [" + mainTab.editorTitle + "]") },
+    function() { mainTab.discardEditor() },
+
     function() { mainTab.cycleFilter() },
     function() { console.log("FILTER-AFTER-F " + mainTab.filterType + " rows=" + db.items.filter(function(i) { return i.type !== "note" }).length) }
   ]
+
+  function type(text) {
+    for (var i = 0; i < text.length; ++i) keys.keyClickChar(text[i], Qt.NoModifier, -1)
+  }
+  function draftState() {
+    return mainTab.draftNew + " [" + mainTab.editorBody + "] " + mainTab.focusContext + " toast=" + toast.text
+  }
+  function clickNew() {
+    var button = sr.findByText(header, "New")
+    keys.mouseClick(button, button.width / 2, button.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
+  }
+  function firstRow(item) {
+    if (String(item).indexOf("ItemRow") === 0) return item
+    for (var i = 0; i < item.children.length; ++i) {
+      var hit = sr.firstRow(item.children[i])
+      if (hit) return hit
+    }
+    return null
+  }
+  function findByText(item, text) {
+    if (item.text === text && item.clicked) return item
+    for (var i = 0; i < item.children.length; ++i) {
+      var hit = sr.findByText(item.children[i], text)
+      if (hit) return hit
+    }
+    return null
+  }
 
   function highlighted(item) {
     var ids = []
@@ -105,9 +153,20 @@ ShellRoot {
       sr.steps[sr.stepIndex++]()
     }
   }
+  TestEvent { id: keys }
   FloatingWindow {
-    implicitWidth: 760; implicitHeight: 520
-    Ui.MainTab { id: mainTab; anchors.fill: parent; db: db }
+    implicitWidth: 760; implicitHeight: 560
+    ColumnLayout {
+      anchors.fill: parent
+      Ui.PanelHeader {
+        id: header
+        Layout.fillWidth: true
+        db: db
+        onNewRequested: mainTab.startNew("note")
+      }
+      Ui.MainTab { id: mainTab; Layout.fillWidth: true; Layout.fillHeight: true; db: db; toast: toast }
+    }
+    Ui.Toast { id: toast }
   }
 }
 QML
@@ -160,6 +219,19 @@ expect "three writes fired in one tick all land (edit, convert, toggle)" \
   "SELECT (SELECT body FROM items WHERE id = 1) || '|' || (SELECT type || ':' || status FROM items WHERE id = 2)" "QUEUED-BODY|note:1"
 logged "an item added outside the filter does not hijack the selection later" "SELECTION-AFTER-WIDENING kept$"
 logged "a draft opened in the same tick as a discard stays open" "DRAFT-AFTER-DISCARD true$"
+logged "Esc on a draft with a body and no title keeps it open in the title field, with the warning" \
+  "UNTITLED-DRAFT-AFTER-ESC true \[orphan body\] draft toast=New item needs a title$"
+logged "Enter in the body of that draft keeps it open too" \
+  "UNTITLED-DRAFT-AFTER-ENTER true \[orphan body\] draft toast=New item needs a title$"
+logged "clicking a row keeps that draft open and its title focused" \
+  "UNTITLED-DRAFT-AFTER-ROW-CLICK true \[orphan body\] draft toast=New item needs a title$"
+logged "reopening the panel shows that draft again" \
+  "UNTITLED-DRAFT-AFTER-REOPEN true \[orphan body\] draft"
+expect "a draft without a title never reaches the db" \
+  "SELECT COUNT(*) FROM items WHERE body = 'orphan body'" "0"
+expect "the New button commits the open draft first" \
+  "SELECT COUNT(*) FROM items WHERE title = 'first draft'" "1"
+logged "and then opens an empty draft" "AFTER-NEW-CLICK true \[\]$"
 logged "f cycles the type filter and the list follows" "FILTER-AFTER-F note rows=0$"
 logged "no write was rejected during the whole run" "WRITE-FAILURES 0$"
 

@@ -109,7 +109,7 @@ Item {
 
     // Called by Panel.qml when the panel opens or this tab is re-shown.
     function resetFocus() {
-        root.draftNew = false
+        if (root.draftNew) { editorPane.focusTitle(); return }
         root.refillEditor()
         root.focusList()
     }
@@ -149,7 +149,8 @@ Item {
 
     function startNew(type) {
         if (!root.db) return
-        root.saveEdit()
+        root.commitIfDirty()
+        if (root.draftNew) { Qt.callLater(function() { editorPane.focusTitle() }); return }
         root.deleteArmId = -1
         deleteArmTimer.stop()
         root.draftNew = true
@@ -170,15 +171,21 @@ Item {
     // Every way out of the editor lands here. Keys and the Save button hand
     // focus back to the list; a save caused by focus already having moved
     // (a click into the search field, the panel closing) leaves focus alone.
+    // A draft with a body but no title has nowhere to go, so it stays open
+    // and focus that would land on the list goes back to its title, where
+    // list keys can't act on a row hidden behind the draft.
     function commitEditor(returnFocus) {
         if (root.draftNew) {
             var title = String(editorPane.titleText || "").trim()
             var body = String(editorPane.bodyText || "")
+            if (title === "" && body.trim() !== "") {
+                if (root.toast) root.toast.show("New item needs a title")
+                if (returnFocus || pump.activeFocus) editorPane.focusTitle()
+                return
+            }
             root.draftNew = false
             root.refillEditor()
-            if (title === "") {
-                if (root.toast) root.toast.show("New item needs a title")
-            } else {
+            if (title !== "") {
                 root.db.add(root.draftType, title, body)
                 if (root.toast) root.toast.show("Added " + root.draftType + " — " + title)
             }
