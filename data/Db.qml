@@ -197,8 +197,12 @@ QtObject {
             Qt.callLater(root._runNextWrite)
 
             if (exitCode !== 0) {
+                if (kind === "migrate" && Db.migrationRaced(writeStderr.text)) {
+                    root.init()
+                    return
+                }
                 root.fail(Db.errorText(writeStderr.text, exitCode), fromScript)
-                if (kind === "init") initRetry.start()
+                if (kind === "init" || kind === "migrate") initRetry.start()
                 else reloadDebounce.restart()
                 return
             }
@@ -210,6 +214,19 @@ QtObject {
             }
 
             if (kind === "init") {
+                var version = root._parsed("schema version", exitCode, writeStdout, writeStderr, Db.parseVersion)
+                if (version === null) {
+                    initRetry.start()
+                    return
+                }
+                var migration = Db.migrateSql(version)
+                if (migration.length > 0) {
+                    root._enqueue("migrate", Db.sqliteCommand(root.dbPath, migration, false), null)
+                    return
+                }
+            }
+
+            if (kind === "init" || kind === "migrate") {
                 root.ready = true
                 // (Re)bind the watcher now that the file exists, then load.
                 dbFile.reload()
@@ -293,10 +310,10 @@ QtObject {
         }
     }
 
-    // Create the data dir + apply the schema (idempotent). Retries until it
-    // succeeds.
+    // Create the data dir, read the schema version and migrate from it
+    // (ADR-0011). Retries until it succeeds.
     function init() {
-        if (root.ready || root._writeKind === "init") return
+        if (root.ready || root._writeKind === "init" || root._writeKind === "migrate") return
         root._enqueue("init", Db.initCommand(root.dataDir, root.dbPath), null)
     }
 
