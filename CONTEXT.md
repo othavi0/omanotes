@@ -1,6 +1,6 @@
 # Omanotes
 
-A keyboard-driven panel on the Omarchy bar that keeps short notes and todos in one list, with a log of every change.
+A mouse-driven panel on the Omarchy bar that keeps short notes and todos in one list, with a log of every change.
 
 ## Language
 
@@ -91,7 +91,7 @@ Throwing away the editor's changes. A discarded draft disappears.
 _Avoid_: cancel, revert
 
 **Arm**:
-The first press of a destructive key or button: `d` on a row, or `c` and the Clear history button in History. A second press on the same target within two seconds confirms it. Moving the selection, switching tabs or pressing Esc cancels it.
+The first click on a destructive button: Delete on an item, the trash on a history entry, or Clear history. A second click on the same button within two seconds confirms it. Selecting another row, switching tabs or closing the panel cancels it.
 _Avoid_: confirm dialog, prime
 
 ### Panel
@@ -99,6 +99,10 @@ _Avoid_: confirm dialog, prime
 **Panel**:
 The popout opened from the bar icon, with the Items tab and the History tab.
 _Avoid_: popup, dropdown, window
+
+**Order**:
+Where an item sits in the list. Unread notes and pending todos come first, read notes and completed todos after them, and inside each of those two blocks the user sets the order by dragging. One order serves every filter. A new or reopened item enters at the top of the first block, a newly read or completed one at the top of the second, and editing or converting an item leaves it in place.
+_Avoid_: sort, rank, priority
 
 **Filter**:
 Restricting the list to all items, only notes or only todos.
