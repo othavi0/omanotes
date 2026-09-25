@@ -7,20 +7,16 @@
 #
 # Usage: test/render.sh [output-dir]
 #
-# output-dir defaults to a throwaway directory (plain `npm test` only cares
-# about the exit code) — pass one explicitly to keep the PNGs for review.
-#
-# Builds a throwaway `qs -p` config dir with Commons/Ui symlinked to the
-# installed kit and ui/data symlinked to this worktree, and a throwaway
-# XDG_DATA_HOME with a seeded scratchpad.db.
+# Without output-dir the PNGs go to a directory removed after the run. Pass
+# one to keep them for review.
 
 set -euo pipefail
 
-out_dir="${1:-$(mktemp -d)}"
+source "$(dirname "$0")/lib/harness.sh"
+
+out_dir="${1:-$cfg_dir/shots}"
 mkdir -p "$out_dir"
 out_dir="$(cd "$out_dir" && pwd)"
-
-source "$(dirname "$0")/lib/harness.sh"
 
 cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
@@ -175,7 +171,9 @@ ShellRoot {
 QML
 
 echo "config dir: $cfg_dir"
-echo "output dir: $out_dir"
+if [[ -n "${1:-}" ]]; then
+  echo "output dir: $out_dir"
+fi
 SCENES=browse,draft,empty,history OUT_DIR="$out_dir" run_qs
 sqlite3 "$db" "DELETE FROM items; DELETE FROM history;"
 SCENES=blank OUT_DIR="$out_dir" run_qs

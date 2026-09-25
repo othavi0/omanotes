@@ -114,27 +114,29 @@ QML
 
 run_qs > "$cfg_dir/qs.log" 2>&1 || { cat "$cfg_dir/qs.log"; echo "qs exited non-zero"; exit 2; }
 
+checks=0
 failures=0
+pass() { checks=$((checks + 1)); echo "ok   $1"; }
+fail() { checks=$((checks + 1)); failures=$((failures + 1)); echo "FAIL $1"; }
 expect() {
   local what="$1" sql="$2" want="$3" got
-  got="$(sqlite3 "$db" "$sql")"
-  if [[ "$got" == "$want" ]]; then echo "ok   $what"
-  else echo "FAIL $what: want '$want', got '$got'"; failures=$((failures + 1)); fi
+  if ! got="$(sqlite3 "$db" "$sql" 2>&1)"; then fail "$what: sqlite3 error: $got"
+  elif [[ "$got" == "$want" ]]; then pass "$what"
+  else fail "$what: want '$want', got '$got'"; fi
+}
+logged() {
+  local what="$1" pattern="$2"
+  if grep -qE "$pattern" "$cfg_dir/qs.log"; then pass "$what"
+  else fail "$what: $(grep -oE "${pattern%% *}.*" "$cfg_dir/qs.log" | head -3 | tr '\n' ';')"; fi
 }
 
 expect "edit is saved to the item it was typed in when another row is clicked" \
   "SELECT title FROM items WHERE id = 2" "EDITED-RENEW"
 expect "the clicked row keeps its own title" \
   "SELECT title FROM items WHERE id = 3" "Reply to upstream PR review"
-if rg -q "HIGHLIGHTED 3$" "$cfg_dir/qs.log"; then echo "ok   only the clicked row is highlighted after the save reloads the list"
-else echo "FAIL highlight after reload: $(rg -o 'HIGHLIGHTED.*' "$cfg_dir/qs.log" || echo none)"; failures=$((failures + 1)); fi
+logged "only the clicked row is highlighted after the save reloads the list" "HIGHLIGHTED 3$"
 expect "edit is saved when focus moves to the search field" \
   "SELECT title FROM items WHERE id = 4" "EDITED-COFFEE"
-logged() {
-  local what="$1" pattern="$2"
-  if rg -q "$pattern" "$cfg_dir/qs.log"; then echo "ok   $what"
-  else echo "FAIL $what: $(rg -o "${pattern%% *}.*" "$cfg_dir/qs.log" | head -3 | tr '\n' ';')"; failures=$((failures + 1)); fi
-}
 logged "focus stays in the search field, and the edit is already saved before any search" "FOCUS-AFTER-SEARCH search TITLE4 EDITED-COFFEE$"
 expect "committing a draft leaves the previously open item untouched" \
   "SELECT title FROM items WHERE id = 5" "Backup scratchpad.db"
@@ -161,4 +163,5 @@ logged "a draft opened in the same tick as a discard stays open" "DRAFT-AFTER-DI
 logged "f cycles the type filter and the list follows" "FILTER-AFTER-F note rows=0$"
 logged "no write was rejected during the whole run" "WRITE-FAILURES 0$"
 
+echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))
