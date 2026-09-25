@@ -4,7 +4,7 @@ import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const Item = loadQmlLib(new URL("../ui/Item.js", import.meta.url), [
   "isTodo", "isDone", "statusLabel", "toggleVerb", "statusToast", "relativeAge", "indexOfId",
-  "historyLabel", "neighbourId"
+  "historyLabel", "neighbourId", "isRemoved"
 ])
 
 const noteUnread = { type: "note", status: 0, title: "Ideas" }
@@ -105,4 +105,18 @@ test("neighbourId: the next row, or the previous one at the end", () => {
   assert.equal(Item.neighbourId(rows, 3), 12)
   assert.equal(Item.neighbourId([{ id: 7 }], 7), -1)
   assert.equal(Item.neighbourId(rows, 99), -1)
+})
+
+test("isRemoved: an unfiltered list proves a missing row is gone", () => {
+  const rows = [{ id: 7 }, { id: 12 }]
+  assert.equal(Item.isRemoved(12, rows, false, null), false)
+  assert.equal(Item.isRemoved(3, rows, false, null), true)
+})
+
+test("isRemoved: a filtered list defers to every row, once loaded", () => {
+  const listed = [{ id: 7 }]
+  assert.equal(Item.isRemoved(12, listed, true, [{ id: 7 }, { id: 12 }]), false)
+  assert.equal(Item.isRemoved(12, listed, true, [{ id: 7 }]), true)
+  assert.equal(Item.isRemoved(12, listed, true, null), false)
+  assert.equal(Item.isRemoved(7, listed, true, []), false)
 })

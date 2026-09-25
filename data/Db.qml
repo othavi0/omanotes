@@ -43,7 +43,7 @@ QtObject {
     signal itemsUpdated(var items)
     signal countsUpdated()
     signal historyUpdated(var history)
-    signal added(int id)
+    signal added(int id, string type, string title)
     signal statusChanged(int id, int status)
     signal updated(int id, string title)
     signal typeChanged(int id)
@@ -51,6 +51,9 @@ QtObject {
     signal historyRowDeleted(int id)
     signal historyCleared()
     signal failed(string message)
+    // Follows failed for a write, with what the write carried, so the editor
+    // can take back the text of its own add or update.
+    signal writeFailed(string kind, var args, string message)
 
     // Central failure path: surfaces in the journal (console.error) so data-layer
     // errors are visible in the shell logs even before the UI handles them.
@@ -58,11 +61,17 @@ QtObject {
         console.error("omanotes db: " + message)
         if (!fromScript && !root._fromScript) root.failed(message)
     }
+    function _failWrite(kind, args, message, fromScript) {
+        root.fail(message, fromScript)
+        if (!fromScript && !root._fromScript) root.writeFailed(kind, args, message)
+        return message
+    }
 
     // The panel answers added, statusChanged, itemDeleted, historyCleared and
     // failed as if its user acted: it moves the selection, which commits the
-    // open edit, and shows a toast. Writes a script makes inside run() reload
-    // the views but emit none of them.
+    // open edit, and shows a toast. It answers writeFailed by giving the text
+    // back to the editor. Writes a script makes inside run() reload the views
+    // but emit none of them.
     property bool _fromScript: false
     function fromScript(run) {
         root._fromScript = true
@@ -128,10 +137,15 @@ QtObject {
                 return
             }
             root.items = rows
-            root.itemsUpdated(rows)
+            if (root.allItemsProcess.running || root._allItemsStale) root._itemsPending = true
+            else root.itemsUpdated(rows)
         }
     }
 
+    // itemsUpdated waits for the allItems read of the same reload, so the
+    // panel never judges a row missing from a filtered list against allItems
+    // from before the change.
+    property bool _itemsPending: false
     property bool _allItemsStale: false
     property Process allItemsProcess: Process {
         stdout: StdioCollector {
@@ -144,13 +158,17 @@ QtObject {
         }
         onExited: function(exitCode) {
             var rows = root._parsed("all items", exitCode, allItemsStdout, allItemsStderr, Db.parseRows)
-            if (rows === null) return
             if (root._allItemsStale) {
                 Qt.callLater(root.listAll)
                 return
             }
-            root.allItems = rows
-            root.allItemsLoaded = true
+            if (rows !== null) {
+                root.allItems = rows
+                root.allItemsLoaded = true
+            }
+            if (!root._itemsPending) return
+            root._itemsPending = false
+            root.itemsUpdated(root.items)
         }
     }
 
@@ -201,14 +219,14 @@ QtObject {
                     root.init()
                     return
                 }
-                root.fail(Db.errorText(writeStderr.text, exitCode), fromScript)
+                root._failWrite(kind, args, Db.errorText(writeStderr.text, exitCode), fromScript)
                 if (kind === "init" || kind === "migrate") initRetry.start()
                 else reloadDebounce.restart()
                 return
             }
 
             if (root._oneItemWrites.indexOf(kind) >= 0 && !Db.parseFound(writeStdout.text)) {
-                root.fail("item not found", fromScript)
+                root._failWrite(kind, args, "item not found", fromScript)
                 reloadDebounce.restart()
                 return
             }
@@ -233,7 +251,7 @@ QtObject {
                 root.load()
             } else {
                 if (!fromScript) {
-                    if (kind === "add") root.added(Db.parseId(writeStdout.text))
+                    if (kind === "add") root.added(Db.parseId(writeStdout.text), args.type, args.title)
                     else if (kind === "setStatus") root.statusChanged(args.id, args.status)
                     else if (kind === "update") root.updated(args.id, args.title)
                     else if (kind === "convertType") root.typeChanged(args.id)
@@ -270,12 +288,12 @@ QtObject {
     // Returns why the write was refused, or "" once it is queued. build()
     // throws on an invalid id, before any SQL exists.
     function _write(kind, build, args) {
-        if (!root.ready) return root._refuse("not ready")
+        if (!root.ready) return root._failWrite(kind, args, "not ready", false)
         var sql
         try {
             sql = build()
         } catch (e) {
-            return root._refuse(e.message)
+            return root._failWrite(kind, args, e.message, false)
         }
         root._enqueue(kind, Db.sqliteCommand(root.dbPath, sql, false), args)
         return ""
@@ -361,9 +379,9 @@ QtObject {
     function add(type, title, body) {
         var t = String(title || "").trim()
         if (t === "") return root._refuse("add: empty title")
-        return root._write("add", function() {
-            return Db.addSql(type === "todo" ? "todo" : "note", t, body)
-        }, null)
+        var ty = type === "todo" ? "todo" : "note"
+        return root._write("add", function() { return Db.addSql(ty, t, body) },
+            { type: ty, title: t, body: String(body || "") })
     }
 
     function setStatus(id, status) {
@@ -377,7 +395,7 @@ QtObject {
         var t = String(title || "").trim()
         if (t === "") return root._refuse("update: empty title")
         return root._write("update", function() { return Db.updateSql(id, t, body) },
-            { id: Number(id), title: t })
+            { id: Number(id), title: t, body: String(body || "") })
     }
 
     // Emits typeChanged(id).
