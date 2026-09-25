@@ -114,9 +114,9 @@ ShellRoot {
       return db.totalNotes + "|" + db.totalHistory + "|" + (db.history.length ? db.history[0].title : "")
     }
     function countLabels(): string {
-      var button = sr.find(widget.item, "BarIconButton")
+      var button = sr.find(widget.item, "WidgetButton")
       var header = sr.findText(sr.find(widget.item.panelItem, "PanelHeader"), " unread · ")
-      return (button ? button.tooltipText : "no BarIconButton") + "|" + (header ? header.text : "no count")
+      return (button ? button.tooltipText : "no WidgetButton") + "|" + (header ? header.text : "no count")
     }
     function toast(): string {
       var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")

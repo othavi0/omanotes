@@ -11,6 +11,7 @@
 set -euo pipefail
 export TZ=America/Sao_Paulo
 source "$(dirname "$0")/lib/harness.sh"
+stub_keyboard_panel
 
 day="$(date +%F)"
 ms() { echo $(( $(date -d "$1" +%s) * 1000 )); }
@@ -71,10 +72,29 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "ui" as Ui
+import "ui/Icons.js" as Icons
 
 ShellRoot {
   id: sr
   property var cards: []
+
+  // Three bar widgets, as three monitors, each handed the one service.
+  Variants {
+    id: monitors
+    model: [1, 2, 3]
+    FloatingWindow {
+      required property var modelData
+      readonly property var widget: loader.item
+      implicitWidth: 120; implicitHeight: 40
+      Loader {
+        id: loader
+        anchors.fill: parent
+        source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml"
+        // Bound, as the shell's serviceFor is: the service can load after the widget.
+        onLoaded: item.service = Qt.binding(function() { return svc.item })
+      }
+    }
+  }
 
   // The ring window a test can create offscreen: a plain window holding the
   // shipped card.
@@ -113,11 +133,37 @@ ShellRoot {
       soundBroken: s.soundBroken, title: s.ringTitle, bar: s.barLabel, snooze: s.nextIsSnooze, on: s.onCount })
   }
 
+  function chip(n) {
+    return sr.find(monitors.instances[n - 1].widget, "WidgetButton")[0]
+  }
+  // The chip's text with each glyph named, and whether it is painted active.
+  function chips() {
+    var out = []
+    for (var i = 1; i <= 3; ++i) {
+      var b = sr.chip(i)
+      out.push(b.text.replace(Icons.noteFilled, "{note}").replace(Icons.bell, "{bell}").replace(Icons.alarm, "{alarm}")
+        .replace(Icons.snooze, "{snooze}") + (b.active ? "*" : ""))
+    }
+    return out.join("|")
+  }
+
   IpcHandler {
     target: "omanotes-test"
-    function ping(): string { return svc.item ? "ok" : "loading" }
+    function ping(): string { return svc.item && monitors.instances.length === 3 && monitors.instances[2].widget ? "ok" : "loading" }
     function tick(ms: string): string { svc.item.tick(Number(ms)); return sr.state() }
     function state(): string { return sr.state() }
+    function chips(): string { return sr.chips() }
+    function pressChip(n: int, button: string): string {
+      sr.chip(n).triggerPress(button === "right" ? Qt.RightButton : Qt.LeftButton)
+      return sr.chips() + " open=" + monitors.instances[n - 1].widget.opened
+    }
+    function closePanel(n: int): void { monitors.instances[n - 1].widget.close() }
+    // What the Items tab of widget 1 shows, which alarm writes must not change.
+    function itemsState(): string {
+      var w = monitors.instances[0].widget
+      var itemsTab = sr.find(w.panelItem, "ItemsTab")[0]
+      return w.panelItem.db.items.length + "|" + w.panelItem.db.totalHistory + "|toast:" + itemsTab.toast.text
+    }
     // Clicks the button whose text starts with `label` on the card of screen `n`.
     function click(n: int, label: string): string {
       var win = sr.cards[n - 1]
@@ -199,6 +245,16 @@ replies "nothing rings and no card is up before the first tick" \
   "$(ipc state)" '{"loaded":true,"alarms":4,"ringing":[],"cards":0,"soundBroken":false,"title":"","bar":"'"$today_name"' 06:00","snooze":false,"on":3}'
 replies "a tick before any alarm is due rings nothing and names the next alarm" \
   "$(ipc tick "$(ms "$day 05:00")")" '{"loaded":true,"alarms":4,"ringing":[],"cards":0,"soundBroken":false,"title":"","bar":"06:00","snooze":false,"on":3}'
+replies "every chip shows the note glyph and the next alarm" "$(ipc chips)" "{note}  {alarm} 06:00|{note}  {alarm} 06:00|{note}  {alarm} 06:00"
+contains "a left click on an idle chip opens that widget's panel" "$(ipc pressChip 1 left)" " open=true"
+ipc closePanel 1
+items_before=""
+for _ in $(seq 50); do
+  items_before="$(ipc itemsState)"
+  [[ "$items_before" == "6|4|toast:" ]] && break
+  sleep 0.2
+done
+replies "the Items tab of widget 1 lists the seeded rows" "$items_before" "6|4|toast:"
 ringing_wake='"ringing":[1],"cards":3,"soundBroken":false,"title":"Wake up","bar":"'"$tomorrow_name"' 07:30","snooze":false,"on":1}'
 
 # A read that starts before the tick's writes and lands after them must not
@@ -213,6 +269,7 @@ t0730="$(ms "$day 07:30")"
 replies "at 07:30 the daily alarm rings on every screen and the two one-shots from 06:00 are missed" \
   "$(ipc tick "$t0730")" '{"loaded":true,"alarms":4,'"$ringing_wake"
 sound_is "one player runs for three screens" 1 0
+replies "every chip reads the bell and the title, painted active" "$(ipc chips)" "{bell} Wake up*|{bell} Wake up*|{bell} Wake up*"
 replies "one notification lists both missed alarms" "$(wc -l < "$cfg_dir/notify.log")" "1"
 contains "the notification is headed by the count" "$(cat "$cfg_dir/notify.log")" "2 missed alarms"
 contains "and names the first missed alarm with how late it is" "$(cat "$cfg_dir/notify.log")" "06:00 · Pills, 1 h 30 min late"
@@ -237,6 +294,7 @@ replies "and sends no second notification" "$(wc -l < "$cfg_dir/notify.log")" "1
 contains "Snooze on the card of screen 2 quiets the ring and names the snooze as the next alarm" \
   "$(ipc click 2 "Snooze")" '"ringing":[],"cards":3,"soundBroken":false,"title":"","bar":"07:39","snooze":true,"on":1}'
 state_has "and the cards go down on every screen" '"ringing":[],"cards":0'
+replies "the chips show the snooze glyph and the snooze time" "$(ipc chips)" "{note}  {snooze} 07:39|{note}  {snooze} 07:39|{note}  {snooze} 07:39"
 sound_is "and stops the player" 1 1
 snoozed="$(( t0730 + 2000 + 9 * 60000 ))"
 expect "the snooze is written from the last tick" "SELECT snoozed_until_ms || ':' || auto_snoozes FROM alarms WHERE id = 1" "$snoozed:0"
@@ -270,7 +328,9 @@ contains "the alarm rings with a broken player" "$(ipc tick "$(ms "$day 09:00")"
 sleep 3
 state_has "three quick failures latch the sound off" '"ringing":[6],"cards":3,"soundBroken":true'
 replies "the player was tried at most three times" "$(( $(sound_lines fail) <= 3 && $(sound_lines fail) >= 1 ))" "1"
-ipc click 3 "Stop" > /dev/null
+replies "a right click on a ringing chip stops the ring and opens no panel" "$(ipc pressChip 3 right)" \
+  "{note}  {alarm} $tomorrow_name 07:30|{note}  {alarm} $tomorrow_name 07:30|{note}  {alarm} $tomorrow_name 07:30 open=false"
+state_has "and the cards go down" '"ringing":[],"cards":0'
 rm "$cfg_dir/sound-fails"
 
 # A repeating alarm switched off outside, with sqlite3, leaves the card.
@@ -280,6 +340,10 @@ contains "the repeating alarm rings" "$(ipc tick "$(ms "$day 09:30")")" '"ringin
 sqlite3 "$db" "UPDATE alarms SET enabled = 0 WHERE id = 7"
 state_has "switching it off outside takes the card down" '"ringing":[],"cards":0'
 sound_is "and stops the player" 7 7
+
+sleep 1
+replies "the alarm writes left the Items rows, the History count and the Items toast alone" \
+  "$(ipc itemsState)" "$(sqlite3 "$db" "SELECT COUNT(*) FROM items")|$(sqlite3 "$db" "SELECT COUNT(*) FROM history")|toast:"
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true

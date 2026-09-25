@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell.Io
+import qs.Commons
 import qs.Ui
 import "data" as Data
 import "ui/Icons.js" as Icons
@@ -7,6 +8,18 @@ import "ui/Icons.js" as Icons
 BarWidget {
     id: root
     moduleName: "othavi0.omanotes"
+
+    // The plugin's alarm service, once the shell has created it (ADR-0015).
+    // A plain property, so a test can hand the widget a service it loaded.
+    property var service: bar && bar.shell && typeof bar.shell.serviceFor === "function"
+        ? bar.shell.serviceFor(root.moduleName) : null
+    readonly property bool ringing: !!service && service.ringing !== null
+    readonly property string nextLabel: service ? service.barLabel : ""
+    readonly property string chipText: root.ringing ? Icons.bell + " " + root.service.ringTitle
+        : Icons.noteFilled + (root.nextLabel !== "" ? "  " + (root.service.nextIsSnooze ? Icons.snooze : Icons.alarm) + " " + root.nextLabel : "")
+
+    // The open-panel mark follows the painted label, not the padded slot.
+    readonly property real openPanelIndicatorWidth: button.labelWidth
 
     // Bar.qml's findPanelWidget requires open/close/opened on the bar-widget
     // root (not the nested panel), so the widget is the popout identity.
@@ -32,6 +45,7 @@ BarWidget {
         if ("anchorItem" in target) target.anchorItem = button
         if ("hostWidget" in target) target.hostWidget = root
         if ("db" in target) target.db = db
+        if ("service" in target) target.service = root.service
     }
 
     // Mutations go through the async sqlite3 Process, so `ok: true` means the
@@ -92,6 +106,8 @@ BarWidget {
 
     onBarChanged: injectPanel()
     onSettingsChanged: injectPanel()
+    // The service can appear after the panel loaded.
+    onServiceChanged: injectPanel()
 
     // The only Db of this widget: the IPC, the bar tooltip and the panel
     // (through injectPanel) all read and write through it.
@@ -137,14 +153,21 @@ BarWidget {
         function clearHistory(): string { return root.ipcClearHistory() }
     }
 
-    BarIconButton {
+    // WidgetButton, because BarIconButton draws no text. With no alarm the
+    // chip keeps the icon slot; a vertical bar shows the glyph alone.
+    WidgetButton {
         id: button
         anchors.fill: parent
         bar: root.bar
-        text: Icons.noteFilled
+        text: button.vertical ? (root.ringing ? Icons.bell : Icons.noteFilled) : root.chipText
+        fixedWidth: root.ringing || root.nextLabel !== "" ? -1 : Style.bar.iconSlot
+        active: root.ringing
         tooltipText: "Omanotes: " + db.unreadNotes + " unread · " + db.pendingTodos + " pending"
+            + (root.nextLabel !== "" ? " · next alarm " + root.nextLabel : "")
 
+        // While an alarm rings, any button stops it and the panel stays as it is.
         onPressed: function(b) {
+            if (root.ringing) { root.service.stop(); return }
             if (b === Qt.LeftButton) root.togglePanel()
         }
     }
