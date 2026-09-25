@@ -32,6 +32,7 @@ QtObject {
     property int inProgressTodos: 0            // todos with status 0
     property int totalNotes: 0                 // all notes, unfiltered
     property int totalTodos: 0                 // all todos, unfiltered
+    property int totalHistory: 0               // all history, past historyList()'s limit
 
     // Last list() filter, remembered so load() can re-fetch the same subset
     // after a change.
@@ -105,6 +106,7 @@ QtObject {
             root.inProgressTodos = c.inProgressTodos
             root.totalNotes = c.notes
             root.totalTodos = c.todos
+            root.totalHistory = c.history
             root.countsUpdated()
         }
     }

@@ -30,10 +30,9 @@ Item {
     property int selectedId: -1
     property bool draftNew: false           // right pane holds a new-item draft
     property string draftType: "note"       // draft's type ('note' | 'todo')
-    property int deleteArmId: -1            // -1 = not armed
     property int nowSeconds: Math.floor(Date.now() / 1000)
 
-    readonly property bool deleteArmed: root.deleteArmId >= 0 && root.deleteArmId === root.selectedId
+    readonly property bool deleteArmed: confirm.isArmedFor(root.selectedId)
     property alias searchText: searchField.text
     property alias editorTitle: editorPane.titleText
     property alias editorBody: editorPane.bodyText
@@ -83,6 +82,7 @@ Item {
     }
 
     onSelectedIdChanged: {
+        confirm.cancel()
         if (root.draftNew) return
         root.saveEdit()
         root.refillEditor()
@@ -110,15 +110,8 @@ Item {
     }
     function armDelete() {
         if (!root.db || !root.selectedItem) return
-        if (root.deleteArmed && root.deleteArmId === root.selectedItem.id) {
-            root.deleteArmId = -1
-            deleteArmTimer.stop()
-            root.db.deleteItem(root.selectedItem.id)
-            return
-        }
-        root.deleteArmId = root.selectedItem.id
-        deleteArmTimer.restart()
-        if (root.toast) root.toast.show("Delete again to confirm")
+        if (confirm.press(root.selectedId)) root.db.deleteItem(root.selectedId)
+        else if (root.toast) root.toast.show("Delete again to confirm")
     }
 
     function focusSearch() { searchField.forceActiveFocus() }
@@ -160,8 +153,7 @@ Item {
     }
 
     function focusEditor() {
-        root.deleteArmId = -1
-        deleteArmTimer.stop()
+        confirm.cancel()
         if (root.draftNew) { Qt.callLater(function() { editorPane.focusTitle() }); return }
         if (!root.selectedItem) { root.startNew("note"); return }
         root.draftNew = false
@@ -173,8 +165,7 @@ Item {
         if (!root.db) return
         root.commitIfDirty()
         if (root.draftNew) { Qt.callLater(function() { editorPane.focusTitle() }); return }
-        root.deleteArmId = -1
-        deleteArmTimer.stop()
+        confirm.cancel()
         root.draftNew = true
         root.draftType = type === "todo" ? "todo" : "note"
         editorPane.openDraft()
@@ -252,8 +243,9 @@ Item {
         } else if (text === "f") {
             root.cycleFilter(); event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
-            if (root.deleteArmed) { root.deleteArmId = -1; deleteArmTimer.stop(); event.accepted = true }
-            else { root.closeRequested(); event.accepted = true }
+            if (confirm.armed) confirm.cancel()
+            else root.closeRequested()
+            event.accepted = true
         }
     }
 
@@ -425,11 +417,7 @@ Item {
         }
     }
 
-    Timer {
-        id: deleteArmTimer
-        interval: 2000
-        onTriggered: root.deleteArmId = -1
-    }
+    ArmedConfirm { id: confirm }
 
     function onItemsSynced() {
         if (root.draftNew) return
@@ -472,14 +460,10 @@ Item {
         }
         function onItemDeleted(id) {
             if (Number(id) !== root.selectedId) return
-            root.deleteArmId = -1
-            deleteArmTimer.stop()
             if (root.toast) root.toast.show("Deleted")
-            var items = root.itemList
-            var idx = ItemJs.indexOfId(items, Number(id))
-            root.selectedId = idx + 1 < items.length ? items[idx + 1].id
-                : (idx - 1 >= 0 ? items[idx - 1].id : -1)
+            root.selectedId = ItemJs.neighbourId(root.itemList, id)
         }
+        // The one error toast for the panel: HistoryTab shares this Db.
         function onFailed(message) {
             if (root.toast) root.toast.show("Error: " + String(message || "unknown"), true)
         }

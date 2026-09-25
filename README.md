@@ -35,7 +35,7 @@ Items tab, list:
 | `Enter`, `l`, `→`, `Tab` | Edit the selected item, or start a note draft when nothing is selected |
 | `n`, `a` | New note draft |
 | `Space`, `c` | Toggle status (read/unread, completed/pending) |
-| `d` `d` | Delete. The second press must come within 2 seconds |
+| `d` `d` | Delete. The second press must come within 2 seconds, and moving the selection cancels the first |
 | `/` | Focus search |
 | `f` | Cycle the filter: all, notes, todos |
 | `Esc` | Cancel an armed delete, or close the panel |
@@ -58,7 +58,9 @@ A draft with a body and no title can't be saved. It stays open with the warning 
 
 Search field: `Enter`, `Tab` or `Shift+Tab` return to the list, `Esc` clears the search and returns. While a draft is open, they return to the draft's title instead.
 
-History tab: `j` / `k` move, `d` `d` deletes an entry, `c` clears the whole history at once, `Esc` cancels an armed delete or closes the panel. As in the list, these letters do nothing with `Ctrl`, `Alt` or `Super` held.
+History tab: `j` / `k` move, `d` `d` deletes an entry and selects the next one, `c` `c` clears the whole history, `Esc` cancels an armed delete or clear, or closes the panel. The Clear history button also needs a second click. As in the list, the second press must come within 2 seconds, moving the selection cancels the first, and the letters do nothing with `Ctrl`, `Alt` or `Super` held.
+
+The History tab shows a note marked read as `read` and a note marked unread as `unread`. The database stores them as `completed` and `reopened`, like a todo's.
 
 ## IPC
 
