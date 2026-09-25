@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { spawn as spawnAsync, spawnSync } from "node:child_process"
 import { once } from "node:events"
 import { setTimeout as sleep } from "node:timers/promises"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
@@ -12,7 +12,7 @@ const Db = loadQmlLib(new URL("../data/Db.js", import.meta.url), [
   "q", "likeEscape", "now", "listSql", "countsSql", "addSql", "setStatusSql",
   "updateSql", "deleteItemSql", "convertTypeSql", "historySql", "deleteHistorySql",
   "clearHistorySql", "sqliteCommand", "initCommand", "parseRows", "parseCounts",
-  "parseId"
+  "parseId", "parseFound", "errorText"
 ])
 
 const T0 = 1700000000
@@ -27,25 +27,25 @@ function atT0(fn) {
   }
 }
 
-function spawn(argv) {
-  const r = spawnSync(argv[0], argv.slice(1), { encoding: "utf8" })
+function spawn(argv, env) {
+  const r = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", env })
   if (r.error) throw r.error
   return r
 }
 
 // A throwaway database initialised by initCommand and driven through
 // sqliteCommand, the same argv Db.qml hands to Process.
-function openDb(t) {
+function openDb(t, env) {
   const dir = mkdtempSync(join(tmpdir(), "omanotes-db-"))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   const dataDir = join(dir, "omarchy")
   const path = join(dataDir, "scratchpad.db")
-  const init = spawn(Db.initCommand(dataDir, path))
+  const init = spawn(Db.initCommand(dataDir, path), env)
   assert.equal(init.status, 0, init.stderr)
   const db = {
     path,
     run(sql, json) {
-      return spawn(Db.sqliteCommand(path, sql, json))
+      return spawn(Db.sqliteCommand(path, sql, json), env)
     },
     read(sql) {
       const r = db.run(sql, true)
@@ -208,11 +208,46 @@ test("setStatusSql: marking a read note unread logs it as reopened", (t) => {
   assert.deepEqual(db.history().at(-1), { id: 4, type: "note", title: "Buy coffee", action: "reopened", ts: T0 })
 })
 
-test("setStatusSql: a missing id records nothing", (t) => {
+test("setStatusSql: setting the status an item already has records nothing", (t) => {
   const db = seed(openDb(t))
   const before = db.snapshot()
-  db.write(atT0(() => Db.setStatusSql(99, 1)))
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.setStatusSql(4, 1)))), true)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.setStatusSql(2, 0)))), true)
   assert.deepEqual(db.snapshot(), before)
+})
+
+for (const [name, build] of [
+  ["setStatusSql", (id) => Db.setStatusSql(id, 1)],
+  ["updateSql", (id) => Db.updateSql(id, "Renew the car", "x")],
+  ["convertTypeSql", (id) => Db.convertTypeSql(id)],
+  ["deleteItemSql", (id) => Db.deleteItemSql(id)]
+]) {
+  test(name + ": reports whether the item exists, and a missing id records nothing", (t) => {
+    const db = seed(openDb(t))
+    const before = db.snapshot()
+    assert.equal(Db.parseFound(db.write(atT0(() => build(99)))), false)
+    assert.deepEqual(db.snapshot(), before)
+    assert.equal(Db.parseFound(db.write(atT0(() => build(2)))), true)
+    assert.notDeepEqual(db.snapshot(), before)
+  })
+}
+
+test("sqliteCommand: the user's sqliterc does not change what reads and writes print", (t) => {
+  const home = mkdtempSync(join(tmpdir(), "omanotes-home-"))
+  t.after(() => rmSync(home, { recursive: true, force: true }))
+  const rc = ".headers on\n.mode column\n"
+  mkdirSync(join(home, "sqlite3"))
+  writeFileSync(join(home, "sqlite3", "sqliterc"), rc)
+  writeFileSync(join(home, ".sqliterc"), rc)
+  const db = seed(openDb(t, { ...process.env, HOME: home, XDG_CONFIG_HOME: home }))
+
+  assert.equal(Db.parseId(db.write(atT0(() => Db.addSql("todo", "Renew the car", "")))), 6)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.setStatusSql(2, 1)))), true)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.updateSql(3, "Answer the review", "")))), true)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.convertTypeSql(1)))), true)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.deleteItemSql(4)))), true)
+  assert.equal(Db.parseFound(db.write(atT0(() => Db.setStatusSql(99, 1)))), false)
+  assert.deepEqual(ids(db.read(Db.listSql("all", ""))), [6, 3, 1, 2, 5])
 })
 
 test("updateSql: new title and body, logged with the new title", (t) => {
@@ -246,24 +281,30 @@ test("convertTypeSql: flips the type, keeps the status and logs the new type", (
   assert.equal(db.item(4).type, "note")
 })
 
-test("a non-numeric id changes no row", (t) => {
-  const db = seed(openDb(t))
-  const before = db.snapshot()
-  for (const sql of atT0(() => [
-    Db.setStatusSql("abc", 1),
-    Db.updateSql("abc", "x", "y"),
-    Db.deleteItemSql("abc"),
-    Db.convertTypeSql("abc"),
-    Db.deleteHistorySql("abc")
-  ])) {
-    db.run(sql, false)
-    assert.deepEqual(db.snapshot(), before, sql)
+test("an id that is not a whole number is refused before any SQL is built", () => {
+  for (const id of ["abc", "", "1.5", "-1", "2 OR 1=1", null, undefined, NaN, true]) {
+    for (const build of [
+      () => Db.setStatusSql(id, 1),
+      () => Db.updateSql(id, "x", "y"),
+      () => Db.deleteItemSql(id),
+      () => Db.convertTypeSql(id),
+      () => Db.deleteHistorySql(id)
+    ]) {
+      assert.throws(build, { message: "invalid id: " + id })
+    }
   }
+})
+
+test("a numeric id is accepted as a number or as digits", (t) => {
+  const db = seed(openDb(t))
+  db.write(Db.deleteHistorySql("2"))
+  db.write(Db.deleteHistorySql(3))
+  assert.deepEqual(ids(db.history()), [1])
 })
 
 for (const [name, build, failOn] of [
   ["addSql", () => Db.addSql("todo", "Renew the car", ""), "INSERT ON history"],
-  ["setStatusSql", () => Db.setStatusSql(2, 1), "INSERT ON history"],
+  ["setStatusSql", () => Db.setStatusSql(2, 1), "UPDATE ON items"],
   ["updateSql", () => Db.updateSql(2, "Renew the car", "x"), "INSERT ON history"],
   ["convertTypeSql", () => Db.convertTypeSql(2), "INSERT ON history"],
   ["deleteItemSql", () => Db.deleteItemSql(2), "DELETE ON items"]
@@ -317,8 +358,17 @@ test("parseRows: valid json array", () => {
   assert.deepEqual(Db.parseRows('[{"a":1}]'), [{ a: 1 }])
 })
 
-test("parseRows: garbage falls back to []", () => {
-  assert.deepEqual(Db.parseRows("not json"), [])
+test("parseRows: output that is not a JSON array is an error", () => {
+  assert.throws(() => Db.parseRows("not json"), { message: "unreadable sqlite3 output" })
+  assert.throws(() => Db.parseRows('{"a":1}'), { message: "unreadable sqlite3 output" })
+})
+
+test("errorText: sqlite3's own message, without its argument position", (t) => {
+  const db = openDb(t)
+  const r = db.run("UPDATE items SET nope = 1", false)
+  assert.equal(Db.errorText(r.stderr, r.status), "no such column: nope")
+  assert.equal(Db.errorText("Error in 3rd command line argument: database is locked\n", 1), "database is locked")
+  assert.equal(Db.errorText("", 5), "sqlite3 exited 5")
 })
 
 test("parseCounts: empty output counts zero", () => {

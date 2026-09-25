@@ -68,6 +68,21 @@ ShellRoot {
       if (!mainTab) return "no MainTab"
       return mainTab.selectedId + "|" + mainTab.editorTitle + "|toast:" + mainTab.toast.text
     }
+    // Writes as the panel's user makes them, so a failure reaches the toast.
+    function userWrite(method: string, id: string): string {
+      var mainTab = sr.find(widget.item.panelItem, "MainTab")
+      if (!mainTab) return "no MainTab"
+      mainTab.toast.text = ""
+      var db = widget.item.panelItem.db
+      if (method === "setStatus") db.setStatus(id, 1)
+      else if (method === "update") db.update(id, "USER-WRITE", "")
+      else db[method](id)
+      return "ok"
+    }
+    function toast(): string {
+      var mainTab = sr.find(widget.item.panelItem, "MainTab")
+      return mainTab ? mainTab.toast.text : "no MainTab"
+    }
     function quit(): void { Qt.exit(0) }
   }
 }
@@ -211,10 +226,43 @@ ipc scratchpad close > /dev/null
 expect "an unsaved draft is saved when the panel closes" \
   "SELECT COUNT(*) FROM items WHERE title = 'DRAFT-ON-CLOSE'" "1"
 
+logged_failures() { grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | tr '\n' ';' || true; }
+replies "no db failure logged before the failure cases" "$(logged_failures)" ""
+
+toast_is() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(ipc omanotes-test toast)"
+    [[ "$got" == "$want" ]] && break
+    sleep 0.2
+  done
+  replies "$what" "$got" "$want"
+}
+
+for method in update setStatus convertType deleteItem; do
+  ipc omanotes-test userWrite "$method" 999 > /dev/null
+  toast_is "$method on a missing id shows the toast" "Error: item not found"
+done
+
+ipc omanotes-test userWrite deleteItem abc > /dev/null
+toast_is "a non-numeric id is refused" "Error: invalid id: abc"
+
+(printf 'BEGIN EXCLUSIVE;\n'; sleep 6; printf 'COMMIT;\n') | sqlite3 "$db" &
+holder=$!
+for _ in $(seq 50); do
+  sqlite3 "$db" "SELECT COUNT(*) FROM items" > /dev/null 2>&1 || break
+  sleep 0.05
+done
+ipc omanotes-test userWrite update 2 > /dev/null
+toast_is "a write against a locked database shows sqlite3's message" "Error: database is locked"
+wait "$holder"
+replies "the refused write left the item alone" \
+  "$(sqlite3 "$db" "SELECT title FROM items WHERE id = 2")" "Renew the domain HALF-TYPED"
+
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
-if grep -q "omanotes db:" "$cfg_dir/qs.log"; then fail "no db failure logged: $(grep -m3 "omanotes db:" "$cfg_dir/qs.log" | tr '\n' ';')"
-else pass "no db failure logged"; fi
+replies "only the failure cases are logged" "$(logged_failures)" \
+  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
 echo "panel: $checks checks, $failures failed"

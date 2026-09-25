@@ -78,18 +78,33 @@ function addSql(type, title, body) {
   ])
 }
 
+// Ids are interpolated into the SQL text (ADR-0002), so anything but a whole
+// number is refused before a statement is built.
+function sqlId(id) {
+  if (!/^\d+$/.test(String(id))) throw new Error("invalid id: " + id)
+  return Number(id)
+}
+
+// Printed by the writes that target one item, right after the statement that
+// changes it: parseFound() reads 0 when no item had that id.
+var CHANGES = "SELECT changes()"
+
 // Set an item's status (0 or 1) + record "completed"/"reopened" history.
 // The history row is an INSERT…SELECT of the item's own type/title so quoting
-// is always correct; a missing id records nothing.
+// is always correct. It runs first so it can skip an item that already has
+// the status, which the UPDATE then leaves as it was.
 function setStatusSql(id, status) {
   var s = (status === 1) ? 1 : 0
   var ts = now()
   var action = (s === 1) ? "completed" : "reopened"
-  var nid = Number(id)
+  var nid = sqlId(id)
   return transaction([
-    "UPDATE items SET status = " + s + ", updated_at = " + ts + " WHERE id = " + nid,
     "INSERT INTO history (type, title, action, ts) "
       + "SELECT type, title, " + q(action) + ", " + ts + " FROM items WHERE id = " + nid
+      + " AND status <> " + s,
+    "UPDATE items SET status = " + s + ", updated_at = CASE status WHEN " + s
+      + " THEN updated_at ELSE " + ts + " END WHERE id = " + nid,
+    CHANGES
   ])
 }
 
@@ -97,12 +112,13 @@ function setStatusSql(id, status) {
 // record an "edited" history row carrying the post-edit title. The history
 // INSERT…SELECT reads the item's own type + title after the UPDATE.
 function updateSql(id, title, body) {
-  var nid = Number(id)
+  var nid = sqlId(id)
   var b = (body === null || body === undefined || body === "") ? "NULL" : q(body)
   var ts = now()
   return transaction([
     "UPDATE items SET title = " + q(title) + ", body = " + b + ", updated_at = " + ts
       + " WHERE id = " + nid,
+    CHANGES,
     "INSERT INTO history (type, title, action, ts) "
       + "SELECT type, title, 'edited', " + ts + " FROM items WHERE id = " + nid
   ])
@@ -111,22 +127,24 @@ function updateSql(id, title, body) {
 // Permanently delete an item + record "deleted" history (title captured first).
 function deleteItemSql(id) {
   var ts = now()
-  var nid = Number(id)
+  var nid = sqlId(id)
   return transaction([
     "INSERT INTO history (type, title, action, ts) "
       + "SELECT type, title, 'deleted', " + ts + " FROM items WHERE id = " + nid,
-    "DELETE FROM items WHERE id = " + nid
+    "DELETE FROM items WHERE id = " + nid,
+    CHANGES
   ])
 }
 
 // Flip an item's type (note<->todo), bump updated_at, keep status, and
 // record a "converted" history row.
 function convertTypeSql(id) {
-  var nid = Number(id)
+  var nid = sqlId(id)
   var ts = now()
   return transaction([
     "UPDATE items SET type = CASE type WHEN 'note' THEN 'todo' ELSE 'note' END, updated_at = " + ts
       + " WHERE id = " + nid,
+    CHANGES,
     "INSERT INTO history (type, title, action, ts) "
       + "SELECT type, title, 'converted', " + ts + " FROM items WHERE id = " + nid
   ])
@@ -140,7 +158,7 @@ function historySql() {
 }
 
 function deleteHistorySql(id) {
-  return "DELETE FROM history WHERE id = " + Number(id)
+  return "DELETE FROM history WHERE id = " + sqlId(id)
 }
 
 function clearHistorySql() {
@@ -176,8 +194,11 @@ var SCHEMA = "CREATE TABLE IF NOT EXISTS items ("
 // the session: it makes sqlite wait up to 5s on a locked db instead of failing,
 // and — unlike `PRAGMA busy_timeout=...` — it prints nothing, so it cannot
 // corrupt the -json output.
+//
+// `-init /dev/null` skips the user's sqliterc, which the CLI reads even when not
+// interactive: a `.headers on` there turns a write's "1" into "changes()\n1".
 function sqliteCommand(dbPath, sql, json) {
-  var cmd = ["sqlite3"]
+  var cmd = ["sqlite3", "-init", "/dev/null"]
   if (json) cmd.push("-json")
   return cmd.concat(String(dbPath), ".timeout 5000", sql)
 }
@@ -190,17 +211,19 @@ function initCommand(dataDir, dbPath) {
     .concat(sqliteCommand(dbPath, SCHEMA, false))
 }
 
-// Parse a `sqlite3 -json` result into an array of row objects (or []).
-// An empty result set prints nothing, so "" → [].
+// Parse a `sqlite3 -json` result into an array of row objects. An empty result
+// set prints nothing, so "" → []. Anything else that is not a JSON array throws.
 function parseRows(text) {
   var t = String(text || "").trim()
   if (t === "") return []
+  var rows
   try {
-    var v = JSON.parse(t)
-    return Array.isArray(v) ? v : []
+    rows = JSON.parse(t)
   } catch (e) {
-    return []
+    rows = null
   }
+  if (!Array.isArray(rows)) throw new Error("unreadable sqlite3 output")
+  return rows
 }
 
 // Parse countsSql() output into { unreadNotes, inProgressTodos, notes, todos, history }.
@@ -222,4 +245,17 @@ function parseId(text) {
   var t = String(text || "").trim()
   var n = Number(t)
   return (t !== "" && isFinite(n)) ? n : -1
+}
+
+// Parse the CHANGES count a one-item write prints: false when no item had its id.
+function parseFound(text) {
+  return Number(String(text || "").trim()) > 0
+}
+
+// The first line sqlite3 printed on stderr, without the "Error in 3rd command
+// line argument: " prefix that only locates the failing argument.
+function errorText(stderr, exitCode) {
+  var line = String(stderr || "").trim().split("\n")[0]
+  line = line.replace(/^[A-Za-z ]*error( in \S+ command line argument)?: /i, "")
+  return line !== "" ? line : "sqlite3 exited " + exitCode
 }

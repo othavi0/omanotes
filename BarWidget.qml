@@ -33,16 +33,19 @@ BarWidget {
         if ("db" in target) target.db = db
     }
 
-    // Mutations go through the async sqlite3 Process, so each call acks
-    // immediately and the FileView watcher's reload converges the change onto
-    // the panels + allItems cache afterwards.
+    // Mutations go through the async sqlite3 Process, so `ok: true` means the
+    // write is queued, and the FileView watcher's reload converges the change
+    // onto the panels + allItems cache afterwards.
+    function ipcReply(error) {
+        return JSON.stringify(error ? { ok: false, error: error } : { ok: true })
+    }
     function ipcAdd(type, title, body) {
         var t = String(title || "").trim()
-        if (t === "") return JSON.stringify({ ok: false, error: "title is required" })
-        db.fromScript(function() { db.add(type, t, String(body || "")) })
-        return JSON.stringify({ ok: true })
+        if (t === "") return ipcReply("title is required")
+        return ipcReply(db.fromScript(function() { return db.add(type, t, String(body || "")) }))
     }
     function ipcList(type) {
+        if (!db.allItemsLoaded) return ipcReply("not ready")
         var list = db.allItems
         var out = []
         for (var i = 0; i < list.length; ++i) {
@@ -58,24 +61,22 @@ BarWidget {
         return JSON.stringify(out)
     }
     function ipcToggle(id) {
+        if (!db.allItemsLoaded) return ipcReply("not ready")
         var n = Number(id)
         var list = db.allItems
         for (var i = 0; i < list.length; ++i) {
             if (Number(list[i].id) === n) {
                 var status = Number(list[i].status) === 1 ? 0 : 1
-                db.fromScript(function() { db.setStatus(n, status) })
-                return JSON.stringify({ ok: true })
+                return ipcReply(db.fromScript(function() { return db.setStatus(n, status) }))
             }
         }
-        return JSON.stringify({ ok: false, error: "item not found: " + n })
+        return ipcReply("item not found: " + n)
     }
     function ipcRemove(id) {
-        db.fromScript(function() { db.deleteItem(Number(id)) })
-        return JSON.stringify({ ok: true })
+        return ipcReply(db.fromScript(function() { return db.deleteItem(id) }))
     }
     function ipcClearHistory() {
-        db.fromScript(function() { db.clearHistory() })
-        return JSON.stringify({ ok: true })
+        return ipcReply(db.fromScript(function() { return db.clearHistory() }))
     }
 
     implicitWidth: button.implicitWidth
