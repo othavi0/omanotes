@@ -95,7 +95,6 @@ FocusScope {
         else if (!timeKept && root.toast) root.toast.show("Saved — " + (fields.label !== "" ? fields.label : editor.timeText))
     }
 
-    // A refused add keeps the draft open, like a failed one (ADR-0007).
     function commitEditor(returnFocus) {
         if (root.draftNew && !editor.changed) {
             root.draftNew = false
@@ -130,7 +129,6 @@ FocusScope {
         if (!root.service || !root.selectedAlarm) return
         if (confirm.press(root.selectedId)) {
             var alarm = root.selectedAlarm
-            // Read before the removal lays itself over the list.
             var name = alarm.label !== "" ? alarm.label : Alarms.timeText(alarm.hour, alarm.minute)
             var next = ItemJs.neighbourId(root.alarmList, alarm.id)
             editor.openAlarm(null)
@@ -175,9 +173,8 @@ FocusScope {
         if (refill) root.refillEditor()
     }
 
-    // As in the Items tab, a new model array would send the ListView back
-    // to the top, and every write and reload makes one, so the model is set
-    // here with the scroll kept.
+    // A new model array sends the ListView back to the top, so the model is
+    // set here with the scroll kept.
     onAlarmListChanged: {
         var y = listView.contentY - listView.originY
         listView.model = root.alarmList

@@ -23,9 +23,6 @@ sound_file="$cfg_dir/alarm.oga"
 
 real_sqlite3="$(command -v sqlite3)"
 mkdir "$cfg_dir/bin"
-# Every call is logged. UPDATEs of alarms wait while hold-writes exists, a
-# read of alarms runs at once but prints only once hold-reads is gone, and an
-# INSERT waits while hold-inserts exists and fails while fail-insert exists.
 cat > "$cfg_dir/bin/sqlite3" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$cfg_dir/sqlite3.log"
@@ -237,7 +234,6 @@ ShellRoot {
 }
 QML
 
-# The service's first read is held, so the tab can be tried before it loads.
 touch "$cfg_dir/hold-reads"
 PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$worktree" SOUND="$sound_file" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
@@ -420,8 +416,6 @@ sleep 1
 replies "the ticks left the Items rows, the History count and the Items toast alone" \
   "$(ipc itemsState)" "$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT COUNT(*) FROM items")|$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT COUNT(*) FROM history")|toast:"
 
-# The Alarms tab of widget 1, from "+ Alarm" to Delete, writes through the
-# service. Widgets 2 and 3 share the service and must not answer for it.
 disk_error="toast:Error: disk I/O error"
 sql() { sqlite3 -cmd ".timeout 5000" "$db" "$1"; }
 tab_is() {
@@ -457,8 +451,6 @@ ipc toggleRow "$gym" > /dev/null
 expect "the row switch turns the alarm off" "SELECT enabled || ':' || snoozed_until_ms FROM alarms WHERE id = $gym" "0:0"
 ipc toggleRow "$gym" > /dev/null
 expect "and back on, armed at the last tick" "SELECT enabled || ':' || armed_at_ms FROM alarms WHERE id = $gym" "1:$(ms "$day 09:30")"
-# A save that fails is shown at once, kept, and retried until it lands. Only
-# the widget that made it says so, and only once.
 touch "$cfg_dir/fail-writes"
 on_before="$(ipc state | grep -o '"on":[0-9]*')"
 for n in 1 2 3; do ipc clearToastOf "$n"; done
@@ -523,21 +515,26 @@ state_editor "a failed insert shows the error and gives the draft back" "$(ipc e
 for n in 2 3; do
   replies "widget $n gets neither the draft nor the error of that insert" "$(ipc tabState "$n" | cut -d'|' -f2,5)" "draft:false|toast:"
 done
-rm "$cfg_dir/fail-insert"
-# Opening widget 2 takes focus from widget 1's draft, and that blur may
-# commit it, so widget 2's close is judged by the absence of a second copy.
+failing_inserts() { grep -c "INSERT INTO alarms.*'Failing'" "$cfg_dir/sqlite3.log" || true; }
+ipc closePanel 1
+# The time field of widget 1 keeps focus in its hidden window until another
+# window opens, and that blur commits too, so widget 3 takes it first.
+replies "the panel of widget 3 opens" "$(ipc openPanel 3)" "open=true"
+ipc closePanel 3
+sleep 1
+tab_is "widget 1 still holds its draft while inserts fail" 1 2,3 "draft:true|06:55"
+attempts="$(failing_inserts)"
 replies "the panel of widget 2 opens" "$(ipc openPanel 2)" "open=true"
 ipc closePanel 2
 sleep 1
-replies "closing the panel of widget 2 adds no copy of widget 1's draft" \
-  "$(( $(sql "SELECT COUNT(*) FROM alarms WHERE label = 'Failing'") <= 1 ))" "1"
+replies "closing the panel of widget 2 sends no insert of widget 1's draft" "$(failing_inserts)" "$attempts"
+rm "$cfg_dir/fail-insert"
 ipc clearToast
+replies "the panel of widget 1 opens on the Alarms tab again" "$(ipc openAlarms)" "ok"
 ipc closePanel 1
-expect "closing the panel of widget 1 leaves its draft saved once" "SELECT COUNT(*) FROM alarms WHERE label = 'Failing'" "1"
+expect "widget 1 saves its draft once the insert can land" "SELECT COUNT(*) FROM alarms WHERE label = 'Failing'" "1"
 replies "the alarm edits wrote no history row" "$(sql "SELECT COUNT(*) FROM history")" "5"
 
-# A hand edit can leave values no builder writes back: a fractional hour,
-# instants below zero or with a fraction. The alarm is still consumed once.
 sql "INSERT INTO alarms (id, hour, minute, label, days, enabled, snoozed_until_ms, last_fired_at_ms, armed_at_ms)
   VALUES (30, 10.4, 0, 'Malformed', 0, 1, -1, 0.5, $yesterday.5)"
 state_has "the service picks up the malformed alarm" '"alarms":8'
@@ -550,7 +547,6 @@ expect "and is consumed and switched off, written back whole" \
   "SELECT hour || ':' || enabled || ':' || last_fired_at_ms || ':' || snoozed_until_ms FROM alarms WHERE id = 30" \
   "10:0:$(ms "$day 10:00"):0"
 
-# The limit counts an insert still in flight, and a refused draft stays open.
 filler=$(( 49 - $(sql "SELECT COUNT(*) FROM alarms") ))
 sql "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < $filler)
   INSERT INTO alarms (hour, minute, label, days, enabled, armed_at_ms) SELECT 23, 0, 'Filler', 0, 0, $yesterday FROM n"

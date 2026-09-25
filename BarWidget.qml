@@ -158,7 +158,6 @@ BarWidget {
         text: button.vertical ? (root.ringing ? Icons.bell : Icons.noteFilled) : root.chipText
         fixedWidth: root.ringing || root.nextLabel !== "" ? -1 : Style.bar.iconSlot
         active: root.ringing
-        // A vertical bar shows the bell alone, so the tooltip names the ring.
         tooltipText: root.ringing ? "Omanotes: " + root.service.ringTitle + " is ringing · click to stop"
             : "Omanotes: " + db.unreadNotes + " unread · " + db.pendingTodos + " pending"
                 + (root.nextLabel !== "" ? " · next alarm " + root.nextLabel : "")

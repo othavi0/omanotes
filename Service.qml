@@ -50,8 +50,6 @@ Item {
         return size + Style.gapsOut
     }
 
-    // `caller` is whatever the Alarms tab passed to the write, so each tab
-    // answers only its own writes.
     signal alarmAdded(int id, var caller)
     signal writeFailed(string kind, var record, string message, var caller)
 
@@ -72,7 +70,7 @@ Item {
     // Each returns "" or why it was refused.
     function addAlarm(fields, caller) {
         if (!root.loaded) return "not ready"
-        if (root.alarms.length + store.insertsInFlight >= Alarm.MAX_ALARMS) return Alarm.MAX_ALARMS + " alarms is the limit"
+        if (root.alarms.length + store.unlistedInserts >= Alarm.MAX_ALARMS) return Alarm.MAX_ALARMS + " alarms is the limit"
         return store.insertAlarm(Alarm.newAlarm(fields, root.nowMs), caller)
     }
 
@@ -140,7 +138,7 @@ Item {
         Quickshell.execDetached(["omarchy-notification-send", "-g", Icons.alarm, text.headline, text.body])
     }
 
-    onAlarmsChanged: {
+    function _dropLostOutside() {
         if (!root.ringing) return
         var events = root.ringing.events
         for (var i = 0; i < events.length; ++i) {
@@ -157,6 +155,7 @@ Item {
     Data.AlarmsDb {
         id: store
         Component.onCompleted: store.init()
+        onShown: root._dropLostOutside()
         onAlarmAdded: function(id, caller) { root.alarmAdded(id, caller) }
         onAlarmWriteFailed: function(kind, record, message, caller) { root.writeFailed(kind, record, message, caller) }
     }

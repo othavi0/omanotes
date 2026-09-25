@@ -311,35 +311,31 @@ function deleteAlarmSql(id) {
   return transaction(["DELETE FROM alarms WHERE id = " + sqlId(id), CHANGES])
 }
 
-// A column value rounded into [min, max], or `fallback` when it is no number.
-function wholeIn(value, min, max, fallback) {
+function clampedInt(value, min, max, fallback) {
   var n = Math.round(Number(value))
   if (value === null || value === "" || !isFinite(n)) return fallback
   return Math.max(min, Math.min(max, n))
 }
 
 // sqlite3 -json rows of alarmsSql -> Alarm records: numbers, a days list and
-// a boolean, with camelCase names. The CHECK constraints let a hand edit
-// store a fraction, and an instant has no CHECK, so every number is rounded
-// into the range alarmValues accepts: a tick must be able to write the row
-// back, or it would find the same occurrence due again. A row without a
-// readable id, hour or minute is dropped.
+// a boolean, with camelCase names. SQLite keeps a fraction written to an
+// INTEGER column as REAL, so a hand edit can leave 6.4 in `hour`.
 function parseAlarms(text) {
   var ms = Number.MAX_SAFE_INTEGER
   return parseRows(text).map(function(row) {
     return {
       id: Number(row.id),
-      hour: wholeIn(row.hour, 0, 23, null),
-      minute: wholeIn(row.minute, 0, 59, null),
+      hour: clampedInt(row.hour, 0, 23, null),
+      minute: clampedInt(row.minute, 0, 59, null),
       label: String(row.label || ""),
       days: maskDays(row.days),
       enabled: Number(row.enabled) === 1,
-      snoozeMinutes: wholeIn(row.snooze_minutes, 1, 180, 9),
-      ringMinutes: wholeIn(row.ring_minutes, 1, 60, 5),
-      snoozedUntil: wholeIn(row.snoozed_until_ms, 0, ms, 0),
-      lastFiredAt: wholeIn(row.last_fired_at_ms, 0, ms, 0),
-      armedAt: wholeIn(row.armed_at_ms, 0, ms, 0),
-      autoSnoozes: wholeIn(row.auto_snoozes, 0, 99, 0)
+      snoozeMinutes: clampedInt(row.snooze_minutes, 1, 180, 9),
+      ringMinutes: clampedInt(row.ring_minutes, 1, 60, 5),
+      snoozedUntil: clampedInt(row.snoozed_until_ms, 0, ms, 0),
+      lastFiredAt: clampedInt(row.last_fired_at_ms, 0, ms, 0),
+      armedAt: clampedInt(row.armed_at_ms, 0, ms, 0),
+      autoSnoozes: clampedInt(row.auto_snoozes, 0, 99, 0)
     }
   }).filter(function(alarm) {
     return alarm.id > 0 && alarm.hour !== null && alarm.minute !== null

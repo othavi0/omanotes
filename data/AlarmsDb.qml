@@ -2,29 +2,20 @@ import QtQuick
 import Quickshell.Io
 import "Db.js" as Db
 
-// The alarms table, for the alarm service, its only reader and writer
-// (ADR-0015). `alarms` is the last read with every write this object made
-// and no later read has confirmed laid over it. A write lays its whole
-// record over the row at once, so the next tick never sees the state from
-// before it, whether the write is queued, waiting on a lock or being retried.
 DbCore {
     id: root
 
     property var alarms: []
-    // Set before `alarms`, so a handler of alarmsChanged reads the new one.
     property var alarmsById: ({})
     property bool alarmsLoaded: false
-    // Inserts queued or landed that no read has listed yet, so the service
-    // can count them against the limit.
-    readonly property int insertsInFlight: root._insertSeqs.length
-    // A write carries the caller that asked for it, and only that caller
-    // hears how it ended. A write with no caller (a tick, a retry) only logs.
+    readonly property int unlistedInserts: root._insertSeqs.length
+    signal shown()
     signal alarmAdded(int id, var caller)
     signal alarmWriteFailed(string kind, var record, string message, var caller)
 
     property var _alarmRows: []
     property var _insertSeqs: []
-    property var _alarmPending: ({})      // id -> { seq, record | null, retry, unwritable }
+    property var _alarmPending: ({})
     property int _alarmSeq: 0             // the last seq handed to a write
     property int _alarmDoneSeq: 0         // the highest seq whose write ended. The queue is FIFO, so it only grows
     property int _alarmsReadSeq: 0        // _alarmDoneSeq when the running alarms read started
@@ -75,9 +66,7 @@ DbCore {
     }
 
     // Lays `record` (null to delete) over its row now and queues the write.
-    // Returns "" or why it was refused. A record that cannot become SQL is
-    // laid over all the same and no read takes it off, so a tick never finds
-    // the occurrence it just consumed due again.
+    // Returns "" or why it was refused.
     function _pendAlarm(id, record, caller) {
         if (!root.ready) return root._log("not ready")
         var kind = record === null ? "deleteAlarm" : "saveAlarm"
@@ -95,6 +84,7 @@ DbCore {
         for (var i = 0; i < list.length; ++i) byId[list[i].id] = list[i]
         root.alarmsById = byId
         root.alarms = list
+        root.shown()
     }
 
     function saveAlarm(record, caller) {
@@ -105,8 +95,7 @@ DbCore {
         return root._pendAlarm(id, null, caller)
     }
 
-    // Not laid over: the row has no id until the insert lands, which emits
-    // alarmAdded(id, caller).
+    // Not laid over: the row has no id until the insert lands.
     function insertAlarm(record, caller) {
         var seq = root._alarmSeq + 1
         var error = root._write("insertAlarm", function() { return Db.insertAlarmSql(record) },

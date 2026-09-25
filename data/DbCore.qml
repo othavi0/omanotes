@@ -3,10 +3,6 @@ import Quickshell
 import Quickshell.Io
 import "Db.js" as Db
 
-// What every database object shares: the file, start-up with the migration
-// race (ADR-0011), one write queue with a single sqlite3 Process, and the
-// watcher that asks for a reload (ADR-0004). ItemsDb and AlarmsDb build on it
-// and read their own tables, each read in its own Process.
 QtObject {
     id: root
 
@@ -21,15 +17,10 @@ QtObject {
     property bool ready: false                 // init() completed
 
     signal failed(string message)
-    // Start-up finished, the file changed or a write asked for it: the store
-    // on top reads its tables again.
     signal reloadDue()
     signal writeEnded(string kind, var args, int exitCode, string output, string errors, bool fromScript)
-    // A write not queued: not ready, or its SQL could not be built.
     signal writeRefused(string kind, var args, string message)
 
-    // Every failure reaches the journal. `failed` also carries it, except for
-    // a write a script made.
     function fail(message, fromScript) {
         root._log(message)
         if (!fromScript && !root._fromScript) root.failed(message)
@@ -39,8 +30,6 @@ QtObject {
         return message
     }
 
-    // The panel answers some signals of ItemsDb as if its user acted. Writes
-    // a script makes inside run() reload the views but emit none of them.
     property bool _fromScript: false
     function fromScript(run) {
         root._fromScript = true
@@ -142,8 +131,7 @@ QtObject {
         root.writeProcess.command = next.command
         root.writeProcess.running = true
     }
-    // Returns why the write was refused, or "" once it is queued. build()
-    // throws on an invalid value, before any SQL exists.
+    // Returns why the write was refused, or "" once it is queued.
     function _write(kind, build, args) {
         if (!root.ready) return root._refused(kind, args, "not ready")
         var sql
@@ -160,9 +148,8 @@ QtObject {
         return message
     }
 
-    // Any change to the file, an outside edit or a write of this object,
-    // triggers a debounced reload. QtObject has no default property, so the
-    // watcher and the timers are explicit properties.
+    // QtObject has no default property, so the watcher and the timers are
+    // explicit properties.
     property FileView dbFile: FileView {
         path: root.dbPath
         watchChanges: true

@@ -2,10 +2,6 @@ import QtQuick
 import Quickshell.Io
 import "Db.js" as Db
 
-// The items side of the database, for one bar widget and its panel: counts,
-// the filtered list, every item and history, and the item writes. Views call
-// its methods instead of building SQL or touching sqlite3 (ADR-0002). Each
-// read has its own Process, so they refresh independently.
 DbCore {
     id: root
 
@@ -37,8 +33,7 @@ DbCore {
     // The panel answers added, statusChanged, itemDeleted, historyCleared and
     // failed as if its user acted: it moves the selection, which commits the
     // open edit, and shows a toast. It answers writeFailed by giving the text
-    // back to the editor. Writes a script makes inside fromScript() reload
-    // the views but emit none of them.
+    // back to the editor.
     signal itemsUpdated(var items)
     signal countsUpdated()
     signal historyUpdated(var history)

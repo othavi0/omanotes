@@ -256,9 +256,7 @@ function snoozePatch(alarm, minutes, automatic, nowMs) {
 }
 
 // Splits ring events ({ id, startedAt }) into those still ringing and the ids
-// of expired alarms that earn an automatic snooze. Each event rings for its
-// alarm's ringMinutes. An event whose alarm is gone is dropped without a
-// snooze.
+// of expired alarms that earn an automatic snooze.
 function expire(events, alarmsById, nowMs) {
   return (events || []).reduce(function(acc, event) {
     var alarm = alarmsById ? alarmsById[event.id] : null
