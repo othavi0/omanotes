@@ -8,9 +8,9 @@ import "Icons.js" as Icons
 
 // Owns the edit session: which row the fields belong to, what they opened
 // with, and what they hold now. The three only change together, through
-// openItem(), openDraft(), reopen() and takeEdit(), so the fields can never hold text
-// that belongs to a different row than editingId. MainTab decides when to
-// save, never what the fields hold.
+// openItem(), openDraft(), reopen() and takeEdit(), so the fields can
+// never hold text that belongs to a different row than editingId. MainTab
+// decides when to save, never what the fields hold.
 ColumnLayout {
     id: root
 

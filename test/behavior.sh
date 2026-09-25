@@ -527,7 +527,8 @@ sqlite3 "$db" "INSERT INTO items (id, type, title, body, status, created_at, upd
   (204, 'note', 'Removed under a filter', '', 0, $now, $now),
   (205, 'note', 'Fails on close', '', 0, $now, $now),
   (206, 'note', 'Fails behind a draft', '', 0, $now, $now),
-  (207, 'note', 'Hidden when it fails', '', 0, $now, $now);
+  (207, 'note', 'Hidden when it fails', '', 0, $now, $now),
+  (208, 'note', 'Removed behind a draft', '', 0, $now, $now);
 CREATE TRIGGER fail_add BEFORE INSERT ON items WHEN NEW.title LIKE 'FAIL-%'
   BEGIN SELECT RAISE(ABORT, 'forced failure'); END;
 CREATE TRIGGER fail_edit BEFORE UPDATE OF title ON items WHEN NEW.title LIKE 'FAIL-%'
@@ -663,6 +664,23 @@ ShellRoot {
     function() {
       console.log("FAILED-WHILE-HIDDEN " + (mainTab.selectedId === 207) + " [" + mainTab.searchText + "] "
         + sr.editorState() + " " + sr.toastsSeen("FAILED-WHILE-HIDDEN"))
+      mainTab.discardEditor()
+    },
+
+    function() { mainTab.pickItem(208); mainTab.focusEditor() },
+    function() {
+      mainTab.editorTitle = "FAIL-REMOVED-BEHIND-DRAFT"
+      mainTab.commitEditor(true); mainTab.startNew("note"); mainTab.editorTitle = "DRAFT-OVER-REMOVAL"
+    },
+    function() {
+      console.log("QUEUED-BEHIND-DRAFT " + sr.editorState() + " error=" + sr.has("Error"))
+      sr.toasts = []
+      db.fromScript(function() { return db.deleteItem(208) })
+    },
+    function() { mainTab.commitEditor(true) },
+    function() {},
+    function() {
+      console.log("REMOVED-BEHIND-DRAFT " + sr.editorState() + " " + sr.toastsSeen("REMOVED-BEHIND-DRAFT"))
     }
   ]
 
@@ -757,6 +775,10 @@ logged "that failed edit comes back once the draft is committed" \
 logged "the search hides the edited item before its write fails" "HIDDEN-BEFORE-FAILURE 0$"
 logged "an edit that fails while the search hides its item clears the search and comes back" \
   "FAILED-WHILE-HIDDEN true \[\] false \[LOCKED-EDIT\] \[\] dirty=true saved=false error=true"
+logged "an edit that fails behind a draft waits there with its error shown" \
+  "QUEUED-BEHIND-DRAFT true \[DRAFT-OVER-REMOVAL\] \[\] dirty=false error=true"
+logged "a failed edit whose item a script removes while it waits behind a draft shows Item removed elsewhere" \
+  "REMOVED-BEHIND-DRAFT false \[DRAFT-OVER-REMOVAL\] \[\] dirty=false saved=false error=false added=true removed=true"
 
 echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))

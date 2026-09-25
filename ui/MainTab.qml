@@ -222,6 +222,8 @@ Item {
             } else if (idx >= 0) {
                 root.selectedId = w.args.id
                 editorPane.reopen(root.itemList[idx], w.args.title, w.args.body)
+            } else if (root.toast) {
+                root.toast.show("Item removed elsewhere")
             }
             if (pump.activeFocus) root.focusList()
         }
