@@ -192,10 +192,7 @@ Item {
             var body = String(editorPane.bodyText || "")
             root.draftNew = false
             root.refillEditor()
-            if (title !== "") {
-                root.db.add(root.draftType, title, body)
-                if (root.toast) root.toast.show("Added " + root.draftType + " — " + title)
-            }
+            if (title !== "") root.db.add(root.draftType, title, body)
         } else {
             root.saveEdit()
         }
@@ -206,6 +203,22 @@ Item {
         root.draftNew = false
         root.refillEditor()
         root.focusList()
+    }
+
+    function reopenFailed(kind, args) {
+        if (editorPane.unsaved) return
+        if (kind === "add") {
+            confirm.cancel()
+            root.draftNew = true
+            root.draftType = args.type
+            editorPane.reopen(null, args.title, args.body)
+        } else {
+            var idx = ItemJs.indexOfId(root.itemList, args.id)
+            if (idx < 0) return
+            root.selectedId = args.id
+            editorPane.reopen(root.itemList[idx], args.title, args.body)
+        }
+        if (pump.activeFocus) root.focusList()
     }
 
     function commitIfDirty() {
@@ -422,6 +435,14 @@ Item {
     function onItemsSynced() {
         if (root.draftNew) return
         var items = root.itemList
+        var filtered = root.db.listFilter !== "all" || root.db.listQuery.trim() !== ""
+        if (editorPane.editingId >= 0 && (editorPane.dirty || root.editorFocused)
+                && ItemJs.isRemoved(editorPane.editingId, items, filtered,
+                    root.db.allItemsLoaded ? root.db.allItems : null)) {
+            editorPane.openItem(null)
+            if (root.toast) root.toast.show("Item removed elsewhere")
+            root.focusList()
+        }
         if (root._selectAfterReload >= 0 && ItemJs.indexOfId(items, root._selectAfterReload) >= 0) {
             root.selectedId = root._selectAfterReload
             root._selectAfterReload = -1
@@ -440,7 +461,10 @@ Item {
     Connections {
         target: root.db
         function onItemsUpdated() { root.onItemsSynced() }
-        function onAdded(id) { root._selectAfterReload = Number(id) }
+        function onAdded(id, type, title) {
+            root._selectAfterReload = Number(id)
+            if (root.toast) root.toast.show("Added " + type + " — " + title)
+        }
         function onUpdated(id, title) {
             if (id === root._quietSaveId) { root._quietSaveId = -1; return }
             if (root.toast) root.toast.show("Saved — " + title)
@@ -459,6 +483,7 @@ Item {
             root.toast.show("Converted to " + newType + " — " + before.title)
         }
         function onItemDeleted(id) {
+            if (Number(id) === editorPane.editingId) editorPane.openItem(null)
             if (Number(id) !== root.selectedId) return
             if (root.toast) root.toast.show("Deleted")
             root.selectedId = ItemJs.neighbourId(root.itemList, id)
@@ -466,6 +491,11 @@ Item {
         // The one error toast for the panel: HistoryTab shares this Db.
         function onFailed(message) {
             if (root.toast) root.toast.show("Error: " + String(message || "unknown"), true)
+        }
+        function onWriteFailed(kind, args, message) {
+            if (kind !== "add" && kind !== "update") return
+            if (kind === "update" && args.id === root._quietSaveId) root._quietSaveId = -1
+            if (message !== "item not found") root.reopenFailed(kind, args)
         }
     }
 

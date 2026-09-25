@@ -8,7 +8,7 @@ import "Icons.js" as Icons
 
 // Owns the edit session: which row the fields belong to, what they opened
 // with, and what they hold now. The three only change together, through
-// openItem(), openDraft() and takeEdit(), so the fields can never hold text
+// openItem(), openDraft(), reopen() and takeEdit(), so the fields can never hold text
 // that belongs to a different row than editingId. MainTab decides when to
 // save, never what the fields hold.
 ColumnLayout {
@@ -49,6 +49,13 @@ ColumnLayout {
         root._baseBody = bodyField.text
     }
     function openDraft() { root.openItem(null) }
+    // Opens `it` (null for a draft) holding the text a failed write carried,
+    // so that text shows as unsaved again.
+    function reopen(it, title, body) {
+        root.openItem(it)
+        titleField.text = title
+        bodyField.text = body
+    }
 
     // Returns the pending edit and marks it as the new base, or null when
     // there is nothing to save. An emptied title falls back to the saved

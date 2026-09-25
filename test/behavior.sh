@@ -356,10 +356,11 @@ expect() {
   elif [[ "$got" == "$want" ]]; then pass "$what"
   else fail "$what: want '$want', got '$got'"; fi
 }
+log_file="$cfg_dir/qs.log"
 logged() {
   local what="$1" pattern="$2"
-  if grep -qE "$pattern" "$cfg_dir/qs.log"; then pass "$what"
-  else fail "$what: $(grep -oE "${pattern%% *}.*" "$cfg_dir/qs.log" | head -3 | tr '\n' ';')"; fi
+  if grep -qE "$pattern" "$log_file"; then pass "$what"
+  else fail "$what: $(grep -oE "${pattern%% *}.*" "$log_file" | head -3 | tr '\n' ';')"; fi
 }
 
 expect "edit is saved to the item it was typed in when another row is clicked" \
@@ -515,6 +516,174 @@ if (( history_total > 500 )) && grep -qE "HISTORY-COUNT $history_total$" "$cfg_d
 else
   fail "the History tab count: want $history_total, got '$(grep -oE 'HISTORY-COUNT.*' "$cfg_dir/qs-count.log" | head -1)'"
 fi
+
+# A third run for writes that fail or land on a row removed under the editor.
+# The triggers make any write of a title starting with FAIL- fail in sqlite3,
+# the same path a locked database takes after its 5 s timeout.
+sqlite3 "$db" "INSERT INTO items (id, type, title, body, status, created_at, updated_at) VALUES
+  (201, 'note', 'Dirty then deleted', '', 0, $now, $now),
+  (202, 'note', 'Removed by a script', '', 0, $now, $now),
+  (203, 'todo', 'Edit that fails', 'saved body', 0, $now, $now);
+CREATE TRIGGER fail_add BEFORE INSERT ON items WHEN NEW.title LIKE 'FAIL-%'
+  BEGIN SELECT RAISE(ABORT, 'forced failure'); END;
+CREATE TRIGGER fail_edit BEFORE UPDATE OF title ON items WHEN NEW.title LIKE 'FAIL-%'
+  BEGIN SELECT RAISE(ABORT, 'forced failure'); END;"
+cat > "$cfg_dir/shell.qml" <<'QML'
+import QtQuick
+import QtTest
+import Quickshell
+import "data" as Data
+
+ShellRoot {
+  id: sr
+  property int stepIndex: 0
+  property bool started: false
+  property var toasts: []
+  property var mainTab: null
+  property var editor: null
+  readonly property var db: sr.mainTab ? sr.mainTab.db : null
+
+  function has(text) { return sr.toasts.some(function(m) { return m.indexOf(text) >= 0 }) }
+  function toastsSeen(label) {
+    console.log(label + "-TOASTS [" + sr.toasts.join("|") + "]")
+    return "saved=" + sr.has("Saved") + " error=" + sr.has("Error") + " added=" + sr.has("Added")
+      + " removed=" + sr.has("Item removed elsewhere")
+  }
+  function editorState() {
+    return mainTab.draftNew + " [" + mainTab.editorTitle + "] [" + mainTab.editorBody + "] dirty=" + editor.dirty
+  }
+  function otherId() { return mainTab.itemList[0].id === 203 ? mainTab.itemList[1].id : mainTab.itemList[0].id }
+
+  readonly property var steps: [
+    function() { mainTab.pickItem(201); mainTab.focusEditor() },
+    function() { mainTab.editorTitle = "DIRTY-DELETE"; sr.toasts = []; sr.click(sr.findByText(editor, "Delete")) },
+    function() { sr.click(sr.findByText(editor, "Confirm")) },
+    function() { console.log("DELETE-DIRTY " + sr.toastsSeen("DELETE-DIRTY") + " deleted=" + sr.has("Deleted")) },
+
+    function() { mainTab.pickItem(202); mainTab.focusEditor() },
+    function() {
+      mainTab.editorBody = "TYPED-BEFORE-REMOVAL"; sr.toasts = []
+      db.fromScript(function() { return db.deleteItem(202) })
+    },
+    function() {
+      console.log("REMOVED-ELSEWHERE " + sr.toastsSeen("REMOVED-ELSEWHERE") + " holds-removed=" + (editor.editingId === 202)
+        + " " + mainTab.focusContext)
+    },
+
+    function() { mainTab.focusList(); mainTab.startNew("note") },
+    function() {
+      mainTab.editorTitle = "FAIL-ADD"; mainTab.editorBody = "draft body kept"; sr.toasts = []
+      mainTab.commitEditor(true)
+      console.log("FAILING-ADD-AT-COMMIT " + sr.toastsSeen("FAILING-ADD-AT-COMMIT"))
+    },
+    function() {
+      console.log("FAILED-ADD " + sr.editorState() + " " + mainTab.focusContext + " " + sr.toastsSeen("FAILED-ADD"))
+      mainTab.discardEditor()
+    },
+    function() { mainTab.startNew("todo") },
+    function() {
+      mainTab.editorTitle = "GOOD-ADD"; sr.toasts = []
+      mainTab.commitEditor(true)
+      console.log("GOOD-ADD-AT-COMMIT " + sr.toastsSeen("GOOD-ADD-AT-COMMIT"))
+    },
+    function() { console.log("GOOD-ADD-LATER " + sr.has("Added todo — GOOD-ADD")) },
+
+    function() { mainTab.pickItem(203); mainTab.focusEditor() },
+    function() {
+      mainTab.editorTitle = "FAIL-EDIT"; mainTab.editorBody = "edit body kept"; sr.toasts = []
+      mainTab.pickItem(sr.otherId())
+    },
+    function() {
+      console.log("FAILED-EDIT-AFTER-MOVE " + (mainTab.selectedId === 203) + " " + sr.editorState() + " "
+        + sr.toastsSeen("FAILED-EDIT-AFTER-MOVE"))
+      mainTab.discardEditor(); mainTab.focusEditor()
+    },
+    function() {
+      mainTab.editorTitle = "FAIL-EDIT-AGAIN"; sr.toasts = []
+      mainTab.commitEditor(true)
+    },
+    function() {
+      console.log("FAILED-EDIT-IN-PLACE " + (mainTab.selectedId === 203) + " " + sr.editorState() + " "
+        + sr.toastsSeen("FAILED-EDIT-IN-PLACE"))
+    }
+  ]
+
+  function click(item) {
+    keys.mouseClick(item, item.width / 2, item.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
+  }
+  function findType(item, prefix) {
+    if (String(item).indexOf(prefix) === 0) return item
+    for (var i = 0; i < item.children.length; ++i) {
+      var hit = sr.findType(item.children[i], prefix)
+      if (hit) return hit
+    }
+    return null
+  }
+  function findByText(item, text) {
+    if (item.text === text) return item
+    for (var i = 0; i < item.children.length; ++i) {
+      var hit = sr.findByText(item.children[i], text)
+      if (hit) return hit
+    }
+    return null
+  }
+
+  Data.Db {
+    id: testDb
+    Component.onCompleted: testDb.init()
+  }
+  Loader {
+    source: Qt.resolvedUrl("Panel.qml")
+    onLoaded: {
+      item.db = testDb
+      var content = null
+      for (var i = 0; i < item.data.length; ++i)
+        if (String(item.data[i]).indexOf("KeyboardPanel") === 0) content = item.data[i].contentItem
+      var toast = sr.findType(content, "Toast")
+      sr.mainTab = sr.findType(content, "MainTab")
+      sr.editor = sr.findType(sr.mainTab, "EditorPane")
+      sr.mainTab.toast = { show: function(message, urgent) { sr.toasts.push(String(message)); toast.show(message, urgent) } }
+      item.open()
+    }
+  }
+  Connections {
+    target: sr.db
+    function onItemsUpdated() { if (!sr.started) { sr.started = true; stepTimer.start() } }
+  }
+  Timer {
+    id: stepTimer
+    interval: 600
+    repeat: true
+    onTriggered: {
+      if (sr.stepIndex >= sr.steps.length) { Qt.exit(0); return }
+      sr.steps[sr.stepIndex++]()
+    }
+  }
+  TestEvent { id: keys }
+}
+QML
+log_file="$cfg_dir/qs-writes.log"
+run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
+
+logged "deleting a dirty item with the mouse shows Deleted, never Saved or an error" \
+  "DELETE-DIRTY saved=false error=false added=false removed=false deleted=true$"
+expect "that edit never reaches the db" "SELECT COUNT(*) FROM history WHERE title = 'DIRTY-DELETE'" "0"
+logged "an item removed by a script while being edited shows Item removed elsewhere and returns to the list" \
+  "REMOVED-ELSEWHERE saved=false error=false added=false removed=true holds-removed=false list$"
+expect "the text typed into the removed item is not saved anywhere" \
+  "SELECT COUNT(*) FROM items WHERE body = 'TYPED-BEFORE-REMOVAL'" "0"
+logged "Added does not show when a draft is committed" "FAILING-ADD-AT-COMMIT saved=false error=false added=false"
+logged "a failed add puts the draft back in the editor, focused, with the error and no Added" \
+  "FAILED-ADD true \[FAIL-ADD\] \[draft body kept\] dirty=false draft saved=false error=true added=false"
+expect "the failed add wrote nothing" "SELECT COUNT(*) FROM items WHERE title = 'FAIL-ADD'" "0"
+logged "Added waits for the database on a good add too" "GOOD-ADD-AT-COMMIT saved=false error=false added=false"
+logged "Added shows once the database confirms the add" "GOOD-ADD-LATER true$"
+expect "the good add is saved" "SELECT COUNT(*) FROM items WHERE title = 'GOOD-ADD'" "1"
+logged "a failed edit after moving to another row reselects the item with the typed text, unsaved" \
+  "FAILED-EDIT-AFTER-MOVE true false \[FAIL-EDIT\] \[edit body kept\] dirty=true saved=false error=true"
+logged "a failed edit that stays on the item keeps the typed text, unsaved" \
+  "FAILED-EDIT-IN-PLACE true false \[FAIL-EDIT-AGAIN\] \[saved body\] dirty=true saved=false error=true"
+expect "the failed edits wrote nothing" "SELECT title || '|' || body FROM items WHERE id = 203" "Edit that fails|saved body"
 
 echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))

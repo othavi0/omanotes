@@ -67,6 +67,15 @@ function neighbourId(rows, id) {
   return idx > 0 ? rows[idx - 1].id : -1
 }
 
+// Whether the row `id` is gone from the database, judged by a reload.
+// `listed` misses the rows a filter hides, so when it is filtered only
+// `allRows`, the unfiltered rows or null until they load, can tell.
+function isRemoved(id, listed, filtered, allRows) {
+  if (indexOfId(listed, id) >= 0) return false
+  if (!filtered) return true
+  return !!allRows && indexOfId(allRows, id) < 0
+}
+
 // The action a history entry shows. A note's toggle is stored as completed or
 // reopened, like a todo's, so it reads as read or unread here.
 function historyLabel(entry) {
