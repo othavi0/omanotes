@@ -1,18 +1,42 @@
 #!/usr/bin/env bash
-# Drives the real MainTab against a seeded sqlite db, offscreen, then asserts
+# Drives the real Panel.qml against a seeded sqlite db, offscreen, then asserts
 # on the rows that reached the db. Covers the editor's save-on-leave contract.
 
 set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
 
+# The kit's KeyboardPanel is a layer-shell window with no offscreen backend,
+# so it is the one kit file swapped for a plain window. Everything else,
+# Panel.qml's open/close and tab wiring included, runs as shipped.
+ln -s "$worktree/Panel.qml" "$cfg_dir/Panel.qml"
+rm "$cfg_dir/Ui"
+mkdir "$cfg_dir/Ui"
+for f in "$shell_root"/Ui/*; do
+  [[ "${f##*/}" == KeyboardPanel.qml ]] || ln -s "$f" "$cfg_dir/Ui/"
+done
+cat > "$cfg_dir/Ui/KeyboardPanel.qml" <<'QML'
+import QtQuick
+import Quickshell
+
+FloatingWindow {
+  property Item anchorItem
+  property QtObject bar
+  property var owner
+  property bool open
+  property int contentWidth
+  property int contentHeight
+  function fittedContentWidth(width) { return width }
+  function fittedContentHeight(height) { return height }
+  implicitWidth: contentWidth
+  implicitHeight: contentHeight
+  visible: open
+}
+QML
+
 cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
-import QtQuick.Layouts
 import QtTest
 import Quickshell
-import qs.Commons
-import "data" as Data
-import "ui" as Ui
 
 ShellRoot {
   id: sr
@@ -22,6 +46,13 @@ ShellRoot {
   property int lastId: -1
   property int keepId: -1
   property int beforeLastId: -1
+  property int hiddenId: -1
+  property var panel: null
+  property var mainTab: null
+  property var header: null
+  property var toast: null
+  readonly property var db: sr.mainTab ? sr.mainTab.db : null
+
   function titleOf(id) {
     for (var i = 0; i < db.items.length; ++i) if (Number(db.items[i].id) === id) return db.items[i].title
     return "missing"
@@ -39,7 +70,8 @@ ShellRoot {
     function() { mainTab.searchText = "" },
 
     function() { mainTab.startNew("note") },
-    function() { mainTab.editorTitle = "DRAFT-ON-CLOSE"; mainTab.commitIfDirty() },
+    function() { mainTab.editorTitle = "DRAFT-ON-CLOSE"; panel.close() },
+    function() { panel.open() },
 
     function() { mainTab.pickItem(5); mainTab.focusEditor() },
     function() { mainTab.startNew("todo") },
@@ -81,19 +113,41 @@ ShellRoot {
     function() { mainTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1) },
     function() { keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1); sr.type("orphan body") },
     function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-ESC " + sr.draftState()) },
-    function() { keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1) },
+    function() {
+      console.log("UNTITLED-DRAFT-AFTER-ESC " + sr.draftState())
+      console.log("UNTITLED-DRAFT-HINTS " + sr.hintKeys())
+      keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1)
+    },
     function() { keys.keyClick(Qt.Key_Return, Qt.NoModifier, -1) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-ENTER " + sr.draftState()) },
-    function() { var row = sr.firstRow(mainTab); keys.mouseClick(row, row.width / 2, row.height / 2, Qt.LeftButton, Qt.NoModifier, -1) },
-    function() { console.log("UNTITLED-DRAFT-AFTER-ROW-CLICK " + sr.draftState()) },
-    function() { mainTab.focusSearch(); mainTab.resetFocus() },
-    function() { console.log("UNTITLED-DRAFT-AFTER-REOPEN " + sr.draftState()) },
-    function() { mainTab.discardEditor() },
-
-    function() { mainTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-ENTER " + sr.draftState()); sr.click(sr.firstRow(mainTab)) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-ROW-CLICK " + sr.draftState()); panel.close() },
+    function() { panel.open() },
+    function() { console.log("UNTITLED-DRAFT-AFTER-REOPEN " + sr.draftState()); sr.click(sr.findByText(header, "History")) },
+    function() { sr.click(sr.findByText(header, "Items")) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-TAB-SWITCH " + sr.draftState()); sr.click(sr.findByText(header, "New")) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-NEW " + sr.draftState()); sr.clickSearch() },
+    function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-ESC " + sr.draftState()); sr.clickSearch() },
+    function() { keys.keyClick(Qt.Key_Return, Qt.NoModifier, -1) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-ENTER " + sr.draftState()); sr.clickSearch() },
+    function() { keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1) },
+    function() { console.log("UNTITLED-DRAFT-AFTER-SEARCH-TAB " + sr.draftState()); sr.hiddenId = mainTab.selectedId; sr.type("dd") },
+    function() {
+      console.log("HIDDEN-ROW-AFTER-DD " + (sr.titleOf(sr.hiddenId) === "missing" ? "deleted" : "kept"))
+      keys.keyClick(Qt.Key_Backspace, Qt.NoModifier, -1); keys.keyClick(Qt.Key_Backspace, Qt.NoModifier, -1)
+    },
+    function() { keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1) },
+    function() {
+      console.log("UNTITLED-DRAFT-AFTER-SHIFT-ESC " + mainTab.draftNew + " " + mainTab.focusContext)
+      toast.text = ""; keys.keyClickChar("n", Qt.NoModifier, -1)
+    },
+    function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
+    function() {
+      console.log("EMPTY-DRAFT-AFTER-ESC " + mainTab.draftNew + " " + mainTab.focusContext + " toast=[" + toast.text + "]")
+      mainTab.focusList(); keys.keyClickChar("n", Qt.NoModifier, -1)
+    },
     function() { sr.type("first draft") },
-    function() { sr.clickNew() },
+    function() { sr.click(sr.findByText(header, "New")) },
     function() { console.log("AFTER-NEW-CLICK " + mainTab.draftNew + " [" + mainTab.editorTitle + "]") },
     function() { mainTab.discardEditor() },
 
@@ -107,20 +161,24 @@ ShellRoot {
   function draftState() {
     return mainTab.draftNew + " [" + mainTab.editorBody + "] " + mainTab.focusContext + " toast=" + toast.text
   }
-  function clickNew() {
-    var button = sr.findByText(header, "New")
-    keys.mouseClick(button, button.width / 2, button.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
+  function hintKeys() {
+    return mainTab.hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
   }
-  function firstRow(item) {
-    if (String(item).indexOf("ItemRow") === 0) return item
+  function click(item) {
+    keys.mouseClick(item, item.width / 2, item.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
+  }
+  function clickSearch() { sr.click(sr.findType(mainTab, "SearchField")) }
+  function firstRow(item) { return sr.findType(item, "ItemRow") }
+  function findType(item, prefix) {
+    if (String(item).indexOf(prefix) === 0) return item
     for (var i = 0; i < item.children.length; ++i) {
-      var hit = sr.firstRow(item.children[i])
+      var hit = sr.findType(item.children[i], prefix)
       if (hit) return hit
     }
     return null
   }
   function findByText(item, text) {
-    if (item.text === text && item.clicked) return item
+    if (item.text === text) return item
     for (var i = 0; i < item.children.length; ++i) {
       var hit = sr.findByText(item.children[i], text)
       if (hit) return hit
@@ -135,12 +193,21 @@ ShellRoot {
     return ids
   }
 
-  Data.Db {
-    id: db
-    Component.onCompleted: db.init()
+  Loader {
+    source: Qt.resolvedUrl("Panel.qml")
+    onLoaded: {
+      var content = null
+      for (var i = 0; i < item.data.length; ++i)
+        if (String(item.data[i]).indexOf("KeyboardPanel") === 0) content = item.data[i].contentItem
+      sr.header = sr.findType(content, "PanelHeader")
+      sr.toast = sr.findType(content, "Toast")
+      sr.mainTab = sr.findType(content, "MainTab")
+      sr.panel = item
+      item.open()
+    }
   }
   Connections {
-    target: db
+    target: sr.db
     function onItemsUpdated() { if (!sr.started) { sr.started = true; stepTimer.start() } }
     function onFailed(message) { sr.writeFailures++; console.log("DB-FAILED " + message) }
   }
@@ -154,20 +221,6 @@ ShellRoot {
     }
   }
   TestEvent { id: keys }
-  FloatingWindow {
-    implicitWidth: 760; implicitHeight: 560
-    ColumnLayout {
-      anchors.fill: parent
-      Ui.PanelHeader {
-        id: header
-        Layout.fillWidth: true
-        db: db
-        onNewRequested: mainTab.startNew("note")
-      }
-      Ui.MainTab { id: mainTab; Layout.fillWidth: true; Layout.fillHeight: true; db: db; toast: toast }
-    }
-    Ui.Toast { id: toast }
-  }
 }
 QML
 
@@ -221,14 +274,29 @@ logged "an item added outside the filter does not hijack the selection later" "S
 logged "a draft opened in the same tick as a discard stays open" "DRAFT-AFTER-DISCARD true$"
 logged "Esc on a draft with a body and no title keeps it open in the title field, with the warning" \
   "UNTITLED-DRAFT-AFTER-ESC true \[orphan body\] draft toast=New item needs a title$"
+logged "the hints for that draft offer Shift+Esc to discard and no longer promise save and back" \
+  "UNTITLED-DRAFT-HINTS Tab next field,Shift\+Enter new line,Shift\+Esc discard,t note/todo$"
 logged "Enter in the body of that draft keeps it open too" \
   "UNTITLED-DRAFT-AFTER-ENTER true \[orphan body\] draft toast=New item needs a title$"
 logged "clicking a row keeps that draft open and its title focused" \
   "UNTITLED-DRAFT-AFTER-ROW-CLICK true \[orphan body\] draft toast=New item needs a title$"
-logged "reopening the panel shows that draft again" \
+logged "closing and reopening the panel shows that draft again, focused" \
   "UNTITLED-DRAFT-AFTER-REOPEN true \[orphan body\] draft"
+logged "switching to History and back shows that draft again, focused" \
+  "UNTITLED-DRAFT-AFTER-TAB-SWITCH true \[orphan body\] draft"
+logged "New on that draft keeps it and its body, focused" \
+  "UNTITLED-DRAFT-AFTER-NEW true \[orphan body\] draft"
+logged "Esc in the search field returns to that draft, not to the list behind it" \
+  "UNTITLED-DRAFT-AFTER-SEARCH-ESC true \[orphan body\] draft"
+logged "Enter in the search field returns to that draft" \
+  "UNTITLED-DRAFT-AFTER-SEARCH-ENTER true \[orphan body\] draft"
+logged "Tab in the search field returns to that draft" \
+  "UNTITLED-DRAFT-AFTER-SEARCH-TAB true \[orphan body\] draft"
+logged "d d typed then does not delete the row hidden behind the draft" "HIDDEN-ROW-AFTER-DD kept$"
+logged "Shift+Esc discards that draft and returns to the list" "UNTITLED-DRAFT-AFTER-SHIFT-ESC false list$"
 expect "a draft without a title never reaches the db" \
   "SELECT COUNT(*) FROM items WHERE body = 'orphan body'" "0"
+logged "Esc on an empty draft drops it without the warning" "EMPTY-DRAFT-AFTER-ESC false list toast=\[\]$"
 expect "the New button commits the open draft first" \
   "SELECT COUNT(*) FROM items WHERE title = 'first draft'" "1"
 logged "and then opens an empty draft" "AFTER-NEW-CLICK true \[\]$"

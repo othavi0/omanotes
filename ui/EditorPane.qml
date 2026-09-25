@@ -152,6 +152,8 @@ ColumnLayout {
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Tab) {
                 root.focusBody(); event.accepted = true
+            } else if (event.key === Qt.Key_Escape && (event.modifiers & Qt.ShiftModifier)) {
+                root.discardRequested(); event.accepted = true
             } else if (event.key === Qt.Key_Backtab || event.key === Qt.Key_Escape) {
                 root.leaveRequested(); event.accepted = true
             } else if (event.text === "t" && root.draft
@@ -189,6 +191,8 @@ ColumnLayout {
                 root.leaveRequested(); event.accepted = true
             } else if (event.key === Qt.Key_Backtab) {
                 Qt.callLater(function() { root.focusTitle() }); event.accepted = true
+            } else if (event.key === Qt.Key_Escape && (event.modifiers & Qt.ShiftModifier)) {
+                root.discardRequested(); event.accepted = true
             } else if (event.key === Qt.Key_Escape) {
                 root.leaveRequested(); event.accepted = true
             }

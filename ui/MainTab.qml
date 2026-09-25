@@ -14,7 +14,7 @@ import "Item.js" as ItemJs
 //           · Esc closes the panel
 //   editor: fields own printable keys · Tab title→body, body→save+list
 //           · Enter in body saves · Esc saves (auto-save on leaving)
-//           · `t` on an empty draft title toggles note/todo
+//           · Shift+Esc discards · `t` on an empty draft title toggles note/todo
 //   search: Esc/Shift+Tab return to the list
 Item {
     id: root
@@ -40,6 +40,7 @@ Item {
     property int _selectAfterReload: -1
     property int _quietSaveId: -1
 
+    readonly property bool draftNeedsTitle: root.draftNew && root.editorTitle.trim() === "" && root.editorBody.trim() !== ""
     readonly property bool editorFocused: editorPane.titleFocused || editorPane.bodyFocused
     readonly property string focusContext: {
         if (searchField.activeFocus) return "search"
@@ -59,11 +60,16 @@ Item {
         list: [["j/k", "move"], ["Enter", "edit"], ["n", "new"], ["Space", "toggle"],
             ["d d", "delete"], ["/", "search"], ["f", "filter"], ["Esc", "close"]],
         search: [["Enter", "to list"], ["Esc", "clear"]],
-        editor: [["Tab", "next field"], ["Enter", "save"], ["Shift+Enter", "new line"], ["Esc", "save and back"]],
-        draft: [["Tab", "next field"], ["Enter", "save"], ["Shift+Enter", "new line"], ["Esc", "save and back"], ["t", "note/todo"]],
+        editor: [["Tab", "next field"], ["Enter", "save"], ["Shift+Enter", "new line"], ["Esc", "save and back"], ["Shift+Esc", "discard"]],
+        draft: [["Tab", "next field"], ["Enter", "save"], ["Shift+Enter", "new line"], ["Esc", "save and back"], ["Shift+Esc", "discard"], ["t", "note/todo"]],
+        draftNeedsTitle: [["Tab", "next field"], ["Shift+Enter", "new line"], ["Shift+Esc", "discard"], ["t", "note/todo"]],
         deleteArmed: [["d", "press again to delete"]]
     })
-    readonly property var hints: root.deleteArmed ? root.hintSets.deleteArmed : root.hintSets[root.focusContext]
+    readonly property var hints: {
+        if (root.deleteArmed) return root.hintSets.deleteArmed
+        if (root.focusContext === "draft" && root.draftNeedsTitle) return root.hintSets.draftNeedsTitle
+        return root.hintSets[root.focusContext]
+    }
 
     onSelectedIdChanged: {
         if (root.draftNew) return
@@ -105,18 +111,23 @@ Item {
     }
 
     function focusSearch() { searchField.forceActiveFocus() }
-    function focusList() { pump.forceActiveFocus() }
+    // An open draft hides the selected row, and list keys act on that row,
+    // so while a draft is open the list hands focus to the draft's title.
+    function focusList() {
+        if (root.draftNew) editorPane.focusTitle()
+        else pump.forceActiveFocus()
+    }
 
     // Called by Panel.qml when the panel opens or this tab is re-shown.
     function resetFocus() {
-        if (root.draftNew) { editorPane.focusTitle(); return }
-        root.refillEditor()
+        if (!root.draftNew) root.refillEditor()
         root.focusList()
     }
 
     function pickItem(id) {
         root._selectAfterReload = -1
         root.selectedId = id
+        root.commitIfDirty()
         root.focusList()
         listView.positionViewAtIndex(root.selectedIndex, ListView.Center)
     }
@@ -171,18 +182,12 @@ Item {
     // Every way out of the editor lands here. Keys and the Save button hand
     // focus back to the list; a save caused by focus already having moved
     // (a click into the search field, the panel closing) leaves focus alone.
-    // A draft with a body but no title has nowhere to go, so it stays open
-    // and focus that would land on the list goes back to its title, where
-    // list keys can't act on a row hidden behind the draft.
     function commitEditor(returnFocus) {
-        if (root.draftNew) {
+        if (root.draftNeedsTitle) {
+            if (root.toast) root.toast.show("New item needs a title")
+        } else if (root.draftNew) {
             var title = String(editorPane.titleText || "").trim()
             var body = String(editorPane.bodyText || "")
-            if (title === "" && body.trim() !== "") {
-                if (root.toast) root.toast.show("New item needs a title")
-                if (returnFocus || pump.activeFocus) editorPane.focusTitle()
-                return
-            }
             root.draftNew = false
             root.refillEditor()
             if (title !== "") {
