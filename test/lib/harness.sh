@@ -1,6 +1,7 @@
-# Sourced by test/render.sh and test/behavior.sh. Builds a throwaway `qs -p`
-# config dir (kit symlinked from the installed shell, ui/ and data/ from this
-# checkout) and a throwaway XDG_DATA_HOME holding a seeded scratchpad.db.
+# Sourced by test/render.sh, test/behavior.sh and test/panel.sh. Builds a
+# throwaway `qs -p` config dir (kit symlinked from the installed shell, ui/ and
+# data/ from this checkout) and a throwaway XDG_DATA_HOME holding a seeded
+# scratchpad.db.
 
 worktree="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 shell_root="${OMARCHY_PATH:-/usr/share/omarchy}/shell"
