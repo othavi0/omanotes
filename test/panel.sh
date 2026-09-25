@@ -344,6 +344,8 @@ external_note "EXTERNAL"
 caught_up "counts and history pick up a write made outside the Db"
 lists_all "listNotes shows a note written outside the Db" listNotes note
 
+ipc omanotes-test filterPanel note overlap > /dev/null
+panel_rows_are "the panel lists no note that matches overlap" 0
 hold_reads
 external_note "OVERLAP-1"
 all_reads_held "the reload after the first write holds its four reads"
@@ -351,7 +353,7 @@ external_note "OVERLAP-2"
 sleep 1
 release_reads
 caught_up "counts and history re-run for a write that lands while they read"
-lists_all "the list re-runs for a write that lands while it reads" listNotes note
+panel_rows_are "the filtered list re-runs for a write that lands while it reads" 2
 
 ipc omanotes-test filterPanel todo e > /dev/null
 panel_rows_are "the panel lists the todos that match e" \
