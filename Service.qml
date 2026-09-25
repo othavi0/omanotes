@@ -54,9 +54,10 @@ Item {
         return size + Style.gapsOut
     }
 
-    signal alarmAdded(int id)
-    signal insertFailed(var record)
-    signal failed(string message)
+    // `caller` is whatever the Alarms tab passed to the write, so each tab
+    // answers only its own writes.
+    signal alarmAdded(int id, var caller)
+    signal writeFailed(string kind, var record, string message, var caller)
 
     function tick(nowMs) {
         root.nowMs = nowMs
@@ -73,31 +74,31 @@ Item {
     }
 
     // Each returns "" or why it was refused.
-    function addAlarm(fields) {
+    function addAlarm(fields, caller) {
         if (!root.loaded) return "not ready"
-        if (root.alarms.length >= Alarm.MAX_ALARMS) return Alarm.MAX_ALARMS + " alarms is the limit"
-        return store.insertAlarm(Alarm.newAlarm(fields, root.nowMs))
+        if (root.alarms.length + store.insertsInFlight >= Alarm.MAX_ALARMS) return Alarm.MAX_ALARMS + " alarms is the limit"
+        return store.insertAlarm(Alarm.newAlarm(fields, root.nowMs), caller)
     }
 
-    function updateAlarm(id, fields) {
+    function updateAlarm(id, fields, caller) {
         var alarm = root.alarmsById[id]
         if (!alarm) return "alarm not found"
         var patch = Alarm.editPatch(alarm, fields, root.nowMs)
         if (patch.armedAt !== undefined) root._drop(id)
-        return store.saveAlarm(Alarm.withPatch(alarm, patch))
+        return store.saveAlarm(Alarm.withPatch(alarm, patch), caller)
     }
 
-    function toggleAlarm(id) {
+    function toggleAlarm(id, caller) {
         var alarm = root.alarmsById[id]
         if (!alarm) return "alarm not found"
         var patch = Alarm.enablePatch(alarm, !Alarm.isOn(alarm, root.nowMs), root.nowMs)
         if (!patch.enabled) root._drop(id)
-        return store.saveAlarm(Alarm.withPatch(alarm, patch))
+        return store.saveAlarm(Alarm.withPatch(alarm, patch), caller)
     }
 
-    function removeAlarm(id) {
+    function removeAlarm(id, caller) {
         root._drop(id)
-        return store.deleteAlarm(id)
+        return store.deleteAlarm(id, caller)
     }
 
     function snooze() {
@@ -165,9 +166,8 @@ Item {
         id: store
         scope: "alarms"
         Component.onCompleted: store.init()
-        onAlarmAdded: function(id) { root.alarmAdded(id) }
-        onFailed: function(message) { root.failed(message) }
-        onWriteFailed: function(kind, args) { if (kind === "insertAlarm") root.insertFailed(args.record) }
+        onAlarmAdded: function(id, caller) { root.alarmAdded(id, caller) }
+        onAlarmWriteFailed: function(kind, record, message, caller) { root.writeFailed(kind, record, message, caller) }
     }
 
     SystemClock {

@@ -69,8 +69,12 @@ QtObject {
     // Central failure path: surfaces in the journal (console.error) so data-layer
     // errors are visible in the shell logs even before the UI handles them.
     function fail(message, fromScript) {
-        console.error("omanotes db: " + message)
+        root._log(message)
         if (!fromScript && !root._fromScript) root.failed(message)
+    }
+    function _log(message) {
+        console.error("omanotes db: " + message)
+        return message
     }
     function _failWrite(kind, args, message, fromScript) {
         root.fail(message, fromScript)
@@ -214,9 +218,16 @@ QtObject {
     // queued, waiting on a lock or being retried.
     property var alarms: []
     property bool alarmsLoaded: false
-    signal alarmAdded(int id)
+    // Inserts queued or landed that no read has listed yet, so the service
+    // can count them against the limit.
+    readonly property int insertsInFlight: root._insertSeqs.length
+    // A write carries the caller that asked for it, and only that caller
+    // hears how it ended. A write with no caller (a tick, a retry) only logs.
+    signal alarmAdded(int id, var caller)
+    signal alarmWriteFailed(string kind, var record, string message, var caller)
 
     property var _alarmRows: []
+    property var _insertSeqs: []
     property var _alarmPending: ({})      // id -> { seq, record | null, retry }
     property int _alarmSeq: 0             // the last seq handed to a write
     property int _alarmDoneSeq: 0         // the highest seq whose write ended. The queue is FIFO, so it only grows
@@ -258,17 +269,31 @@ QtObject {
         for (var id in pending) {
             if (pending[id].seq <= root._alarmsReadSeq && !pending[id].retry) delete pending[id]
         }
+        root._insertSeqs = root._insertSeqs.filter(function(seq) { return seq > root._alarmsReadSeq })
         root.alarms = Db.mergeAlarms(rows, pending)
         root.alarmsLoaded = true
     }
 
+    // A refused alarm write only logs: the caller gets the reason back.
+    function _queueAlarm(kind, build, args) {
+        if (!root.ready) return root._log("not ready")
+        var sql
+        try {
+            sql = build()
+        } catch (e) {
+            return root._log(e.message)
+        }
+        root._enqueue(kind, Db.sqliteCommand(root.dbPath, sql, false), args)
+        return ""
+    }
+
     // Lays `record` (null to delete) over its row now and queues the write.
     // Returns "" or why it was refused.
-    function _pendAlarm(id, record) {
+    function _pendAlarm(id, record, caller) {
         var kind = record === null ? "deleteAlarm" : "saveAlarm"
         var seq = root._alarmSeq + 1
-        var error = root._write(kind, function() { return record === null ? Db.deleteAlarmSql(id) : Db.saveAlarmSql(record) },
-            { id: Number(id), seq: seq, record: record })
+        var error = root._queueAlarm(kind, function() { return record === null ? Db.deleteAlarmSql(id) : Db.saveAlarmSql(record) },
+            { id: Number(id), seq: seq, record: record, caller: caller || null })
         if (error !== "") return error
         root._alarmSeq = seq
         root._alarmPending[Number(id)] = { seq: seq, record: record, retry: false }
@@ -276,18 +301,24 @@ QtObject {
         return ""
     }
 
-    function saveAlarm(record) {
-        return root._pendAlarm(record.id, record)
+    function saveAlarm(record, caller) {
+        return root._pendAlarm(record.id, record, caller)
     }
 
-    function deleteAlarm(id) {
-        return root._pendAlarm(id, null)
+    function deleteAlarm(id, caller) {
+        return root._pendAlarm(id, null, caller)
     }
 
     // Not laid over: the row has no id until the insert lands, which emits
-    // alarmAdded(id). A failure emits failed and writeFailed("insertAlarm").
-    function insertAlarm(record) {
-        return root._write("insertAlarm", function() { return Db.insertAlarmSql(record) }, { record: record })
+    // alarmAdded(id, caller).
+    function insertAlarm(record, caller) {
+        var seq = root._alarmSeq + 1
+        var error = root._queueAlarm("insertAlarm", function() { return Db.insertAlarmSql(record) },
+            { seq: seq, record: record, caller: caller || null })
+        if (error !== "") return error
+        root._alarmSeq = seq
+        root._insertSeqs = root._insertSeqs.concat([seq])
+        return ""
     }
 
     // What a finished alarm write does to the overlay. A write that failed
@@ -295,30 +326,31 @@ QtObject {
     // newest state of that alarm because a later change replaced the entry.
     // A row that is gone (CHANGES 0) only drops the entry, quietly.
     function _alarmWriteEnded(kind, args, exitCode, stdout, stderr) {
+        root._alarmDoneSeq = args.seq
+        var error = exitCode !== 0 ? root._log(Db.errorText(stderr.text, exitCode)) : ""
+        if (error !== "" && args.caller) root.alarmWriteFailed(kind, args.record, error, args.caller)
         if (kind === "insertAlarm") {
-            if (exitCode !== 0) {
-                root._failWrite(kind, args, Db.errorText(stderr.text, exitCode), false)
+            if (error !== "") {
+                root._insertSeqs = root._insertSeqs.filter(function(seq) { return seq !== args.seq })
                 return
             }
-            root.alarmAdded(Db.parseId(stdout.text))
+            root.alarmAdded(Db.parseId(stdout.text), args.caller)
             reloadDebounce.restart()
             return
         }
         var entry = root._alarmPending[args.id]
         var current = !!entry && entry.seq === args.seq
-        root._alarmDoneSeq = args.seq
-        if (exitCode !== 0) {
+        if (error !== "") {
             if (current) {
                 entry.retry = true
                 alarmRetry.start()
             }
-            root.fail(Db.errorText(stderr.text, exitCode))
             return
         }
         alarmRetry.interval = 500
         if (!Db.parseFound(stdout.text)) {
             if (current) delete root._alarmPending[args.id]
-            root.fail("alarm not found", true)
+            root._log("alarm not found")
         }
         reloadDebounce.restart()
     }
@@ -330,7 +362,7 @@ QtObject {
             interval = Math.min(interval * 2, 30000)
             var pending = root._alarmPending
             for (var id in pending) {
-                if (pending[id].retry && root._pendAlarm(Number(id), pending[id].record) !== "") restart()
+                if (pending[id].retry && root._pendAlarm(Number(id), pending[id].record, null) !== "") restart()
             }
         }
     }

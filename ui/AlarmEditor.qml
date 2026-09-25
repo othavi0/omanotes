@@ -31,7 +31,8 @@ ColumnLayout {
     property string _base: ""
 
     readonly property string _current: JSON.stringify([root.timeText, root.labelText, root.days, root.snoozeText, root.ringText])
-    readonly property bool dirty: root.editingId >= 0 && root._current !== root._base
+    readonly property bool changed: root._current !== root._base
+    readonly property bool dirty: root.editingId >= 0 && root.changed
     readonly property bool unsaved: root.draft || root.dirty
     readonly property bool fieldFocused: timeField.inputFocused || labelField.activeFocus || snoozeField.activeFocus || ringField.activeFocus
     readonly property var fields: Alarm.parseFields({ time: root.timeText, label: root.labelText, days: root.days,
@@ -42,7 +43,6 @@ ColumnLayout {
             : Alarm.withPatch(root.alarm, Alarm.editPatch(root.alarm, root.fields, root.nowMs)), root.nowMs)
         : 0
 
-    signal edited()
     signal newRequested()
     signal deleteClicked()
     signal saveRequested()
@@ -75,7 +75,6 @@ ColumnLayout {
         if (at >= 0) list.splice(at, 1)
         else list.push(day)
         root.days = Alarm.normalizeDays(list)
-        root.edited()
     }
 
     spacing: Style.spacing.lg

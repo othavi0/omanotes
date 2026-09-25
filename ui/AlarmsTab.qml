@@ -90,20 +90,26 @@ FocusScope {
         var fields = editor.fields
         if (!fields) return
         editor.markSaved()
-        var error = root.service.updateAlarm(alarm.id, fields)
+        var error = root.service.updateAlarm(alarm.id, fields, root)
         if (error !== "" && root.toast) root.toast.show("Error: " + error, true)
         else if (!timeKept && root.toast) root.toast.show("Saved — " + (fields.label !== "" ? fields.label : editor.timeText))
     }
 
+    // A refused add keeps the draft open, like a failed one (ADR-0007).
     function commitEditor(returnFocus) {
-        if (root.draftNeedsTime) {
-            if (root.toast) root.toast.show("New alarm needs a time like 07:30")
-        } else if (root.draftNew) {
-            var fields = editor.fields
+        if (root.draftNew && !editor.changed) {
             root.draftNew = false
             root.refillEditor()
-            var error = root.service.addAlarm(fields)
-            if (error !== "" && root.toast) root.toast.show("Error: " + error, true)
+        } else if (root.draftNeedsTime) {
+            if (root.toast) root.toast.show("New alarm needs a time like 07:30")
+        } else if (root.draftNew) {
+            var error = root.service.addAlarm(editor.fields, root)
+            if (error === "") {
+                root.draftNew = false
+                root.refillEditor()
+            } else if (root.toast) {
+                root.toast.show("Error: " + error, true)
+            }
         } else {
             root.saveEdit()
         }
@@ -124,11 +130,18 @@ FocusScope {
         if (!root.service || !root.selectedAlarm) return
         if (confirm.press(root.selectedId)) {
             var alarm = root.selectedAlarm
+            // Read before the removal lays itself over the list.
+            var name = alarm.label !== "" ? alarm.label : Alarms.timeText(alarm.hour, alarm.minute)
+            var next = ItemJs.neighbourId(root.alarmList, alarm.id)
             editor.openAlarm(null)
-            var error = root.service.removeAlarm(alarm.id)
-            if (error !== "") { if (root.toast) root.toast.show("Error: " + error, true); return }
-            if (root.toast) root.toast.show("Deleted — " + (alarm.label !== "" ? alarm.label : editor.timeText))
-            root.selectedId = ItemJs.neighbourId(root.alarmList, alarm.id)
+            var error = root.service.removeAlarm(alarm.id, root)
+            if (error !== "") {
+                root.refillEditor()
+                if (root.toast) root.toast.show("Error: " + error, true)
+                return
+            }
+            if (root.toast) root.toast.show("Deleted — " + name)
+            root.selectedId = next
         } else if (root.toast) {
             root.toast.show("Delete again to confirm")
         }
@@ -136,7 +149,7 @@ FocusScope {
 
     function toggleAlarm(id) {
         if (!root.service) return
-        var error = root.service.toggleAlarm(id)
+        var error = root.service.toggleAlarm(id, root)
         if (error !== "" && root.toast) root.toast.show("Error: " + error, true)
     }
 
@@ -239,7 +252,6 @@ FocusScope {
             deleteArmed: root.deleteArmed
             nowMs: root.nowMs
             foreground: root.foreground
-            onEdited: if (!root.draftNew) root.commitIfDirty()
             onNewRequested: root.startNew()
             onDeleteClicked: root.armDelete()
             onSaveRequested: root.commitEditor(true)
@@ -263,17 +275,18 @@ FocusScope {
 
     Connections {
         target: root.service
-        function onAlarmAdded(id) {
+        function onAlarmAdded(id, caller) {
+            if (caller !== root) return
             root._selectAfterReload = Number(id)
             if (root.toast) root.toast.show("Added alarm")
         }
-        function onInsertFailed(record) {
+        function onWriteFailed(kind, record, message, caller) {
+            if (caller !== root) return
+            if (root.toast) root.toast.show("Error: " + String(message || "unknown"), true)
+            if (kind !== "insertAlarm") return
             confirm.cancel()
             root.draftNew = true
             editor.reopenDraft(record)
-        }
-        function onFailed(message) {
-            if (root.toast) root.toast.show("Error: " + String(message || "unknown"), true)
         }
     }
 

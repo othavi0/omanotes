@@ -25,7 +25,7 @@ real_sqlite3="$(command -v sqlite3)"
 mkdir "$cfg_dir/bin"
 # Every call is logged. UPDATEs of alarms wait while hold-writes exists, a
 # read of alarms runs at once but prints only once hold-reads is gone, and an
-# INSERT fails while fail-insert exists.
+# INSERT waits while hold-inserts exists and fails while fail-insert exists.
 cat > "$cfg_dir/bin/sqlite3" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$cfg_dir/sqlite3.log"
@@ -33,7 +33,10 @@ if [[ "\$*" == *"UPDATE alarms"* ]]; then
   for _ in \$(seq 400); do [[ -e "$cfg_dir/hold-writes" ]] || break; sleep 0.05; done
   if [[ -e "$cfg_dir/fail-writes" ]]; then echo "Error: disk I/O error" >&2; exit 10; fi
 fi
-if [[ "\$*" == *"INSERT INTO alarms"* && -e "$cfg_dir/fail-insert" ]]; then echo "Error: disk I/O error" >&2; exit 10; fi
+if [[ "\$*" == *"INSERT INTO alarms"* ]]; then
+  for _ in \$(seq 400); do [[ -e "$cfg_dir/hold-inserts" ]] || break; sleep 0.05; done
+  if [[ -e "$cfg_dir/fail-insert" ]]; then echo "Error: disk I/O error" >&2; exit 10; fi
+fi
 if [[ "\$*" == *"FROM alarms ORDER BY"* && -e "$cfg_dir/hold-reads" ]]; then
   out="\$("$real_sqlite3" "\$@" 2>&1)"
   code=\$?
@@ -137,11 +140,14 @@ ShellRoot {
   function chip(n) {
     return sr.find(monitors.instances[n - 1].widget, "WidgetButton")[0]
   }
-  function alarmsTab() {
-    return sr.find(monitors.instances[0].widget.panelItem, "AlarmsTab")[0]
+  function alarmsTab(n) {
+    return sr.find(monitors.instances[(n || 1) - 1].widget.panelItem, "AlarmsTab")[0]
   }
-  function editorState() {
-    var tab = sr.alarmsTab()
+  function editor() {
+    return sr.find(sr.alarmsTab(), "AlarmEditor")[0]
+  }
+  function editorState(n) {
+    var tab = sr.alarmsTab(n)
     var editor = sr.find(tab, "AlarmEditor")[0]
     var del = sr.find(editor, "ActionButton").filter(function(b) { return b.visible && (b.text === "Delete" || b.text === "Confirm") })
     return tab.selectedId + "|draft:" + tab.draftNew + "|" + editor.timeText + "|" + (del.length ? del[0].text : "-") + "|toast:" + tab.toast.text
@@ -167,6 +173,14 @@ ShellRoot {
       return sr.chips() + " open=" + monitors.instances[n - 1].widget.opened
     }
     function closePanel(n: int): void { monitors.instances[n - 1].widget.close() }
+    function openPanel(n: int): string { monitors.instances[n - 1].widget.open(); return "open=" + monitors.instances[n - 1].widget.opened }
+    function setTab(n: int, tab: string): string {
+      monitors.instances[n - 1].widget.panelItem.activeTab = Tabs[tab]
+      return sr.editorState(n)
+    }
+    function tabState(n: int): string { return sr.editorState(n) }
+    function clearToastOf(n: int): void { sr.alarmsTab(n).toast.text = "" }
+    function toggleDay(day: int): string { sr.editor().toggleDay(day); return sr.editorState(1) + "|dirty:" + sr.editor().dirty }
     function itemsState(): string {
       var w = monitors.instances[0].widget
       var itemsTab = sr.find(w.panelItem, "ItemsTab")[0]
@@ -178,23 +192,23 @@ ShellRoot {
       w.panelItem.activeTab = Tabs.alarms
       return sr.alarmsTab() ? "ok" : "no AlarmsTab"
     }
-    function startNew(): string { sr.alarmsTab().startNew(); return sr.editorState() }
+    function startNew(): string { sr.alarmsTab().startNew(); return sr.editorState(1) }
     function setEditor(time: string, label: string, days: string, snooze: string, ring: string): string {
-      var editor = sr.find(sr.alarmsTab(), "AlarmEditor")[0]
+      var editor = sr.editor()
       editor.timeText = time
       editor.labelText = label
       editor.days = days === "" ? [] : days.split(",").map(Number)
       editor.snoozeText = snooze
       editor.ringText = ring
-      return sr.editorState()
+      return sr.editorState(1)
     }
-    function leave(): string { sr.alarmsTab().commitIfDirty(); return sr.editorState() }
-    function pickAlarm(id: int): string { sr.alarmsTab().pickAlarm(id); return sr.editorState() }
-    function toggleRow(id: int): string { sr.alarmsTab().toggleAlarm(id); return sr.editorState() }
-    function pressDelete(): string { sr.alarmsTab().armDelete(); return sr.editorState() }
-    function discard(): string { sr.alarmsTab().discardEditor(); return sr.editorState() }
+    function leave(): string { sr.alarmsTab().commitIfDirty(); return sr.editorState(1) }
+    function pickAlarm(id: int): string { sr.alarmsTab().pickAlarm(id); return sr.editorState(1) }
+    function toggleRow(id: int): string { sr.alarmsTab().toggleAlarm(id); return sr.editorState(1) }
+    function pressDelete(): string { sr.alarmsTab().armDelete(); return sr.editorState(1) }
+    function discard(): string { sr.alarmsTab().discardEditor(); return sr.editorState(1) }
     function clearToast(): void { sr.alarmsTab().toast.text = "" }
-    function editorState(): string { return sr.editorState() }
+    function editorState(): string { return sr.editorState(1) }
     function click(n: int, label: string): string {
       var win = sr.cards[n - 1]
       if (!win) return "no card " + n
@@ -213,6 +227,8 @@ ShellRoot {
 }
 QML
 
+# The service's first read is held, so the tab can be tried before it loads.
+touch "$cfg_dir/hold-reads"
 PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$worktree" SOUND="$sound_file" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
 trap 'kill "$qs_pid" 2> /dev/null || true; wait "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
@@ -267,8 +283,27 @@ sound_is() {
   fail "$what: want $starts starts and $ends ends, got $got"
 }
 alarm_reads() { grep -c "FROM alarms ORDER BY" "$cfg_dir/sqlite3.log" || true; }
+state_editor() {
+  local what="$1" want="$2" n="${3:-1}" got=""
+  for _ in $(seq 50); do
+    got="$(ipc tabState "$n")"
+    [[ "$got" == "$want" ]] && { pass "$what"; return; }
+    sleep 0.2
+  done
+  fail "$what: want '$want', got '$got'"
+}
 
+replies "the service is not loaded while its first read is held" "$(ipc state | grep -o '"loaded":[a-z]*')" '"loaded":false'
+replies "the panel of widget 1 opens on the Alarms tab" "$(ipc openAlarms)" "ok"
+ipc startNew > /dev/null
+ipc setEditor "06:45" "Early" "" "9" "5" > /dev/null
+ipc closePanel 1
+replies "closing the panel before the service loads keeps the draft and says why" \
+  "$(ipc tabState 1)" "-1|draft:true|06:45|-|toast:Error: not ready"
+rm "$cfg_dir/hold-reads"
 state_has "the service loads the seeded alarms" '"loaded":true,"alarms":4'
+ipc discard > /dev/null
+ipc clearToast
 # Before the first tick nowMs is 0, so the next alarm sits on another day.
 replies "nothing rings and no card is up before the first tick" \
   "$(ipc state)" '{"loaded":true,"alarms":4,"ringing":[],"cards":0,"soundBroken":false,"title":"","bar":"'"$today_name"' 06:00","snooze":false,"on":3}'
@@ -374,43 +409,71 @@ sleep 1
 replies "the ticks left the Items rows, the History count and the Items toast alone" \
   "$(ipc itemsState)" "$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT COUNT(*) FROM items")|$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT COUNT(*) FROM history")|toast:"
 
-# The Alarms tab of widget 1, from "+ Alarm" to Delete, writes through the service.
-replies "the panel of widget 1 opens on the Alarms tab" "$(ipc openAlarms)" "ok"
-contains "+ Alarm opens a draft" "$(ipc startNew)" "|draft:true||-|toast:"
-ipc setEditor "06:45" "Gym" "1,2,3,4,5" "10" "2" > /dev/null
-contains "leaving the draft commits it" "$(ipc leave)" "|draft:false|"
-expect "the new alarm reaches the database with every field" \
-  "SELECT hour || '|' || minute || '|' || label || '|' || days || '|' || enabled || '|' || snooze_minutes || '|' || ring_minutes FROM alarms WHERE label = 'Gym'" \
-  "6|45|Gym|62|1|10|2"
-gym="$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT id FROM alarms WHERE label = 'Gym'")"
-state_editor() {
-  local what="$1" want="$2" got=""
+# The Alarms tab of widget 1, from "+ Alarm" to Delete, writes through the
+# service. Widgets 2 and 3 share the service and must not answer for it.
+disk_error="toast:Error: disk I/O error"
+sql() { sqlite3 -cmd ".timeout 5000" "$db" "$1"; }
+tab_is() {
+  local what="$1" n="$2" fields="$3" want="$4" got=""
   for _ in $(seq 50); do
-    got="$(ipc editorState)"
+    got="$(ipc tabState "$n" | cut -d'|' -f"$fields")"
     [[ "$got" == "$want" ]] && { pass "$what"; return; }
     sleep 0.2
   done
   fail "$what: want '$want', got '$got'"
 }
+updates() { grep -c "UPDATE alarms SET" "$cfg_dir/sqlite3.log" || true; }
+
+replies "the panel of widget 1 opens on the Alarms tab" "$(ipc openAlarms)" "ok"
+contains "+ Alarm opens a draft" "$(ipc startNew)" "|draft:true||-|toast:"
+ipc closePanel 1
+replies "closing the panel drops a draft nobody touched, without a warning" "$(ipc tabState 1 | cut -d'|' -f2,5)" "draft:false|toast:"
+replies "the panel of widget 1 opens on the Alarms tab again" "$(ipc openAlarms)" "ok"
+contains "+ Alarm opens a draft again" "$(ipc startNew)" "|draft:true||-|toast:"
+ipc setEditor "06:45" "Gym" "1,2,3,4,5" "10" "2" > /dev/null
+for n in 1 2 3; do ipc clearToastOf "$n"; done
+ipc closePanel 1
+expect "closing the panel commits the draft with every field" \
+  "SELECT hour || '|' || minute || '|' || label || '|' || days || '|' || enabled || '|' || snooze_minutes || '|' || ring_minutes FROM alarms WHERE label = 'Gym'" \
+  "6|45|Gym|62|1|10|2"
+gym="$(sql "SELECT id FROM alarms WHERE label = 'Gym'")"
 state_editor "the new alarm is selected once the insert lands" "$gym|draft:false|06:45|Delete|toast:Added alarm"
+for n in 2 3; do
+  replies "widget $n keeps its selection and shows no toast for the add" "$(ipc tabState "$n" | cut -d'|' -f1,2,5)" "2|draft:false|toast:"
+done
+replies "the panel of widget 1 opens on the Alarms tab with the new alarm" "$(ipc openAlarms)" "ok"
 ipc toggleRow "$gym" > /dev/null
 expect "the row switch turns the alarm off" "SELECT enabled || ':' || snoozed_until_ms FROM alarms WHERE id = $gym" "0:0"
 ipc toggleRow "$gym" > /dev/null
 expect "and back on, armed at the last tick" "SELECT enabled || ':' || armed_at_ms FROM alarms WHERE id = $gym" "1:$(ms "$day 09:30")"
-# A save that fails is shown at once, kept, and retried until it lands.
+# A save that fails is shown at once, kept, and retried until it lands. Only
+# the widget that made it says so, and only once.
 touch "$cfg_dir/fail-writes"
 on_before="$(ipc state | grep -o '"on":[0-9]*')"
+for n in 1 2 3; do ipc clearToastOf "$n"; done
 ipc toggleRow "$gym" > /dev/null
 replies "a switch whose write fails still shows off at once" "$(ipc state | grep -o '"on":[0-9]*')" "\"on\":$(( ${on_before#*:} - 1 ))"
+tab_is "the widget that flipped it shows the failure" 1 5 "$disk_error"
+ipc clearToast
 sleep 1.2
-replies "while the row on disk is still on" "$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT enabled FROM alarms WHERE id = $gym")" "1"
+replies "while the row on disk is still on" "$(sql "SELECT enabled FROM alarms WHERE id = $gym")" "1"
+replies "the retries of that write show no toast" "$(ipc tabState 1 | cut -d'|' -f5)" "toast:"
+for n in 2 3; do
+  replies "widget $n shows nothing of the failed switch" "$(ipc tabState "$n" | cut -d'|' -f5)" "toast:"
+done
 rm "$cfg_dir/fail-writes"
 expect "and the retry lands once the write can" "SELECT enabled FROM alarms WHERE id = $gym" "0"
 ipc toggleRow "$gym" > /dev/null
 expect "the next switch lands at once" "SELECT enabled FROM alarms WHERE id = $gym" "1"
+sleep 0.3
+updates_before="$(updates)"
+contains "a repeat chip on a saved alarm leaves it unsaved" "$(ipc toggleDay 6)" "|dirty:true"
+sleep 0.5
+replies "and writes nothing until the editor is left" "$(updates)" "$updates_before"
 ipc setEditor "06:50" "Gym" "1,2,3,4,5" "10" "2" > /dev/null
-contains "editing the time saves it" "$(ipc leave)" "$gym|draft:false|06:50|Delete|"
+replies "switching to the Items tab saves the edit" "$(ipc setTab 1 items | cut -d'|' -f1-3)" "$gym|draft:false|06:50"
 expect "a changed time re-arms the alarm and switches it on" "SELECT hour || ':' || minute || ':' || enabled FROM alarms WHERE id = $gym" "6:50:1"
+ipc setTab 1 alarms > /dev/null
 ipc clearToast
 ipc setEditor "06:50" "Gym at the club" "1,2,3,4,5" "10" "2" > /dev/null
 contains "editing the label saves it with a toast" "$(ipc leave)" "|toast:Saved — Gym at the club"
@@ -420,23 +483,62 @@ contains "an emptied time keeps the saved one" "$(ipc leave)" "|06:50|Delete|toa
 contains "the first Delete arms" "$(ipc pressDelete)" "|Confirm|toast:Delete again to confirm"
 ipc pressDelete > /dev/null
 expect "the second Delete removes the alarm" "SELECT COUNT(*) FROM alarms WHERE id = $gym" "0"
+sql "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES (9, 7, 45, '', 0, 0, $yesterday)"
+state_has "the service picks up an unlabeled alarm" '"alarms":8'
+ipc pickAlarm 9 > /dev/null
+ipc pressDelete > /dev/null
+replies "deleting an unlabeled alarm in the middle names its time and selects the next row" \
+  "$(ipc pressDelete)" "5|draft:false|08:30|Delete|toast:Deleted — 07:45"
+expect "and removes it" "SELECT COUNT(*) FROM alarms WHERE id = 9" "0"
 ipc clearToast
 ipc startNew > /dev/null
 ipc setEditor "25:00" "Late" "" "9" "5" > /dev/null
 contains "a draft without a readable time stays open with the warning" "$(ipc leave)" "|draft:true|25:00|-|toast:New alarm needs a time like 07:30"
 ipc discard > /dev/null
-ipc clearToast
+for n in 1 2 3; do ipc clearToastOf "$n"; done
 touch "$cfg_dir/fail-insert"
 ipc startNew > /dev/null
 ipc setEditor "06:55" "Failing" "" "9" "5" > /dev/null
 ipc leave > /dev/null
-state_editor "a failed insert shows the error and gives the draft back" "$(ipc editorState | cut -d'|' -f1)|draft:true|06:55|-|toast:Error: disk I/O error"
+state_editor "a failed insert shows the error and gives the draft back" "$(ipc editorState | cut -d'|' -f1)|draft:true|06:55|-|$disk_error"
+for n in 2 3; do
+  replies "widget $n gets neither the draft nor the error of that insert" "$(ipc tabState "$n" | cut -d'|' -f2,5)" "draft:false|toast:"
+done
 rm "$cfg_dir/fail-insert"
+# Opening widget 2 takes focus from widget 1's draft, and that blur may
+# commit it, so widget 2's close is judged by the absence of a second copy.
+replies "the panel of widget 2 opens" "$(ipc openPanel 2)" "open=true"
+ipc closePanel 2
+sleep 1
+replies "closing the panel of widget 2 adds no copy of widget 1's draft" \
+  "$(( $(sql "SELECT COUNT(*) FROM alarms WHERE label = 'Failing'") <= 1 ))" "1"
 ipc clearToast
-ipc leave > /dev/null
-expect "leaving the draft again saves it" "SELECT COUNT(*) FROM alarms WHERE label = 'Failing'" "1"
 ipc closePanel 1
-replies "the alarm edits wrote no history row" "$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT COUNT(*) FROM history")" "5"
+expect "closing the panel of widget 1 leaves its draft saved once" "SELECT COUNT(*) FROM alarms WHERE label = 'Failing'" "1"
+replies "the alarm edits wrote no history row" "$(sql "SELECT COUNT(*) FROM history")" "5"
+
+# The limit counts an insert still in flight, and a refused draft stays open.
+filler=$(( 49 - $(sql "SELECT COUNT(*) FROM alarms") ))
+sql "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < $filler)
+  INSERT INTO alarms (hour, minute, label, days, enabled, armed_at_ms) SELECT 23, 0, 'Filler', 0, 0, $yesterday FROM n"
+state_has "the service picks up 49 alarms" '"alarms":49'
+replies "the panel of widget 1 opens on the Alarms tab for the limit" "$(ipc openAlarms)" "ok"
+touch "$cfg_dir/hold-inserts"
+ipc startNew > /dev/null
+ipc setEditor "05:00" "Fiftieth" "" "9" "5" > /dev/null
+contains "the fiftieth alarm is sent" "$(ipc leave)" "|draft:false|"
+ipc startNew > /dev/null
+ipc setEditor "05:01" "Fifty-first" "" "9" "5" > /dev/null
+replies "a draft past the limit, with the fiftieth still in flight, stays open and says why" \
+  "$(ipc leave | cut -d'|' -f2,3,5)" "draft:true|05:01|toast:Error: 50 alarms is the limit"
+rm "$cfg_dir/hold-inserts"
+state_has "the fiftieth lands" '"alarms":50'
+ipc clearToast
+replies "at the limit a draft left again still stays open" \
+  "$(ipc leave | cut -d'|' -f2,3,5)" "draft:true|05:01|toast:Error: 50 alarms is the limit"
+ipc discard > /dev/null
+ipc closePanel 1
+replies "the database holds exactly 50 alarms" "$(sql "SELECT COUNT(*) FROM alarms")" "50"
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
