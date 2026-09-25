@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Loads one BarWidget per monitor, as the bar does, against a missing database
 # file, with the first migration failing as a locked database does. Asserts
-# that the IPC refuses calls until the database is ready, that list and toggle
-# keep refusing until the first read of every item lands, that every widget
-# runs one Db that its panel shares, that every Db ends ready at the current
-# schema version while the widgets race to migrate, and that one write reloads
-# each Db once.
+# that the IPC refuses calls until the database is ready, that list, toggle and
+# remove keep refusing until the first read of every item lands, that every
+# widget runs one Db that its panel shares, that every Db ends ready at the
+# current schema version while the widgets race to migrate, and that one write
+# reloads each Db once.
 
 set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
@@ -87,7 +87,7 @@ ShellRoot {
     }
     function readCalls(): string {
       var w = monitors.instances[0].widget
-      return [w.ipcToggle(1), w.ipcList("note"), w.ipcList("todo")].join(" ")
+      return [w.ipcToggle(1), w.ipcRemove(1), w.ipcList("note"), w.ipcList("todo")].join(" ")
     }
     function quit(): void { Qt.exit(0) }
   }
@@ -130,8 +130,8 @@ for _ in $(seq 50); do
   sleep 0.2
 done
 replies "each widget runs one Db, shared with its panel and ready" "$state" "$want"
-replies "list and toggle answer not ready until the items are read" "$(ipc readCalls)" \
-  "$refused $refused $refused"
+replies "list, toggle and remove answer not ready until the items are read" "$(ipc readCalls)" \
+  "$refused $refused $refused $refused"
 touch "$cfg_dir/items-release"
 reads=""
 for _ in $(seq 50); do
@@ -139,8 +139,8 @@ for _ in $(seq 50); do
   [[ "$reads" != "$refused"* ]] && break
   sleep 0.2
 done
-replies "list and toggle answer from the items once read" "$reads" \
-  '{"ok":false,"error":"item not found: 1"} [] []'
+replies "list, toggle and remove answer from the items once read" "$reads" \
+  '{"ok":false,"error":"item not found: 1"} {"ok":false,"error":"item not found: 1"} [] []'
 
 [[ -d "$cfg_dir/init-failed" ]] && pass "the first migration failed" || fail "the first migration failed"
 replies "each widget migrated from version 0 once, the one that lost the race included" \

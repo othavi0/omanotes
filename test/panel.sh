@@ -129,6 +129,10 @@ replies "addNote answers ok" "$(ipc scratchpad addNote "IPC-NOTE" "ipc body")" '
 expect "addNote writes the note" \
   "SELECT type || '|' || body || '|' || status FROM items WHERE title = 'IPC-NOTE'" "note|ipc body|0"
 replies "addNote with an empty title is refused" "$(ipc scratchpad addNote "  " "")" '{"ok":false,"error":"title is required"}'
+replies "addTodo answers ok" "$(ipc scratchpad addTodo "IPC-TODO" "todo body")" '{"ok":true}'
+expect "addTodo writes the todo" \
+  "SELECT type || '|' || body || '|' || status FROM items WHERE title = 'IPC-TODO'" "todo|todo body|0"
+replies "addTodo with an empty title is refused" "$(ipc scratchpad addTodo "" "")" '{"ok":false,"error":"title is required"}'
 
 note_id="$(sqlite3 "$db" "SELECT id FROM items WHERE title = 'IPC-NOTE'")"
 # listNotes answers from the widget's cache, which catches up on the reload after the write.
@@ -149,8 +153,8 @@ for _ in $(seq 50); do
     "$(ipc scratchpad listTodos)" && break
   sleep 0.2
 done
-replies "toggleTodo again answers ok" "$(ipc scratchpad toggleTodo 2)" '{"ok":true}'
-expect "toggleTodo again reopens the completed todo" "SELECT status FROM items WHERE id = 2" "0"
+replies "toggleStatus answers ok for a todo" "$(ipc scratchpad toggleStatus 2)" '{"ok":true}'
+expect "toggleStatus reopens the completed todo" "SELECT status FROM items WHERE id = 2" "0"
 expect "the reopen is logged in history" \
   "SELECT COUNT(*) FROM history WHERE action = 'reopened' AND title = 'Renew the domain'" "1"
 replies "toggleTodo on a missing id is refused" "$(ipc scratchpad toggleTodo 999)" '{"ok":false,"error":"item not found: 999"}'
@@ -202,7 +206,7 @@ replies "remove on a missing id is refused" "$(ipc scratchpad remove 999)" '{"ok
 
 replies "clearHistory answers ok" "$(ipc scratchpad clearHistory)" '{"ok":true}'
 expect "clearHistory empties history" "SELECT COUNT(*) FROM history" "0"
-expect "clearHistory keeps the items" "SELECT COUNT(*) FROM items" "6"
+expect "clearHistory keeps the items" "SELECT COUNT(*) FROM items" "7"
 
 # A script writing while the user edits in the open panel must not move the
 # selection, commit the half-typed title or raise the panel's toasts.
@@ -210,7 +214,7 @@ ipc scratchpad open > /dev/null
 rows=""
 for _ in $(seq 50); do
   rows="$(ipc omanotes-test panelRows)"
-  [[ "$rows" == "6" ]] && break
+  [[ "$rows" == "7" ]] && break
   sleep 0.2
 done
 # Panel.qml refills the editor 120 ms after opening (focusPrimeTimer).
@@ -222,10 +226,10 @@ ipc scratchpad addNote "FROM-SCRIPT" "" > /dev/null
 # Writes run in order, so the reload that shows the last one follows them all.
 for _ in $(seq 50); do
   rows="$(ipc omanotes-test panelRows)"
-  [[ "$rows" == "7" ]] && break
+  [[ "$rows" == "8" ]] && break
   sleep 0.2
 done
-replies "the panel lists the script's note" "$rows" "7"
+replies "the panel lists the script's note" "$rows" "8"
 replies "script writes leave the selection, the editor and the toast alone" \
   "$(ipc omanotes-test editorState)" "2|Renew the domain HALF-TYPED|toast:"
 # A write queued behind any commit the panel made lands after it.
