@@ -39,6 +39,7 @@ Item {
 
     property int _selectAfterReload: -1
     property int _quietSaveId: -1
+    property var _failedWrites: []
 
     readonly property bool draftNeedsTitle: root.draftNew && root.editorTitle.trim() === "" && root.editorBody.trim() !== ""
     readonly property bool editorFocused: editorPane.titleFocused || editorPane.bodyFocused
@@ -124,7 +125,7 @@ Item {
 
     // Called by Panel.qml when the panel opens or this tab is re-shown.
     function resetFocus() {
-        if (!root.draftNew) root.refillEditor()
+        if (!editorPane.unsaved) root.refillEditor()
         root.focusList()
     }
 
@@ -192,10 +193,7 @@ Item {
             var body = String(editorPane.bodyText || "")
             root.draftNew = false
             root.refillEditor()
-            if (title !== "") {
-                root.db.add(root.draftType, title, body)
-                if (root.toast) root.toast.show("Added " + root.draftType + " — " + title)
-            }
+            if (title !== "") root.db.add(root.draftType, title, body)
         } else {
             root.saveEdit()
         }
@@ -206,6 +204,40 @@ Item {
         root.draftNew = false
         root.refillEditor()
         root.focusList()
+    }
+
+    // Failed writes come back one at a time: each waits until the editor holds
+    // no other unsaved text, and an edit also waits for its item to be listed.
+    function restoreFailed() {
+        while (root._failedWrites.length > 0 && !editorPane.unsaved) {
+            var w = root._failedWrites[0]
+            var idx = ItemJs.indexOfId(root.itemList, w.args.id)
+            if (w.kind === "update" && idx < 0 && !root.isRemoved(w.args.id)) { root.showAll(); return }
+            root._failedWrites.shift()
+            if (w.kind === "add") {
+                confirm.cancel()
+                root.draftNew = true
+                root.draftType = w.args.type
+                editorPane.reopen(null, w.args.title, w.args.body)
+            } else if (idx >= 0) {
+                root.selectedId = w.args.id
+                editorPane.reopen(root.itemList[idx], w.args.title, w.args.body)
+            } else if (root.toast) {
+                root.toast.show("Item removed elsewhere")
+            }
+            if (pump.activeFocus) root.focusList()
+        }
+    }
+
+    function isRemoved(id) {
+        var filtered = root.db.listFilter !== "all" || root.db.listQuery.trim() !== ""
+        return ItemJs.isRemoved(id, root.itemList, filtered, root.db.allItemsLoaded ? root.db.allItems : null)
+    }
+
+    function showAll() {
+        searchField.text = ""
+        root.filterType = "all"
+        filterDebounce.restart()
     }
 
     function commitIfDirty() {
@@ -352,9 +384,7 @@ Item {
                         onNewNote: root.startNew("note")
                         onNewTodo: root.startNew("todo")
                         onClearSearch: {
-                            searchField.text = ""
-                            root.filterType = "all"
-                            filterDebounce.restart()
+                            root.showAll()
                             root.focusList()
                         }
                     }
@@ -386,6 +416,7 @@ Item {
                 onDeleteClicked: root.armDelete()
                 onSaveRequested: root.commitEditor(true)
                 onDiscardRequested: root.discardEditor()
+                onUnsavedChanged: if (!editorPane.unsaved) Qt.callLater(root.restoreFailed)
             }
 
             Item {
@@ -422,6 +453,12 @@ Item {
     function onItemsSynced() {
         if (root.draftNew) return
         var items = root.itemList
+        if (editorPane.editingId >= 0 && (editorPane.dirty || root.editorFocused)
+                && root.isRemoved(editorPane.editingId)) {
+            editorPane.openItem(null)
+            if (root.toast) root.toast.show("Item removed elsewhere")
+            root.focusList()
+        }
         if (root._selectAfterReload >= 0 && ItemJs.indexOfId(items, root._selectAfterReload) >= 0) {
             root.selectedId = root._selectAfterReload
             root._selectAfterReload = -1
@@ -439,8 +476,14 @@ Item {
 
     Connections {
         target: root.db
-        function onItemsUpdated() { root.onItemsSynced() }
-        function onAdded(id) { root._selectAfterReload = Number(id) }
+        function onItemsUpdated() {
+            root.onItemsSynced()
+            root.restoreFailed()
+        }
+        function onAdded(id, type, title) {
+            root._selectAfterReload = Number(id)
+            if (root.toast) root.toast.show("Added " + type + " — " + title)
+        }
         function onUpdated(id, title) {
             if (id === root._quietSaveId) { root._quietSaveId = -1; return }
             if (root.toast) root.toast.show("Saved — " + title)
@@ -459,6 +502,7 @@ Item {
             root.toast.show("Converted to " + newType + " — " + before.title)
         }
         function onItemDeleted(id) {
+            if (Number(id) === editorPane.editingId) editorPane.openItem(null)
             if (Number(id) !== root.selectedId) return
             if (root.toast) root.toast.show("Deleted")
             root.selectedId = ItemJs.neighbourId(root.itemList, id)
@@ -466,6 +510,13 @@ Item {
         // The one error toast for the panel: HistoryTab shares this Db.
         function onFailed(message) {
             if (root.toast) root.toast.show("Error: " + String(message || "unknown"), true)
+        }
+        function onWriteFailed(kind, args, message) {
+            if (kind !== "add" && kind !== "update") return
+            if (kind === "update" && args.id === root._quietSaveId) root._quietSaveId = -1
+            if (message === "item not found") return
+            root._failedWrites.push({ kind: kind, args: args })
+            root.restoreFailed()
         }
     }
 
