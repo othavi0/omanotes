@@ -37,6 +37,7 @@ cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
 import QtTest
 import Quickshell
+import "data" as Data
 
 ShellRoot {
   id: sr
@@ -258,9 +259,14 @@ ShellRoot {
     return ids
   }
 
+  Data.Db {
+    id: testDb
+    Component.onCompleted: testDb.init()
+  }
   Loader {
     source: Qt.resolvedUrl("Panel.qml")
     onLoaded: {
+      item.db = testDb
       var content = null
       for (var i = 0; i < item.data.length; ++i)
         if (String(item.data[i]).indexOf("KeyboardPanel") === 0) content = item.data[i].contentItem
