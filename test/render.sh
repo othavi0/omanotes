@@ -171,7 +171,9 @@ ShellRoot {
 QML
 
 echo "config dir: $cfg_dir"
-echo "output dir: $out_dir"
+if (( $# > 0 )); then
+  echo "output dir: $out_dir"
+fi
 SCENES=browse,draft,empty,history OUT_DIR="$out_dir" run_qs
 sqlite3 "$db" "DELETE FROM items; DELETE FROM history;"
 SCENES=blank OUT_DIR="$out_dir" run_qs

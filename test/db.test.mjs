@@ -1,6 +1,8 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { spawnSync } from "node:child_process"
+import { spawn as spawnAsync, spawnSync } from "node:child_process"
+import { once } from "node:events"
+import { setTimeout as sleep } from "node:timers/promises"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -93,7 +95,26 @@ test("initCommand creates the data dir and both tables, and is safe to rerun", (
   assert.deepEqual(tables.map((r) => r.name), ["history", "items"])
 })
 
-test("listSql: all items, pending first, then most recent", (t) => {
+test("sqliteCommand: a write waits for a lock held by another process", { timeout: 10000 }, async (t) => {
+  const db = seed(openDb(t))
+  const holder = spawnAsync("sqlite3", [db.path], { stdio: ["pipe", "ignore", "ignore"] })
+  t.after(() => holder.kill())
+  holder.stdin.write("BEGIN EXCLUSIVE;\n")
+  while (spawn(["sqlite3", db.path, "SELECT 1"]).status === 0) await sleep(10)
+
+  const [cmd, ...args] = Db.sqliteCommand(db.path, Db.deleteHistorySql(1), false)
+  const writer = spawnAsync(cmd, args, { stdio: ["ignore", "ignore", "pipe"] })
+  const exited = once(writer, "close")
+  let stderr = ""
+  writer.stderr.on("data", (chunk) => { stderr += chunk })
+  await sleep(300)
+  holder.stdin.end("COMMIT;\n")
+  const [status] = await exited
+  assert.equal(status, 0, stderr)
+  assert.deepEqual(ids(db.history()), [2, 3])
+})
+
+test("listSql: all items, status 0 (unread or pending) first, then most recent", (t) => {
   const db = seed(openDb(t))
   assert.deepEqual(ids(db.read(Db.listSql("all", ""))), [2, 1, 3, 5, 4])
 })
@@ -135,7 +156,7 @@ test("countsSql: empty database counts zero", (t) => {
   assert.deepEqual(Db.parseCounts(r.stdout), { unreadNotes: 0, inProgressTodos: 0, notes: 0, todos: 0 })
 })
 
-test("countsSql: pending per type plus totals per type", (t) => {
+test("countsSql: unread notes, pending todos and totals per type", (t) => {
   const db = seed(openDb(t))
   const r = db.run(Db.countsSql(), true)
   assert.deepEqual(Db.parseCounts(r.stdout), { unreadNotes: 1, inProgressTodos: 2, notes: 2, todos: 3 })
@@ -166,7 +187,7 @@ test("setStatusSql: completing a todo", (t) => {
   assert.deepEqual(db.history().at(-1), { id: 4, type: "todo", title: "Renew the domain", action: "completed", ts: T0 })
 })
 
-test("setStatusSql: reopening a done item", (t) => {
+test("setStatusSql: marking a read note unread logs it as reopened", (t) => {
   const db = seed(openDb(t))
   db.write(atT0(() => Db.setStatusSql(4, 0)))
   assert.equal(db.item(4).status, 0)
