@@ -241,7 +241,7 @@ ShellRoot {
       console.log("HISTORY-AFTER-ONE-CLEAR-CLICK " + (db._writeKind === "") + " " + button.text)
       // The checks after qs exits still read the log, so it is kept aside and
       // put back after c c, only if c c left the table empty.
-      db._write("test", "CREATE TABLE kept_history AS SELECT * FROM history", null)
+      db._write("test", function() { return "CREATE TABLE kept_history AS SELECT * FROM history" }, null)
       sr.click(button)
       db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
       db.setStatus(3, 1); db.setStatus(3, 0)
@@ -253,7 +253,7 @@ ShellRoot {
       var hints = sr.findType(historyTab, "HintBar").hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
       console.log("HISTORY-AFTER-ONE-C " + (db._writeKind === "") + " " + hints)
       sr.type("c")
-      db._write("test", "INSERT INTO history SELECT * FROM kept_history WHERE NOT EXISTS (SELECT 1 FROM history)", null)
+      db._write("test", function() { return "INSERT INTO history SELECT * FROM kept_history WHERE NOT EXISTS (SELECT 1 FROM history)" }, null)
 
       var shown = []
       var counting = { show: function(message) { shown.push(message) } }
