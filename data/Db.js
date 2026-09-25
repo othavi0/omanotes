@@ -234,6 +234,118 @@ function clearHistorySql() {
   return "DELETE FROM history"
 }
 
+// A whole number in [min, max], for interpolation into SQL text (ADR-0002),
+// as sqlId is for ids.
+function sqlInt(value, min, max) {
+  var n = Number(value)
+  if (typeof value === "boolean" || !/^-?\d+$/.test(String(value)) || n < min || n > max) {
+    throw new Error("invalid value: " + value)
+  }
+  return n
+}
+
+// A list of Date.getDay() indices <-> the days bitmask, bit 0 for Sunday.
+function daysMask(days) {
+  var mask = 0
+  var list = days || []
+  for (var i = 0; i < list.length; i++) {
+    var d = Number(list[i])
+    if (d >= 0 && d <= 6 && d === Math.round(d)) mask |= 1 << d
+  }
+  return mask
+}
+
+function maskDays(mask) {
+  var days = []
+  for (var d = 0; d <= 6; d++) if ((Number(mask) >> d) & 1) days.push(d)
+  return days
+}
+
+var ALARM_COLUMNS = "id, hour, minute, label, days, enabled, snooze_minutes, ring_minutes,"
+  + " snoozed_until_ms, last_fired_at_ms, armed_at_ms, auto_snoozes"
+
+// Every alarm in the Alarms tab's order: time of day, then id.
+function alarmsSql() {
+  return "SELECT " + ALARM_COLUMNS + " FROM alarms ORDER BY hour, minute, id"
+}
+
+// The mutable columns of an alarm as [column, value] pairs, checked before
+// any SQL exists. The CHECK constraints refuse the same ranges again.
+function alarmValues(record) {
+  var ms = Number.MAX_SAFE_INTEGER
+  return [
+    ["hour", sqlInt(record.hour, 0, 23)],
+    ["minute", sqlInt(record.minute, 0, 59)],
+    ["label", q(record.label || "")],
+    ["days", daysMask(record.days)],
+    ["enabled", record.enabled ? 1 : 0],
+    ["snooze_minutes", sqlInt(record.snoozeMinutes, 1, 180)],
+    ["ring_minutes", sqlInt(record.ringMinutes, 1, 60)],
+    ["snoozed_until_ms", sqlInt(record.snoozedUntil, 0, ms)],
+    ["last_fired_at_ms", sqlInt(record.lastFiredAt, 0, ms)],
+    ["armed_at_ms", sqlInt(record.armedAt, 0, ms)],
+    ["auto_snoozes", sqlInt(record.autoSnoozes, 0, 99)]
+  ]
+}
+
+// Insert a new alarm and print its id. No history row: alarms stay out of
+// History.
+function insertAlarmSql(record) {
+  var values = alarmValues(record)
+  return transaction([
+    "INSERT INTO alarms (" + values.map(function(v) { return v[0] }).join(", ") + ") VALUES ("
+      + values.map(function(v) { return v[1] }).join(", ") + ")",
+    "SELECT last_insert_rowid() AS id"
+  ])
+}
+
+// Write every mutable column of one alarm, then CHANGES. The record is
+// absolute, so sending it twice leaves the same row, which is what lets the
+// alarm store retry a failed write.
+function saveAlarmSql(record) {
+  var nid = sqlId(record.id)
+  var set = alarmValues(record).map(function(v) { return v[0] + " = " + v[1] })
+  return transaction(["UPDATE alarms SET " + set.join(", ") + " WHERE id = " + nid, CHANGES])
+}
+
+function deleteAlarmSql(id) {
+  return transaction(["DELETE FROM alarms WHERE id = " + sqlId(id), CHANGES])
+}
+
+// sqlite3 -json rows of alarmsSql -> Alarm records: numbers, a days list and
+// a boolean, with camelCase names.
+function parseAlarms(text) {
+  return parseRows(text).map(function(row) {
+    return {
+      id: Number(row.id),
+      hour: Number(row.hour),
+      minute: Number(row.minute),
+      label: String(row.label || ""),
+      days: maskDays(row.days),
+      enabled: Number(row.enabled) === 1,
+      snoozeMinutes: Number(row.snooze_minutes),
+      ringMinutes: Number(row.ring_minutes),
+      snoozedUntil: Number(row.snoozed_until_ms) || 0,
+      lastFiredAt: Number(row.last_fired_at_ms) || 0,
+      armedAt: Number(row.armed_at_ms) || 0,
+      autoSnoozes: Number(row.auto_snoozes) || 0
+    }
+  })
+}
+
+// The rows with each pending record laid over its row. A pending null drops
+// the row, and a pending record whose row is gone is not brought back. The
+// order is alarmsSql's order.
+function mergeAlarms(rows, pending) {
+  var out = []
+  for (var i = 0; i < rows.length; i++) {
+    var entry = pending ? pending[rows[i].id] : undefined
+    if (entry === undefined) out.push(rows[i])
+    else if (entry.record !== null) out.push(entry.record)
+  }
+  return out
+}
+
 // searchText(column) in SQL: each character through search_map, joined back
 // in order.
 function foldedSql(column) {
@@ -303,6 +415,25 @@ var MIGRATIONS = [
       + " WHERE items.id = shown.id",
     "DROP INDEX IF EXISTS idx_items_sort",
     "CREATE INDEX idx_items_order ON items(status, position)"
+  ],
+  // Alarms (ADR-0015). Instants are epoch ms (the _ms columns), unlike the
+  // seconds of items. days is a bitmask of Date.getDay() indices, bit 0 for
+  // Sunday, and 0 rings once. armed_at_ms defaults to the insert time, so a
+  // row written with sqlite3 does not ring an occurrence from before it existed.
+  [
+    "CREATE TABLE alarms ("
+      + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+      + " hour INTEGER NOT NULL CHECK (hour BETWEEN 0 AND 23),"
+      + " minute INTEGER NOT NULL CHECK (minute BETWEEN 0 AND 59),"
+      + " label TEXT NOT NULL DEFAULT '' CHECK (length(label) <= 40),"
+      + " days INTEGER NOT NULL DEFAULT 0 CHECK (days BETWEEN 0 AND 127),"
+      + " enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),"
+      + " snooze_minutes INTEGER NOT NULL DEFAULT 9 CHECK (snooze_minutes BETWEEN 1 AND 180),"
+      + " ring_minutes INTEGER NOT NULL DEFAULT 5 CHECK (ring_minutes BETWEEN 1 AND 60),"
+      + " snoozed_until_ms INTEGER NOT NULL DEFAULT 0,"
+      + " last_fired_at_ms INTEGER NOT NULL DEFAULT 0,"
+      + " armed_at_ms INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),"
+      + " auto_snoozes INTEGER NOT NULL DEFAULT 0 CHECK (auto_snoozes BETWEEN 0 AND 99))"
   ]
 ]
 
