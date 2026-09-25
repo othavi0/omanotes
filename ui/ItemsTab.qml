@@ -210,124 +210,118 @@ FocusScope {
         onTriggered: root.nowSeconds = Math.floor(Date.now() / 1000)
     }
 
-    ColumnLayout {
+    RowLayout {
         anchors.fill: parent
         spacing: Style.spacing.xxl
 
-        RowLayout {
-            Layout.fillWidth: true
+        ColumnLayout {
+            Layout.preferredWidth: Style.space(270)
+            Layout.minimumWidth: Style.space(270)
+            Layout.maximumWidth: Style.space(270)
             Layout.fillHeight: true
-            spacing: Style.spacing.xxl
+            spacing: Style.spacing.lg
 
-            ColumnLayout {
-                Layout.preferredWidth: Style.space(270)
-                Layout.minimumWidth: Style.space(270)
-                Layout.maximumWidth: Style.space(270)
-                Layout.fillHeight: true
-                spacing: Style.spacing.lg
-
-                SearchField {
-                    id: searchField
-                    Layout.fillWidth: true
-                    foreground: root.foreground
-                    activeFocusOnTab: false
-                    onTextChanged: filterDebounce.restart()
-                }
-
-                Segment {
-                    id: typeSegment
-                    Layout.fillWidth: true
-                    value: root.filterType
-                    foreground: root.foreground
-                    options: [
-                        { value: "all", label: "All", count: root.db ? (root.db.totalNotes + root.db.totalTodos) : 0 },
-                        { value: "note", label: "Notes", count: root.db ? root.db.totalNotes : 0 },
-                        { value: "todo", label: "Todos", count: root.db ? root.db.totalTodos : 0 }
-                    ]
-                    onPicked: function(v) { root.filterType = v; filterDebounce.restart() }
-                }
-
-                Item {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-
-                    ListView {
-                        id: listView
-                        anchors.fill: parent
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-                        keyNavigationEnabled: false
-                        spacing: Style.spacing.xxs
-                        model: root.itemList
-
-                        delegate: ItemRow {
-                            required property var modelData
-                            width: listView.width
-                            item: modelData
-                            selected: Number(modelData.id) === root.selectedId && !root.draftNew
-                            foreground: root.foreground
-                            nowSeconds: root.nowSeconds
-                            onPicked: root.pickItem(modelData.id)
-                            onToggled: {
-                                if (root.db) root.db.setStatus(modelData.id, ItemJs.isReadOrCompleted(modelData) ? 0 : 1)
-                            }
-                        }
-                    }
-
-                    EmptyState {
-                        anchors.centerIn: parent
-                        visible: listView.count === 0
-                        filtered: root._filtered
-                        foreground: root.foreground
-                        onNewNote: root.startNew("note")
-                        onNewTodo: root.startNew("todo")
-                        onClearSearch: {
-                            root.showAll()
-                            root.focusList()
-                        }
-                    }
-                }
-            }
-
-            PanelSeparator {
-                Layout.fillHeight: true
-                Layout.preferredWidth: 1
-                foreground: root.foreground
-            }
-
-            EditorPane {
-                id: editorPane
-                visible: !!root.selectedItem || root.draftNew
+            SearchField {
+                id: searchField
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                item: root.selectedItem
-                draft: root.draftNew
-                draftType: root.draftType
-                deleteArmed: root.deleteArmed
-                nowSeconds: root.nowSeconds
                 foreground: root.foreground
-                onConvertDraftRequested: function(type) { root.draftType = type }
-                onToggleRequested: root.toggleStatus()
-                onConvertRequested: root.convertSelected()
-                onCopyRequested: root.copySelected()
-                onDeleteClicked: root.armDelete()
-                onSaveRequested: root.commitEditor(true)
-                onDiscardRequested: root.discardEditor()
-                onUnsavedChanged: if (!editorPane.unsaved) Qt.callLater(root.restoreFailed)
+                activeFocusOnTab: false
+                onTextChanged: filterDebounce.restart()
+            }
+
+            Segment {
+                id: typeSegment
+                Layout.fillWidth: true
+                value: root.filterType
+                foreground: root.foreground
+                options: [
+                    { value: "all", label: "All", count: root.db ? (root.db.totalNotes + root.db.totalTodos) : 0 },
+                    { value: "note", label: "Notes", count: root.db ? root.db.totalNotes : 0 },
+                    { value: "todo", label: "Todos", count: root.db ? root.db.totalTodos : 0 }
+                ]
+                onPicked: function(v) { root.filterType = v; filterDebounce.restart() }
             }
 
             Item {
-                visible: !root.selectedItem && !root.draftNew
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                Text {
-                    anchors.centerIn: parent
-                    text: "Your note or todo opens here."
-                    color: Util.alpha(root.foreground, Tone.muted)
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.body
+                ListView {
+                    id: listView
+                    anchors.fill: parent
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    keyNavigationEnabled: false
+                    spacing: Style.spacing.xxs
+                    model: root.itemList
+
+                    delegate: ItemRow {
+                        required property var modelData
+                        width: listView.width
+                        item: modelData
+                        selected: Number(modelData.id) === root.selectedId && !root.draftNew
+                        foreground: root.foreground
+                        nowSeconds: root.nowSeconds
+                        onPicked: root.pickItem(modelData.id)
+                        onToggled: {
+                            if (root.db) root.db.setStatus(modelData.id, ItemJs.isReadOrCompleted(modelData) ? 0 : 1)
+                        }
+                    }
                 }
+
+                EmptyState {
+                    anchors.centerIn: parent
+                    visible: listView.count === 0
+                    filtered: root._filtered
+                    foreground: root.foreground
+                    onNewNote: root.startNew("note")
+                    onNewTodo: root.startNew("todo")
+                    onClearSearch: {
+                        root.showAll()
+                        root.focusList()
+                    }
+                }
+            }
+        }
+
+        PanelSeparator {
+            Layout.fillHeight: true
+            Layout.preferredWidth: 1
+            foreground: root.foreground
+        }
+
+        EditorPane {
+            id: editorPane
+            visible: !!root.selectedItem || root.draftNew
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            item: root.selectedItem
+            draft: root.draftNew
+            draftType: root.draftType
+            deleteArmed: root.deleteArmed
+            nowSeconds: root.nowSeconds
+            foreground: root.foreground
+            onConvertDraftRequested: function(type) { root.draftType = type }
+            onToggleRequested: root.toggleStatus()
+            onConvertRequested: root.convertSelected()
+            onCopyRequested: root.copySelected()
+            onDeleteClicked: root.armDelete()
+            onSaveRequested: root.commitEditor(true)
+            onDiscardRequested: root.discardEditor()
+            onUnsavedChanged: if (!editorPane.unsaved) Qt.callLater(root.restoreFailed)
+        }
+
+        Item {
+            visible: !root.selectedItem && !root.draftNew
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            Text {
+                anchors.centerIn: parent
+                text: "Your note or todo opens here."
+                color: Util.alpha(root.foreground, Tone.muted)
+                font.family: Style.font.family
+                font.pixelSize: Style.font.body
             }
         }
     }
