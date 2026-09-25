@@ -22,9 +22,13 @@ Item {
     signal closeRequested()                 // Esc in the list closes the panel
 
     property int selectedId: -1
-    property int deleteArmId: -1            // -1 = not armed
-    readonly property bool deleteArmed: root.deleteArmId >= 0
+    readonly property bool deleteArmed: confirm.isArmedFor(root.selectedId)
+    readonly property bool clearArmed: confirm.isArmedFor("clear")
     readonly property bool clearButtonEnabled: root.db ? root.db.history.length > 0 : false
+
+    onSelectedIdChanged: confirm.cancel()
+
+    ArmedConfirm { id: confirm }
 
     readonly property var rowList: root.db ? (root.db.history || []) : []
     readonly property int selectedIndex: ItemJs.indexOfId(root.rowList, root.selectedId)
@@ -57,7 +61,7 @@ Item {
 
     function focusList() { pump.forceActiveFocus() }
     function resetFocus() {
-        root.cancelDelete()
+        confirm.cancel()
         root.focusList()
     }
 
@@ -74,24 +78,13 @@ Item {
 
     function armDelete() {
         if (!root.db || !root.selectedRow) return
-        if (root.deleteArmed && root.deleteArmId === root.selectedId) {
-            root.deleteArmId = -1
-            deleteArmTimer.stop()
-            root.db.deleteHistory(root.selectedId)
-            return
-        }
-        root.deleteArmId = root.selectedId
-        deleteArmTimer.restart()
-        if (root.toast) root.toast.show("Deleting — press d again to confirm")
-    }
-    function cancelDelete() {
-        root.deleteArmId = -1
-        deleteArmTimer.stop()
+        if (confirm.press(root.selectedId)) root.db.deleteHistory(root.selectedId)
+        else if (root.toast) root.toast.show("Delete again to confirm")
     }
     function clearHistory() {
-        if (!root.db) return
-        root.cancelDelete()
-        root.db.clearHistory()
+        if (!root.db || root.rowList.length === 0) return
+        if (confirm.press("clear")) root.db.clearHistory()
+        else if (root.toast) root.toast.show("Clear again to confirm")
     }
 
     function onKey(event) {
@@ -107,8 +100,9 @@ Item {
         } else if (text === "c") {
             root.clearHistory(); event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
-            if (root.deleteArmed) { root.cancelDelete(); event.accepted = true }
-            else { root.closeRequested(); event.accepted = true }
+            if (confirm.armed) confirm.cancel()
+            else root.closeRequested()
+            event.accepted = true
         }
     }
 
@@ -118,7 +112,7 @@ Item {
         var rows = root.rowList
         if (rows.length === 0) {
             root.selectedId = -1
-            root.cancelDelete()
+            confirm.cancel()
             return
         }
         if (ItemJs.indexOfId(rows, root.selectedId) < 0) {
@@ -201,7 +195,8 @@ Item {
 
                         Text {
                             Layout.preferredWidth: root.colTypeW
-                            text: modelData.type === "todo" ? Icons.boxOff : Icons.note
+                            text: modelData.type !== "todo" ? Icons.note
+                                : modelData.action === "completed" ? Icons.boxOn : Icons.boxOff
                             color: Number(modelData.id) === root.selectedId
                                 ? Style.selectedStateColor(root.foreground, Color.accent)
                                 : Util.alpha(root.foreground, 0.75)
@@ -222,7 +217,7 @@ Item {
 
                         Text {
                             Layout.preferredWidth: root.colActionW
-                            text: modelData.action
+                            text: ItemJs.historyLabel(modelData)
                             color: root.actionColor(modelData.action)
                             font.family: Style.font.family
                             font.pixelSize: Style.font.bodySmall
@@ -242,7 +237,7 @@ Item {
                         acceptedButtons: Qt.LeftButton
                         onClicked: {
                             root.selectedId = modelData.id
-                            root.cancelDelete()
+                            confirm.cancel()
                             root.focusList()
                             listView.positionViewAtIndex(index, ListView.Center)
                         }
@@ -264,15 +259,14 @@ Item {
             HintBar {
                 Layout.fillWidth: true
                 foreground: root.foreground
-                urgent: root.deleteArmed
-                hints: root.deleteArmed
-                    ? [["d", "press again to delete"]]
-                    : [["j/k", "move"], ["d d", "delete"], ["c", "clear"], ["Esc", "close"]]
+                urgent: root.deleteArmed || root.clearArmed
+                hints: root.deleteArmed ? [["d", "press again to delete"]]
+                    : root.clearArmed ? [["c", "press again to clear"]]
+                    : [["j/k", "move"], ["d d", "delete"], ["c c", "clear"], ["Esc", "close"]]
             }
 
             ActionButton {
-                id: clearButton
-                text: "Clear history"
+                text: root.clearArmed ? "Confirm" : "Clear history"
                 bordered: true
                 enabled: root.clearButtonEnabled
                 opacity: root.clearButtonEnabled ? 1 : 0.5
@@ -282,12 +276,6 @@ Item {
         }
     }
 
-    Timer {
-        id: deleteArmTimer
-        interval: 2000
-        onTriggered: root.deleteArmId = -1
-    }
-
     Connections {
         target: root.db
         function onHistoryChanged() { root.onHistoryChanged() }
@@ -295,12 +283,10 @@ Item {
             var idx = ItemJs.indexOfId(root.rowList, Number(id))
             var title = idx >= 0 ? root.rowList[idx].title : "entry"
             if (root.toast) root.toast.show("Deleted — " + title)
+            if (Number(id) === root.selectedId) root.selectedId = ItemJs.neighbourId(root.rowList, id)
         }
         function onHistoryCleared() {
             if (root.toast) root.toast.show("History cleared")
-        }
-        function onFailed(message) {
-            if (root.toast) root.toast.show("Error: " + String(message || "unknown"), true)
         }
     }
 

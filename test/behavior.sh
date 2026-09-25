@@ -38,6 +38,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import "data" as Data
+import "ui/Icons.js" as Icons
 
 ShellRoot {
   id: sr
@@ -187,7 +188,7 @@ ShellRoot {
     function() { console.log("CTRL-K-IN-HISTORY " + (historyTab.selectedId === sr.probeId)); sr.ctrl([Qt.Key_D, Qt.Key_C]) },
     function() {
       console.log("CTRL-LETTERS-IN-HISTORY " + (historyTab.rowList.length === sr.probeRows) + " "
-        + (historyTab.selectedId === sr.probeId) + " " + historyTab.deleteArmed)
+        + (historyTab.selectedId === sr.probeId) + " " + historyTab.deleteArmed + " " + historyTab.clearArmed)
       keys.keyClickChar("j", Qt.NoModifier, -1)
     },
     function() {
@@ -215,7 +216,54 @@ ShellRoot {
     },
 
     function() { mainTab.cycleFilter() },
-    function() { console.log("FILTER-AFTER-F " + mainTab.filterType + " rows=" + db.items.filter(function(i) { return i.type !== "note" }).length) }
+    function() { console.log("FILTER-AFTER-F " + mainTab.filterType + " rows=" + db.items.filter(function(i) { return i.type !== "note" }).length) },
+
+    // qs runs under a 60 s timeout, so these three steps check what they can
+    // in the same tick. An empty db._writeKind means no write was started.
+    function() {
+      sr.keepId = mainTab.itemList[0].id; mainTab.pickItem(sr.keepId); sr.type("dj")
+      var armedAfterMove = mainTab.deleteArmed; sr.type("kd")
+      console.log("ITEMS-ARMED-AFTER-MOVE " + armedAfterMove + " " + mainTab.deleteArmed)
+      db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
+      sr.click(sr.findByText(header, "History"))
+      historyTab.selectedId = historyTab.rowList[0].id; sr.type("dj")
+      armedAfterMove = historyTab.deleteArmed; sr.type("kd")
+      console.log("HISTORY-ARMED-AFTER-MOVE " + armedAfterMove + " " + historyTab.deleteArmed)
+      keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+      historyTab.selectedId = historyTab.rowList[1].id; sr.probeId = historyTab.rowList[2].id; sr.type("dd")
+    },
+    function() {
+      console.log("ITEMS-D-AFTER-MOVING-BACK " + (sr.titleOf(sr.keepId) === "missing" ? "deleted" : "kept"))
+      console.log("HISTORY-AFTER-MIDDLE-DELETE " + (historyTab.selectedId === sr.probeId ? "next-row" : "other:" + historyTab.selectedId))
+      console.log("HISTORY-NOTE-LABELS " + ["read", "unread", "completed", "reopened"].map(function(label) { return !!sr.findByText(historyTab, label) }).join(" "))
+      var button = sr.findType(historyTab, "ActionButton")
+      sr.click(button)
+      console.log("HISTORY-AFTER-ONE-CLEAR-CLICK " + (db._writeKind === "") + " " + button.text)
+      // The checks after qs exits still read the log, so it is kept aside and
+      // put back after c c, only if c c left the table empty.
+      db._write("test", "CREATE TABLE kept_history AS SELECT * FROM history", null)
+      sr.click(button)
+      db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
+      db.setStatus(3, 1); db.setStatus(3, 0)
+    },
+    function() {
+      console.log("HISTORY-AFTER-TWO-CLEAR-CLICKS " + historyTab.rowList.length)
+      console.log("HISTORY-TODO-ICONS " + !!sr.findByText(historyTab, Icons.boxOn) + " " + !!sr.findByText(historyTab, Icons.boxOff))
+      sr.type("c")
+      var hints = sr.findType(historyTab, "HintBar").hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
+      console.log("HISTORY-AFTER-ONE-C " + (db._writeKind === "") + " " + hints)
+      sr.type("c")
+      db._write("test", "INSERT INTO history SELECT * FROM kept_history WHERE NOT EXISTS (SELECT 1 FROM history)", null)
+
+      var shown = []
+      var counting = { show: function(message) { shown.push(message) } }
+      mainTab.toast = counting; historyTab.toast = counting
+      db.update(1, "", "")
+      mainTab.toast = toast; historyTab.toast = toast
+      // The failure is forced here, so it is not one of the run's write failures.
+      sr.writeFailures--
+      console.log("ERROR-TOASTS " + shown.filter(function(m) { return m.indexOf("Error") === 0 }).length)
+    }
   ]
 
   function ctrl(keyList) {
@@ -384,7 +432,8 @@ logged "Shift+J does not move the list selection" "SHIFT-J-IN-LIST true$"
 logged "J typed with Caps Lock on moves the list selection" "CAPS-J-IN-LIST true$"
 logged "Ctrl+J does not move the History selection" "CTRL-J-IN-HISTORY true$"
 logged "Ctrl+K does not move the History selection" "CTRL-K-IN-HISTORY true$"
-logged "Ctrl plus a History letter does not clear, move or arm a delete" "CTRL-LETTERS-IN-HISTORY true true false$"
+logged "Ctrl plus a History letter does not clear, move, or arm a delete or a clear" \
+  "CTRL-LETTERS-IN-HISTORY true true false false$"
 expect "Ctrl+C in History leaves the log in the db" "SELECT COUNT(*) > 0 FROM history" "1"
 logged "plain j still moves the History selection" "PLAIN-J-IN-HISTORY true$"
 logged "J typed with Caps Lock on moves the History selection" "CAPS-J-IN-HISTORY true$"
@@ -400,7 +449,72 @@ logged "Ctrl+T in the draft body converts it back to note and types nothing" "DR
 logged "the draft body hints offer Ctrl+T" \
   "DRAFT-BODY-HINTS Enter/Tab save and back,Shift\+Enter new line,Shift\+Tab to title,Esc save and back,Shift\+Esc discard,Ctrl\+T note/todo$"
 logged "f cycles the type filter and the list follows" "FILTER-AFTER-F note rows=0$"
+logged "moving the list selection cancels an armed delete, and d on the item again arms it" \
+  "ITEMS-ARMED-AFTER-MOVE false true$"
+logged "that d does not delete the item" "ITEMS-D-AFTER-MOVING-BACK kept$"
+logged "moving the History selection cancels an armed delete and its red hint, and d arms again" \
+  "HISTORY-ARMED-AFTER-MOVE false true$"
+logged "deleting a middle History entry selects the next one" "HISTORY-AFTER-MIDDLE-DELETE next-row$"
+logged "a note marked read or unread shows read and unread in History, never completed or reopened" \
+  "HISTORY-NOTE-LABELS true true false false$"
+logged "one click on Clear history only arms it" "HISTORY-AFTER-ONE-CLEAR-CLICK true Confirm$"
+logged "a second click on Clear history clears it" "HISTORY-AFTER-TWO-CLEAR-CLICKS 4$"
+logged "a completed todo shows a checked box in History, a reopened one an empty box" "HISTORY-TODO-ICONS true true$"
+logged "one c only arms the clear, with its hint" "HISTORY-AFTER-ONE-C true c press again to clear$"
+expect "c c clears the history" \
+  "SELECT COUNT(*) FROM (SELECT id FROM history EXCEPT SELECT id FROM kept_history)" "0"
+logged "a failed write shows one error toast" "ERROR-TOASTS 1$"
 logged "no write was rejected during the whole run" "WRITE-FAILURES 0$"
+
+# The first qs run has no time left under its timeout, so the history count
+# gets its own run against a log longer than the 500 rows historySql() reads.
+sqlite3 "$db" "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 600)
+  INSERT INTO history (type, title, action, ts) SELECT 'todo', 'Bulk ' || i, 'added', $now - 200000 - i FROM n"
+history_total="$(sqlite3 "$db" "SELECT COUNT(*) FROM history")"
+cat > "$cfg_dir/shell.qml" <<'QML'
+import QtQuick
+import Quickshell
+import "data" as Data
+
+ShellRoot {
+  id: sr
+  property bool countsSeen: false
+  property bool historySeen: false
+
+  function findByText(item, text) {
+    if (item.text === text) return item
+    for (var i = 0; i < item.children.length; ++i) {
+      var hit = sr.findByText(item.children[i], text)
+      if (hit) return hit
+    }
+    return null
+  }
+  function report() {
+    if (!sr.countsSeen || !sr.historySeen) return
+    var label = sr.findByText(header.item, "History")
+    console.log("HISTORY-COUNT " + label.parent.children[2].text)
+    Qt.exit(0)
+  }
+
+  Data.Db {
+    id: countDb
+    Component.onCompleted: countDb.init()
+    onCountsUpdated: { sr.countsSeen = true; Qt.callLater(sr.report) }
+    onHistoryUpdated: { sr.historySeen = true; Qt.callLater(sr.report) }
+  }
+  Loader {
+    id: header
+    source: Qt.resolvedUrl("ui/PanelHeader.qml")
+    onLoaded: item.db = countDb
+  }
+}
+QML
+run_qs > "$cfg_dir/qs-count.log" 2>&1 || { cat "$cfg_dir/qs-count.log"; echo "qs exited non-zero"; exit 2; }
+if (( history_total > 500 )) && grep -qE "HISTORY-COUNT $history_total$" "$cfg_dir/qs-count.log"; then
+  pass "the History tab counts all $history_total entries, past the 500 it lists"
+else
+  fail "the History tab count: want $history_total, got '$(grep -oE 'HISTORY-COUNT.*' "$cfg_dir/qs-count.log" | head -1)'"
+fi
 
 echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))

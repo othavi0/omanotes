@@ -168,12 +168,12 @@ test("listSql: a quote and LIKE wildcards in the search are matched literally", 
 
 test("countsSql: empty database counts zero", (t) => {
   const db = openDb(t)
-  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 0, inProgressTodos: 0, notes: 0, todos: 0 }])
+  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 0, inProgressTodos: 0, notes: 0, todos: 0, history: 0 }])
 })
 
 test("countsSql: unread notes, pending todos and totals per type", (t) => {
   const db = seed(openDb(t))
-  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 1, inProgressTodos: 2, notes: 2, todos: 3 }])
+  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 1, inProgressTodos: 2, notes: 2, todos: 3, history: 3 }])
 })
 
 test("addSql: stores the item, prints its id and logs it as added", (t) => {
@@ -322,7 +322,7 @@ test("parseRows: garbage falls back to []", () => {
 })
 
 test("parseCounts: empty output counts zero", () => {
-  assert.deepEqual(Db.parseCounts(""), { unreadNotes: 0, inProgressTodos: 0, notes: 0, todos: 0 })
+  assert.deepEqual(Db.parseCounts(""), { unreadNotes: 0, inProgressTodos: 0, notes: 0, todos: 0, history: 0 })
 })
 
 test("parseId: plain integer output", () => {
@@ -340,4 +340,14 @@ test("q doubles single quotes", () => {
 
 test("likeEscape escapes the backslash first, then the wildcards", () => {
   assert.equal(Db.likeEscape("50%_a\\b"), "50\\%\\_a\\\\b")
+})
+
+test("countsSql: the history count is the real total, past the 500 rows historySql reads", (t) => {
+  const db = seed(openDb(t))
+  db.write("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 600)"
+    + " INSERT INTO history (type, title, action, ts) SELECT 'note', 'bulk', 'added', " + T0 + " + i FROM n")
+  assert.equal(db.read(Db.historySql()).length, 500)
+  const r = db.run(Db.countsSql(), true)
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(Db.parseCounts(r.stdout).history, 603)
 })
