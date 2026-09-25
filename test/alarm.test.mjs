@@ -7,7 +7,10 @@ import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 const A = loadQmlLib(new URL("../data/Alarm.js", import.meta.url), [
   "GRACE_MS", "MAX_AUTO_SNOOZES", "DEFAULT_SNOOZE_MINUTES", "DEFAULT_RING_SECONDS",
   "normalizeDays", "isRepeating", "occurrenceAfter", "occurrenceAtOrBefore",
-  "alarmNextAt", "alarmDue", "nextAlarm", "tick", "snoozePatch", "expire"
+  "alarmNextAt", "alarmDue", "nextAlarm", "tick", "snoozePatch", "expire",
+  "MAX_ALARMS", "MAX_LABEL", "DEFAULT_RING_MINUTES", "MIN_RING_MINUTES", "MAX_RING_MINUTES",
+  "ringMinutes", "parseTime", "parseFields", "newAlarm", "editPatch", "enablePatch", "isOn",
+  "withPatch", "ringWith", "ringWithout"
 ])
 
 const MIN = 60 * 1000
@@ -208,4 +211,123 @@ test("three automatic expirations each schedule a snooze and the fourth does not
   assert.deepEqual(snoozedAt, [NOW + 14 * MIN, NOW + 28 * MIN, NOW + 42 * MIN])
   assert.equal(a.enabled, false)
   assert.equal(A.alarmNextAt(a, clock), 0, "the one-shot has nothing left to ring")
+})
+
+// ------------------------------------------------- the service's helpers
+
+const FIELDS = { time: "07:30", label: "Wake up", days: [1, 2, 3, 4, 5], snoozeMinutes: 9, ringMinutes: 5 }
+
+test("the limits hold the product defaults", () => {
+  assert.equal(A.MAX_ALARMS, 50)
+  assert.equal(A.MAX_LABEL, 40)
+  assert.equal(A.DEFAULT_RING_MINUTES, 5)
+  assert.equal(A.DEFAULT_RING_SECONDS, A.DEFAULT_RING_MINUTES * 60)
+  assert.equal(A.MIN_RING_MINUTES, 1)
+  assert.equal(A.MAX_RING_MINUTES, 60)
+})
+
+test("ringMinutes is clamped to 1..60 and only a missing or non-numeric one uses the default", () => {
+  const cases = [[0, 1], [-5, 1], [61, 60], [1000, 60], [2.6, 3], ["15", 15], [NaN, 5], [undefined, 5], [null, 5], ["", 5], ["x", 5]]
+  for (const [minutes, expected] of cases) assert.equal(A.ringMinutes(minutes), expected, String(minutes))
+})
+
+test("parseTime reads a 24-hour clock with or without the colon and refuses anything else", () => {
+  assert.deepEqual(A.parseTime("07:30"), { hour: 7, minute: 30 })
+  assert.deepEqual(A.parseTime("0730"), { hour: 7, minute: 30 })
+  assert.deepEqual(A.parseTime("7:30"), { hour: 7, minute: 30 })
+  assert.deepEqual(A.parseTime(" 23:59 "), { hour: 23, minute: 59 })
+  assert.deepEqual(A.parseTime("0:00"), { hour: 0, minute: 0 })
+  for (const text of ["24:00", "23:60", "7:3", "730x", "", "   ", "7", "1:2:3", null, undefined, "07:30 pm"]) {
+    assert.equal(A.parseTime(text), null, String(text))
+  }
+})
+
+test("parseFields turns editor input into fields, clamps the minutes, trims and caps the label and cleans its control characters", () => {
+  assert.deepEqual(A.parseFields(FIELDS), { hour: 7, minute: 30, label: "Wake up", days: [1, 2, 3, 4, 5], snoozeMinutes: 9, ringMinutes: 5 })
+  const long = "x".repeat(60)
+  const messy = A.parseFields({ time: "0730", label: "  a\tb\nc " + long, days: "5,1,5", snoozeMinutes: 500, ringMinutes: 0 })
+  assert.equal(messy.label.length, A.MAX_LABEL)
+  assert.equal(messy.label.slice(0, 5), "a b c")
+  assert.deepEqual(messy.days, [1, 5])
+  assert.equal(messy.snoozeMinutes, 180)
+  assert.equal(messy.ringMinutes, 1)
+  assert.deepEqual(A.parseFields({ time: "7:30" }), { hour: 7, minute: 30, label: "", days: [], snoozeMinutes: 9, ringMinutes: 5 })
+  assert.equal(A.parseFields({ time: "25:00", label: "x" }), null)
+  assert.equal(A.parseFields({ label: "x" }), null)
+})
+
+test("newAlarm is an enabled record armed now with nothing consumed and no id", () => {
+  const fields = A.parseFields(FIELDS)
+  assert.deepEqual(A.newAlarm(fields, NOW), {
+    hour: 7, minute: 30, label: "Wake up", days: [1, 2, 3, 4, 5], enabled: true, snoozeMinutes: 9, ringMinutes: 5,
+    snoozedUntil: 0, lastFiredAt: 0, armedAt: NOW, autoSnoozes: 0
+  })
+  assert.equal(A.alarmDue(A.newAlarm(A.parseFields({ time: "13:00" }), NOW), NOW), null, "an occurrence before its creation is not owed")
+})
+
+test("editPatch re-arms only when the hour, the minute or the days change", () => {
+  const a = alarm({ label: "Old", days: [1, 3], armedAt: at(-1, 12, 0), snoozedUntil: NOW + 5 * MIN, enabled: false, snoozeMinutes: 9, ringMinutes: 5, autoSnoozes: 2 })
+  const same = { hour: 7, minute: 30, label: "New", days: [3, 1], snoozeMinutes: 15, ringMinutes: 2 }
+  assert.deepEqual(A.editPatch(a, same, NOW), { hour: 7, minute: 30, label: "New", days: [1, 3], snoozeMinutes: 15, ringMinutes: 2 },
+    "a label or minutes change keeps the arm, the snooze and the switch")
+  for (const changed of [{ ...same, hour: 8 }, { ...same, minute: 31 }, { ...same, days: [1, 3, 5] }, { ...same, days: [] }]) {
+    const patch = A.editPatch(a, changed, NOW)
+    assert.equal(patch.armedAt, NOW, JSON.stringify(changed))
+    assert.equal(patch.snoozedUntil, 0)
+    assert.equal(patch.enabled, true)
+    assert.equal(patch.autoSnoozes, 0)
+  }
+})
+
+test("enablePatch arms an alarm that is switched on and quiets one that is switched off", () => {
+  const a = alarm({ enabled: false, snoozedUntil: NOW + 5 * MIN, armedAt: at(-1, 12, 0), autoSnoozes: 2 })
+  assert.deepEqual(A.enablePatch(a, true, NOW), { enabled: true, armedAt: NOW, snoozedUntil: 0, autoSnoozes: 0 })
+  assert.deepEqual(A.enablePatch(alarm({ snoozedUntil: NOW + 5 * MIN }), false, NOW), { enabled: false, snoozedUntil: 0 })
+  assert.equal(A.alarmDue(A.withPatch(alarm({ armedAt: at(-1, 12, 0) }), A.enablePatch(a, true, NOW)), NOW), null,
+    "switching on does not ring the occurrence that passed while it was off")
+})
+
+test("isOn is the switch: enabled, or snoozed into the future", () => {
+  assert.equal(A.isOn(alarm(), NOW), true)
+  assert.equal(A.isOn(alarm({ enabled: false }), NOW), false)
+  assert.equal(A.isOn(alarm({ enabled: false, snoozedUntil: NOW + 1 }), NOW), true)
+  assert.equal(A.isOn(alarm({ enabled: false, snoozedUntil: NOW }), NOW), false)
+  assert.equal(A.isOn(null, NOW), false)
+})
+
+test("withPatch returns a new record and leaves the old one alone", () => {
+  const a = alarm()
+  const b = A.withPatch(a, { enabled: false, label: "x" })
+  assert.equal(b.enabled, false)
+  assert.equal(b.label, "x")
+  assert.equal(a.enabled, true)
+  assert.equal(b.hour, 7)
+})
+
+test("ringWith adds new events at nowMs, ignores an id already on the card and keeps the card's first startedAt", () => {
+  const first = A.ringWith(null, ["a"], NOW)
+  assert.deepEqual(first, { startedAt: NOW, events: [{ id: "a", startedAt: NOW }] })
+  const second = A.ringWith(first, ["a", "b"], NOW + 3000)
+  assert.deepEqual(second, { startedAt: NOW, events: [{ id: "a", startedAt: NOW }, { id: "b", startedAt: NOW + 3000 }] })
+  assert.deepEqual(first.events.length, 1, "the old state is not changed in place")
+  assert.equal(A.ringWith(null, [], NOW), null)
+  assert.deepEqual(A.ringWith(first, [], NOW + 1), first)
+})
+
+test("ringWithout takes one event off the card and the card goes away with its last event", () => {
+  const ring = A.ringWith(A.ringWith(null, ["a"], NOW), ["b"], NOW + 1000)
+  assert.deepEqual(A.ringWithout(ring, "a"), { startedAt: NOW, events: [{ id: "b", startedAt: NOW + 1000 }] })
+  assert.equal(A.ringWithout(A.ringWithout(ring, "a"), "b"), null)
+  assert.deepEqual(A.ringWithout(ring, "zzz"), ring)
+  assert.equal(A.ringWithout(null, "a"), null)
+})
+
+test("expire uses each alarm's own ring length and drops an event whose alarm is gone without a snooze", () => {
+  const byId = { short: alarm({ id: "short", ringMinutes: 1 }), long: alarm({ id: "long", ringMinutes: 10 }) }
+  const events = [{ id: "short", startedAt: NOW - 60 * 1000 }, { id: "long", startedAt: NOW - 60 * 1000 }, { id: "gone", startedAt: NOW - 3600 * 1000 }]
+  assert.deepEqual(A.expire(events, byId, NOW), { keep: [events[1]], snooze: ["short"] })
+  assert.deepEqual(A.expire(events, byId, NOW - 1000), { keep: [events[0], events[1]], snooze: [] })
+  assert.deepEqual(A.expire(events, byId, NOW + 9 * MIN), { keep: [], snooze: ["short", "long"] })
+  const tired = { short: alarm({ id: "short", ringMinutes: 1, autoSnoozes: A.MAX_AUTO_SNOOZES }) }
+  assert.deepEqual(A.expire([events[0]], tired, NOW), { keep: [], snooze: [] }, "the fourth expiry earns no snooze")
 })
