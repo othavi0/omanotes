@@ -5,34 +5,7 @@
 
 set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
-
-# The kit's KeyboardPanel is a layer-shell PanelWindow, which has no backend
-# offscreen, so the Panel would fail to load. Swap in a plain window with the
-# API Panel.qml uses; the rest of the kit stays the installed one.
-rm "$cfg_dir/Ui"
-mkdir "$cfg_dir/Ui"
-ln -s "$shell_root"/Ui/* "$cfg_dir/Ui/"
-rm "$cfg_dir/Ui/KeyboardPanel.qml"
-cat > "$cfg_dir/Ui/KeyboardPanel.qml" <<'QML'
-import QtQuick
-import Quickshell
-
-FloatingWindow {
-  required property Item anchorItem
-  required property QtObject bar
-  property var owner: null
-  property bool open: false
-  property int contentWidth
-  property int contentHeight
-  default property alias contentItem: holder.children
-  function fittedContentWidth(width) { return width }
-  function fittedContentHeight(height) { return height }
-  visible: open
-  implicitWidth: contentWidth
-  implicitHeight: contentHeight
-  Item { id: holder; anchors.fill: parent }
-}
-QML
+stub_keyboard_panel
 
 # The widget loads from its own path, outside the config dir, as the shell
 # loads a plugin. Symlinked into the config dir, Panel.qml fails to resolve the
@@ -71,6 +44,30 @@ ShellRoot {
       mainTab.editorTitle = title
       return "ok"
     }
+    function filterPanel(type: string, query: string): string {
+      var mainTab = sr.find(widget.item.panelItem, "MainTab")
+      if (!mainTab) return "no MainTab"
+      mainTab.filterType = type
+      mainTab.searchText = query
+      return "ok"
+    }
+    function panelRows(): int {
+      var mainTab = sr.find(widget.item.panelItem, "MainTab")
+      return mainTab ? mainTab.itemList.length : -1
+    }
+    function editItem(id: int, title: string): string {
+      var mainTab = sr.find(widget.item.panelItem, "MainTab")
+      if (!mainTab) return "no MainTab"
+      mainTab.pickItem(id)
+      mainTab.editorTitle = title
+      mainTab.toast.text = ""
+      return "ok"
+    }
+    function editorState(): string {
+      var mainTab = sr.find(widget.item.panelItem, "MainTab")
+      if (!mainTab) return "no MainTab"
+      return mainTab.selectedId + "|" + mainTab.editorTitle + "|toast:" + mainTab.toast.text
+    }
     function quit(): void { Qt.exit(0) }
   }
 }
@@ -107,6 +104,9 @@ replies() {
   if [[ "$got" == "$want" ]]; then pass "$what"; else fail "$what: want '$want', got '$got'"; fi
 }
 by_id() { node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).sort((a, b) => a.id - b.id)))' "$1"; }
+all_of() {
+  by_id "$(sqlite3 "$db" "SELECT json_group_array(json_object('id', id, 'type', type, 'title', title, 'body', COALESCE(body, ''), 'status', status)) FROM items WHERE type = '$1'")"
+}
 
 replies "addNote answers ok" "$(ipc scratchpad addNote "IPC-NOTE" "ipc body")" '{"ok":true}'
 expect "addNote writes the note" \
@@ -121,8 +121,7 @@ for _ in $(seq 50); do
   [[ "$listed" == *'"IPC-NOTE"'* ]] && break
   sleep 0.2
 done
-replies "listNotes returns every note with its fields" "$(by_id "$listed")" \
-  "$(by_id "$(sqlite3 "$db" "SELECT json_group_array(json_object('id', id, 'type', type, 'title', title, 'body', COALESCE(body, ''), 'status', status)) FROM items WHERE type = 'note'")")"
+replies "listNotes returns every note with its fields" "$(by_id "$listed")" "$(all_of note)"
 
 replies "toggleTodo answers ok" "$(ipc scratchpad toggleTodo 2)" '{"ok":true}'
 expect "toggleTodo completes the pending todo" "SELECT status FROM items WHERE id = 2" "1"
@@ -139,6 +138,32 @@ expect "the reopen is logged in history" \
   "SELECT COUNT(*) FROM history WHERE action = 'reopened' AND title = 'Renew the domain'" "1"
 replies "toggleTodo on a missing id is refused" "$(ipc scratchpad toggleTodo 999)" '{"ok":false,"error":"item not found: 999"}'
 
+# The panel shares the widget's Db, so its filter and search must not narrow the IPC.
+replies "the panel takes a filter and a search" "$(ipc omanotes-test filterPanel note coffee)" "ok"
+rows=""
+for _ in $(seq 50); do
+  rows="$(ipc omanotes-test panelRows)"
+  [[ "$rows" == "1" ]] && break
+  sleep 0.2
+done
+replies "the filtered panel lists one row" "$rows" "1"
+# The cache may still be catching up on the reopen above, so poll.
+lists_all() {
+  local what="$1" call="$2" type="$3" got="" want
+  want="$(all_of "$type")"
+  for _ in $(seq 50); do
+    got="$(by_id "$(ipc scratchpad "$call")")"
+    [[ "$got" == "$want" ]] && break
+    sleep 0.2
+  done
+  replies "$what" "$got" "$want"
+}
+lists_all "listNotes ignores the panel's filter" listNotes note
+lists_all "listTodos ignores the panel's filter" listTodos todo
+replies "toggleTodo finds a todo the panel hides" "$(ipc scratchpad toggleTodo 3)" '{"ok":true}'
+expect "toggleTodo completes the hidden todo" "SELECT status FROM items WHERE id = 3" "1"
+ipc omanotes-test filterPanel all "" > /dev/null
+
 replies "remove answers ok" "$(ipc scratchpad remove "$note_id")" '{"ok":true}'
 expect "remove deletes the item" "SELECT COUNT(*) FROM items WHERE id = $note_id" "0"
 expect "remove is logged in history" \
@@ -147,6 +172,38 @@ expect "remove is logged in history" \
 replies "clearHistory answers ok" "$(ipc scratchpad clearHistory)" '{"ok":true}'
 expect "clearHistory empties history" "SELECT COUNT(*) FROM history" "0"
 expect "clearHistory keeps the items" "SELECT COUNT(*) FROM items" "6"
+
+# A script writing while the user edits in the open panel must not move the
+# selection, commit the half-typed title or raise the panel's toasts.
+ipc scratchpad open > /dev/null
+rows=""
+for _ in $(seq 50); do
+  rows="$(ipc omanotes-test panelRows)"
+  [[ "$rows" == "6" ]] && break
+  sleep 0.2
+done
+# Panel.qml refills the editor 120 ms after opening (focusPrimeTimer).
+sleep 0.5
+replies "the open panel edits item 2" "$(ipc omanotes-test editItem 2 "Renew the domain HALF-TYPED")" "ok"
+ipc scratchpad toggleTodo 2 > /dev/null
+ipc scratchpad clearHistory > /dev/null
+ipc scratchpad addNote "FROM-SCRIPT" "" > /dev/null
+# Writes run in order, so the reload that shows the last one follows them all.
+for _ in $(seq 50); do
+  rows="$(ipc omanotes-test panelRows)"
+  [[ "$rows" == "7" ]] && break
+  sleep 0.2
+done
+replies "the panel lists the script's note" "$rows" "7"
+replies "script writes leave the selection, the editor and the toast alone" \
+  "$(ipc omanotes-test editorState)" "2|Renew the domain HALF-TYPED|toast:"
+# A write queued behind any commit the panel made lands after it.
+ipc scratchpad toggleTodo 3 > /dev/null
+expect "a later script write lands" "SELECT status FROM items WHERE id = 3" "0"
+replies "script writes do not commit the open edit" \
+  "$(sqlite3 "$db" "SELECT title FROM items WHERE id = 2")" "Renew the domain"
+ipc scratchpad close > /dev/null
+expect "closing the panel commits the edit" "SELECT title FROM items WHERE id = 2" "Renew the domain HALF-TYPED"
 
 ipc scratchpad open > /dev/null
 replies "the open panel takes a draft" "$(ipc omanotes-test typeDraft "DRAFT-ON-CLOSE")" "ok"
