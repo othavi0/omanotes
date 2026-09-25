@@ -152,14 +152,12 @@ test("listSql: a quote and LIKE wildcards in the search are matched literally", 
 
 test("countsSql: empty database counts zero", (t) => {
   const db = openDb(t)
-  const r = db.run(Db.countsSql(), true)
-  assert.deepEqual(Db.parseCounts(r.stdout), { unreadNotes: 0, inProgressTodos: 0, notes: 0, todos: 0 })
+  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 0, inProgressTodos: 0, notes: 0, todos: 0 }])
 })
 
 test("countsSql: unread notes, pending todos and totals per type", (t) => {
   const db = seed(openDb(t))
-  const r = db.run(Db.countsSql(), true)
-  assert.deepEqual(Db.parseCounts(r.stdout), { unreadNotes: 1, inProgressTodos: 2, notes: 2, todos: 3 })
+  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 1, inProgressTodos: 2, notes: 2, todos: 3 }])
 })
 
 test("addSql: stores the item, prints its id and logs it as added", (t) => {
