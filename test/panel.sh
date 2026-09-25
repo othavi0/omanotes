@@ -7,6 +7,26 @@ set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
 stub_keyboard_panel
 
+# While the hold file exists, a read runs at once but prints only when the
+# release file appears, so the test can write and reload in between. A held
+# list read of todos with a search fails while the fail-list file exists.
+real_sqlite3="$(command -v sqlite3)"
+mkdir "$cfg_dir/bin"
+cat > "$cfg_dir/bin/sqlite3" <<SH
+#!/usr/bin/env bash
+[[ "\$*" == *-json* && -e "$cfg_dir/hold" ]] || exec "$real_sqlite3" "\$@"
+fail=0
+[[ -e "$cfg_dir/fail-list" && "\$*" == *"WHERE type = 'todo' AND (search_title LIKE"* ]] && fail=1
+out="\$("$real_sqlite3" "\$@" 2>&1)"
+code=\$?
+printf '%s\n' "\$*" >> "$cfg_dir/held.log"
+for _ in \$(seq 200); do [[ -e "$cfg_dir/release" ]] && break; sleep 0.05; done
+if (( fail )); then echo "Error: disk I/O error" >&2; exit 10; fi
+printf '%s' "\$out"
+exit \$code
+SH
+chmod +x "$cfg_dir/bin/sqlite3"
+
 # The widget loads from its own path, outside the config dir, as the shell
 # loads a plugin. Symlinked into the config dir, Panel.qml fails to resolve the
 # types in ui/ ("Segment is not a type").
@@ -79,6 +99,10 @@ ShellRoot {
       else db[method](id)
       return "ok"
     }
+    function dbState(): string {
+      var db = widget.item.panelItem.db
+      return db.totalNotes + "|" + db.totalHistory + "|" + (db.history.length ? db.history[0].title : "")
+    }
     function toast(): string {
       var mainTab = sr.find(widget.item.panelItem, "MainTab")
       return mainTab ? mainTab.toast.text : "no MainTab"
@@ -88,7 +112,7 @@ ShellRoot {
 }
 QML
 
-OMANOTES_WORKTREE="$worktree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
+PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$worktree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
 trap 'kill "$qs_pid" 2> /dev/null || true; wait "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
 
@@ -279,10 +303,73 @@ wait "$holder"
 replies "the refused write left the item alone" \
   "$(sqlite3 "$db" "SELECT title FROM items WHERE id = 2")" "Renew the domain HALF-TYPED"
 
+# From here the test writes with sqlite3 directly, as a user or another tool
+# does, and never asks the Db to reload: the file watcher alone brings it in.
+external_note() {
+  sqlite3 "$db" "INSERT INTO items (type, title, status, created_at, updated_at)
+      VALUES ('note', '$1', 0, strftime('%s', 'now'), strftime('%s', 'now'));
+    INSERT INTO history (type, title, action, ts) VALUES ('note', '$1', 'added', strftime('%s', 'now'));"
+}
+caught_up() {
+  local what="$1" got="" want
+  want="$(sqlite3 "$db" "SELECT (SELECT COUNT(*) FROM items WHERE type = 'note') || '|'
+    || (SELECT COUNT(*) FROM history) || '|' || (SELECT title FROM history ORDER BY ts DESC, id DESC LIMIT 1)")"
+  for _ in $(seq 50); do
+    got="$(ipc omanotes-test dbState)"
+    [[ "$got" == "$want" ]] && break
+    sleep 0.2
+  done
+  replies "$what" "$got" "$want"
+}
+hold_reads() { rm -f "$cfg_dir/release"; : > "$cfg_dir/held.log"; touch "$cfg_dir/hold"; }
+release_reads() { rm -f "$cfg_dir/hold" "$cfg_dir/fail-list"; touch "$cfg_dir/release"; }
+all_reads_held() {
+  for _ in $(seq 50); do
+    (( $(wc -l < "$cfg_dir/held.log") >= 4 )) && { pass "$1"; return; }
+    sleep 0.2
+  done
+  fail "$1: held $(wc -l < "$cfg_dir/held.log") of 4 reads"
+}
+panel_rows_are() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(ipc omanotes-test panelRows)"
+    [[ "$got" == "$want" ]] && break
+    sleep 0.2
+  done
+  replies "$what" "$got" "$want"
+}
+
+external_note "EXTERNAL"
+caught_up "counts and history pick up a write made outside the Db"
+lists_all "listNotes shows a note written outside the Db" listNotes note
+
+hold_reads
+external_note "OVERLAP-1"
+all_reads_held "the reload after the first write holds its four reads"
+external_note "OVERLAP-2"
+sleep 1
+release_reads
+caught_up "counts and history re-run for a write that lands while they read"
+lists_all "the list re-runs for a write that lands while it reads" listNotes note
+
+ipc omanotes-test filterPanel todo e > /dev/null
+panel_rows_are "the panel lists the todos that match e" \
+  "$(sqlite3 "$db" "SELECT COUNT(*) FROM items WHERE type = 'todo' AND (search_title LIKE '%e%' OR search_body LIKE '%e%')")"
+hold_reads
+touch "$cfg_dir/fail-list"
+external_note "OVERLAP-3"
+all_reads_held "the reload after the third write holds its four reads"
+ipc omanotes-test filterPanel note coffee > /dev/null
+sleep 0.5
+release_reads
+panel_rows_are "a failed list read re-runs with the latest filter and search" 1
+ipc omanotes-test filterPanel all "" > /dev/null
+
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
 replies "only the failure cases are logged" "$(logged_failures)" \
-  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;"
+  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;list read failed: disk I/O error;"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
 echo "panel: $checks checks, $failures failed"
