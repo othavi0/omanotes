@@ -70,7 +70,7 @@ ShellRoot {
   readonly property string longTitle: "Renew the domain before the card on file expires, then move the DNS records to the new registrar, check the MX entries, and write down every step so the next renewal takes five minutes instead of an afternoon"
   readonly property string outDir: Quickshell.env("OUT_DIR")
 
-  Data.Db {
+  Data.ItemsDb {
     id: db
     Component.onCompleted: db.init()
   }

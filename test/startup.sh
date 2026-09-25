@@ -47,12 +47,12 @@ ShellRoot {
 
   function typesIn(obj, prefix, found) {
     if (!obj) return found
-    if (String(obj).indexOf(prefix) === 0 && found.indexOf(obj) < 0) found.push(obj)
+    if ([].concat(prefix).some(function(p) { return String(obj).indexOf(p) === 0 }) && found.indexOf(obj) < 0) found.push(obj)
     var kids = obj.data || []
     for (var i = 0; i < kids.length; ++i) sr.typesIn(kids[i], prefix, found)
     return found
   }
-  function dbsIn(obj, found) { return sr.typesIn(obj, "Db", found) }
+  function dbsIn(obj, found) { return sr.typesIn(obj, ["ItemsDb", "AlarmsDb", "DbCore"], found) }
 
   Loader {
     id: svc

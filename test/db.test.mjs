@@ -59,7 +59,7 @@ function spawn(argv, env) {
   return r
 }
 
-// Start-up as Db.qml runs it: read the version, then migrate from it.
+// Start-up as DbCore.qml runs it: read the version, then migrate from it.
 function start(path, env, lib = Db) {
   const read = spawn(lib.initCommand(dirname(path), path), env)
   assert.equal(read.status, 0, read.stderr)
@@ -76,7 +76,7 @@ function tempPath(t) {
 }
 
 // A throwaway database made by start-up and driven through sqliteCommand, the
-// same argv Db.qml hands to Process.
+// same argv DbCore.qml hands to Process.
 function openDb(t, env) {
   const path = tempPath(t)
   start(path, env)

@@ -162,9 +162,8 @@ Item {
         if (sound.running) sound.running = false
     }
 
-    Data.Db {
+    Data.AlarmsDb {
         id: store
-        scope: "alarms"
         Component.onCompleted: store.init()
         onAlarmAdded: function(id, caller) { root.alarmAdded(id, caller) }
         onAlarmWriteFailed: function(kind, record, message, caller) { root.writeFailed(kind, record, message, caller) }

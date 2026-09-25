@@ -108,7 +108,7 @@ BarWidget {
 
     // The only Db of this widget: the IPC, the bar tooltip and the panel
     // (through injectPanel) all read and write through it.
-    Data.Db {
+    Data.ItemsDb {
         id: db
         Component.onCompleted: db.init()
     }

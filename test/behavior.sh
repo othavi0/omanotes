@@ -517,7 +517,7 @@ ShellRoot {
     return ids
   }
 
-  Data.Db {
+  Data.ItemsDb {
     id: testDb
     Component.onCompleted: testDb.init()
   }
@@ -703,7 +703,7 @@ ShellRoot {
     Qt.exit(0)
   }
 
-  Data.Db {
+  Data.ItemsDb {
     id: countDb
     Component.onCompleted: countDb.init()
     onCountsUpdated: { sr.countsSeen = true; Qt.callLater(sr.report) }
@@ -935,7 +935,7 @@ ShellRoot {
     return null
   }
 
-  Data.Db {
+  Data.ItemsDb {
     id: testDb
     Component.onCompleted: testDb.init()
   }
@@ -1234,7 +1234,7 @@ ShellRoot {
   function findType(item, prefix) { return sr.findWhere(item, function(it) { return String(it).indexOf(prefix) === 0 }) }
   function findByText(item, text) { return sr.findWhere(item, function(it) { return it.text === text }) }
 
-  Data.Db {
+  Data.ItemsDb {
     id: testDb
     Component.onCompleted: testDb.init()
   }
@@ -1304,7 +1304,7 @@ import Quickshell
 import "data" as Data
 
 ShellRoot {
-  Data.Db {
+  Data.ItemsDb {
     id: restartDb
     Component.onCompleted: restartDb.init()
     onItemsUpdated: {
