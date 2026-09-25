@@ -25,11 +25,21 @@ FloatingWindow {
   property bool open
   property int contentWidth
   property int contentHeight
+  property Item focusTarget: null
   function fittedContentWidth(width) { return width }
   function fittedContentHeight(height) { return height }
   implicitWidth: contentWidth
   implicitHeight: contentHeight
   visible: open
+  // The map hands keyboard focus to focusTarget alone, as the kit documents.
+  // Window focus set before the map is taken away first, so a panel that
+  // relies on it and not on focusTarget loses the first keys.
+  Item { id: beforeMap }
+  onOpenChanged: if (open) Qt.callLater(function() {
+    if (!open) return
+    beforeMap.forceActiveFocus()
+    if (focusTarget) focusTarget.forceActiveFocus()
+  })
 }
 QML
 
@@ -263,8 +273,66 @@ ShellRoot {
       // The failure is forced here, so it is not one of the run's write failures.
       sr.writeFailures--
       console.log("ERROR-TOASTS " + shown.filter(function(m) { return m.indexOf("Error") === 0 }).length)
+    },
+
+    // Each burst types within 60 ms of the panel opening, then the next step
+    // types again, so a late focus reset in between shows up.
+    function() { panel.close() },
+    function() {
+      sr.burst([function() { panel.open() }, function() { sr.type("n") },
+        function() { sr.type("ab"); keys.keyClick(Qt.Key_Tab, Qt.NoModifier, -1) }, function() { sr.type("cd") }])
+    },
+    function() {
+      sr.type("ef")
+      console.log("DRAFT-TYPED-ON-OPEN [" + mainTab.editorTitle + "] [" + mainTab.editorBody + "] " + mainTab.focusContext)
+      keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
+    },
+    function() { mainTab.showAll(); panel.close() },
+    function() { sr.burst([function() { panel.open() }, function() { sr.type("/") }, function() { sr.type("cof") }]) },
+    function() {
+      sr.type("fee")
+      console.log("SEARCH-TYPED-ON-OPEN [" + mainTab.searchText + "] " + mainTab.focusContext + " " + mainTab.filterType)
+      keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+    },
+
+    function() { mainTab.focusList(); sr.ctrl([Qt.Key_2]) },
+    function() { console.log("CTRL-2-IN-LIST " + panel.activeTab); sr.type("2") },
+    function() {
+      console.log("TWO-IN-LIST " + panel.activeTab + " " + historyTab.activeFocus + " " + sr.historyHints()
+        + " tooltip=[" + sr.newTooltip() + "]")
+      sr.type("1")
+    },
+    function() {
+      console.log("ONE-IN-HISTORY " + panel.activeTab + " " + mainTab.focusContext + " " + sr.hintKeys() + " tooltip=[" + sr.newTooltip() + "]")
+      mainTab.focusSearch(); sr.type("1")
+    },
+    function() {
+      console.log("ONE-IN-SEARCH " + panel.activeTab + " [" + mainTab.searchText + "] " + mainTab.focusContext)
+      keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1); sr.type("n")
+    },
+    function() { sr.type("2") },
+    function() {
+      console.log("TWO-IN-TITLE " + panel.activeTab + " [" + mainTab.editorTitle + "] " + mainTab.focusContext)
+      keys.keyClick(Qt.Key_Escape, Qt.ShiftModifier, -1)
     }
   ]
+
+  property var burstSteps: []
+  property int burstIndex: 0
+  function burst(list) { sr.burstSteps = list; sr.burstIndex = 0; burstTimer.start() }
+  Timer {
+    id: burstTimer
+    interval: 15
+    repeat: true
+    onTriggered: {
+      if (sr.burstIndex >= sr.burstSteps.length) { burstTimer.stop(); return }
+      sr.burstSteps[sr.burstIndex++]()
+    }
+  }
+  function historyHints() {
+    return sr.findType(historyTab, "HintBar").hints.map(function(h) { return h[0] + " " + h[1] }).join(",")
+  }
+  function newTooltip() { return sr.findType(header, "ActionButton").tooltipText }
 
   function ctrl(keyList) {
     for (var i = 0; i < keyList.length; ++i) keys.keyClick(keyList[i], Qt.ControlModifier, -1)
@@ -465,6 +533,17 @@ logged "one c only arms the clear, with its hint" "HISTORY-AFTER-ONE-C true c pr
 expect "c c clears the history" \
   "SELECT COUNT(*) FROM (SELECT id FROM history EXCEPT SELECT id FROM kept_history)" "0"
 logged "a failed write shows one error toast" "ERROR-TOASTS 1$"
+logged "a draft typed right after opening keeps its title and body, and focus stays in the body" \
+  "DRAFT-TYPED-ON-OPEN \[ab\] \[cdef\] draft$"
+logged "a search typed right after opening keeps its text and focus, and no letter reaches the list" \
+  "SEARCH-TYPED-ON-OPEN \[coffee\] search all$"
+logged "Ctrl+2 in the list does not switch tabs" "CTRL-2-IN-LIST 0$"
+logged "2 in the list shows History with focus, History hints list the tab keys, and New has no tooltip there" \
+  "TWO-IN-LIST 1 true j/k move,d d delete,c c clear,1/2 tabs,Esc close tooltip=\[\]$"
+logged "1 in History shows Items with the list focused, the list hints list the tab keys, and New has its tooltip" \
+  "ONE-IN-HISTORY 0 list j/k move,Enter edit,n new,Space toggle,d d delete,/ search,f filter,1/2 tabs,Esc close tooltip=\[New item \(n\)\]$"
+logged "1 in the search field is typed as text" "ONE-IN-SEARCH 0 \[1\] search$"
+logged "2 in a draft title is typed as text" "TWO-IN-TITLE 0 \[2\] draft$"
 logged "no write was rejected during the whole run" "WRITE-FAILURES 0$"
 
 # The first qs run has no time left under its timeout, so the history count
