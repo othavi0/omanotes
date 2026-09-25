@@ -179,11 +179,12 @@ function sqliteCommand(dbPath, sql, json) {
   return cmd.concat(String(dbPath), ".timeout 5000", sql)
 }
 
-// argv for first-run init: ensure the data dir exists, then apply the schema
-// (as a single argv SQL string — $2 is quoted, so the shell cannot mangle it).
+// argv for start-up: ensure the data dir exists, then apply the schema through
+// sqliteCommand, so it waits on a locked db like every other write ("$@" is
+// quoted, so the shell cannot mangle the SQL).
 function initCommand(dataDir, dbPath) {
-  return ["bash", "-c", 'mkdir -p -- "$0" && sqlite3 "$1" "$2"',
-    String(dataDir), String(dbPath), SCHEMA]
+  return ["bash", "-c", 'mkdir -p -- "$0" && exec "$@"', String(dataDir)]
+    .concat(sqliteCommand(dbPath, SCHEMA, false))
 }
 
 // Parse a `sqlite3 -json` result into an array of row objects (or []).

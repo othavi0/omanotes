@@ -4,7 +4,6 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
-import "data" as Data
 import "ui" as Ui
 
 Panel {
@@ -18,20 +17,17 @@ Panel {
     property var anchorItem: null
     property var hostWidget: null
     readonly property var barIdentity: hostWidget || root
+    // The bar widget's Db, set by its injectPanel().
+    property QtObject db: null
 
-    // Own instance + file watcher; reopening the panel re-loads as a safety
-    // net on top of the watcher.
-    Data.Db {
-        id: db
-        Component.onCompleted: db.init()
-    }
+    // Reopening the panel reloads as a safety net on top of the watcher.
     onOpenedChanged: {
         if (!root.opened) {
             mainTab.commitIfDirty()
             return
         }
         root.activeTab = 0
-        db.load()
+        if (root.db) root.db.load()
         root.resetTabFocus()
         focusPrimeTimer.restart()
     }
@@ -82,7 +78,7 @@ Panel {
 
             Ui.PanelHeader {
                 Layout.fillWidth: true
-                db: db
+                db: root.db
                 activeTab: root.activeTab
                 foreground: root.barForeground
                 onTabPicked: function(index) { root.activeTab = index }
@@ -99,7 +95,7 @@ Panel {
 
                 Ui.MainTab {
                     id: mainTab
-                    db: db
+                    db: root.db
                     toast: toast
                     foreground: root.barForeground
                     onCloseRequested: root.close()
@@ -107,7 +103,7 @@ Panel {
 
                 Ui.HistoryTab {
                     id: historyTab
-                    db: db
+                    db: root.db
                     toast: toast
                     foreground: root.barForeground
                     onCloseRequested: root.close()

@@ -5,34 +5,7 @@
 
 set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
-
-# The kit's KeyboardPanel is a layer-shell PanelWindow, which has no backend
-# offscreen, so the Panel would fail to load. Swap in a plain window with the
-# API Panel.qml uses; the rest of the kit stays the installed one.
-rm "$cfg_dir/Ui"
-mkdir "$cfg_dir/Ui"
-ln -s "$shell_root"/Ui/* "$cfg_dir/Ui/"
-rm "$cfg_dir/Ui/KeyboardPanel.qml"
-cat > "$cfg_dir/Ui/KeyboardPanel.qml" <<'QML'
-import QtQuick
-import Quickshell
-
-FloatingWindow {
-  required property Item anchorItem
-  required property QtObject bar
-  property var owner: null
-  property bool open: false
-  property int contentWidth
-  property int contentHeight
-  default property alias contentItem: holder.children
-  function fittedContentWidth(width) { return width }
-  function fittedContentHeight(height) { return height }
-  visible: open
-  implicitWidth: contentWidth
-  implicitHeight: contentHeight
-  Item { id: holder; anchors.fill: parent }
-}
-QML
+stub_keyboard_panel
 
 # The widget loads from its own path, outside the config dir, as the shell
 # loads a plugin. Symlinked into the config dir, Panel.qml fails to resolve the

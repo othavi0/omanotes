@@ -30,6 +30,7 @@ BarWidget {
         if ("settings" in target) target.settings = root.settings
         if ("anchorItem" in target) target.anchorItem = button
         if ("hostWidget" in target) target.hostWidget = root
+        if ("db" in target) target.db = db
     }
 
     // Mutations go through the async sqlite3 Process, so each call acks
@@ -82,9 +83,8 @@ BarWidget {
     onBarChanged: injectPanel()
     onSettingsChanged: injectPanel()
 
-    // Owns sqlite3 access, the db file watcher, and the cached counts the bar
-    // tooltip binds to. The panel keeps its own instance — the db file is the
-    // source of truth, and each watcher keeps its view fresh.
+    // The only Db of this widget: the IPC, the bar tooltip and the panel
+    // (through injectPanel) all read and write through it.
     Data.Db {
         id: db
         Component.onCompleted: db.init()

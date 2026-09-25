@@ -129,7 +129,8 @@ QtObject {
                 var err = String(writeStdout.text || "").trim()
                 if (err === "") err = "sqlite3 exited " + exitCode
                 root.fail(err)
-                if (kind !== "init") postWriteReload.restart()
+                if (kind === "init") initRetry.start()
+                else reloadDebounce.restart()
                 return
             }
 
@@ -146,9 +147,9 @@ QtObject {
                 else if (kind === "deleteItem") root.itemDeleted(args.id)
                 else if (kind === "deleteHistory") root.historyRowDeleted(args.id)
                 else if (kind === "clearHistory") root.historyCleared()
-                // Belt-and-braces alongside the watcher: refresh shortly in
-                // case it misses our own write to the file.
-                postWriteReload.restart()
+                // The watcher sees this write too; both land on one timer, so
+                // the write reloads once even if the watcher misses it.
+                reloadDebounce.restart()
             }
         }
     }
@@ -181,23 +182,28 @@ QtObject {
         printErrors: false
         onFileChanged: {
             if (!root.ready) return
-            externalReloadDebounce.restart()
+            reloadDebounce.restart()
         }
     }
 
-    property Timer externalReloadDebounce: Timer {
-        interval: 250
-        repeat: false
-        onTriggered: root.load()
-    }
-
-    property Timer postWriteReload: Timer {
+    property Timer reloadDebounce: Timer {
         interval: 80
         repeat: false
         onTriggered: root.load()
     }
 
-    // Create the data dir + apply the schema (idempotent). Call once at start.
+    // A failed start-up tries again, waiting twice as long each time up to 30 s.
+    property Timer initRetry: Timer {
+        interval: 500
+        repeat: false
+        onTriggered: {
+            interval = Math.min(interval * 2, 30000)
+            root.init()
+        }
+    }
+
+    // Create the data dir + apply the schema (idempotent). Retries until it
+    // succeeds.
     function init() {
         if (root.ready || root._writeKind === "init") return
         root._enqueue("init", Db.initCommand(root.dataDir, root.dbPath), null)

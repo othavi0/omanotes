@@ -1,4 +1,4 @@
-# Sourced by test/render.sh, test/behavior.sh and test/panel.sh. Builds a
+# Sourced by the offscreen Quickshell scripts in test/. Builds a
 # throwaway `qs -p` config dir (kit symlinked from the installed shell, ui/ and
 # data/ from this checkout) and a throwaway XDG_DATA_HOME holding a seeded
 # scratchpad.db.
@@ -51,3 +51,33 @@ INSERT INTO history (id, type, title, action, ts) VALUES
 # in `$!`; killing that pid then reaches qs.
 qs_cmd=(env XDG_DATA_HOME="$data_home" QT_QPA_PLATFORM=offscreen timeout 60 qs -p "$cfg_dir")
 run_qs() { "${qs_cmd[@]}" "$@"; }
+
+# The kit's KeyboardPanel is a layer-shell PanelWindow, which has no backend
+# offscreen, so the Panel would fail to load. Swap in a plain window with the
+# API Panel.qml uses; the rest of the kit stays the installed one.
+stub_keyboard_panel() {
+  rm "$cfg_dir/Ui"
+  mkdir "$cfg_dir/Ui"
+  ln -s "$shell_root"/Ui/* "$cfg_dir/Ui/"
+  rm "$cfg_dir/Ui/KeyboardPanel.qml"
+  cat > "$cfg_dir/Ui/KeyboardPanel.qml" <<'QML'
+import QtQuick
+import Quickshell
+
+FloatingWindow {
+  required property Item anchorItem
+  required property QtObject bar
+  property var owner: null
+  property bool open: false
+  property int contentWidth
+  property int contentHeight
+  default property alias contentItem: holder.children
+  function fittedContentWidth(width) { return width }
+  function fittedContentHeight(height) { return height }
+  visible: open
+  implicitWidth: contentWidth
+  implicitHeight: contentHeight
+  Item { id: holder; anchors.fill: parent }
+}
+QML
+}
