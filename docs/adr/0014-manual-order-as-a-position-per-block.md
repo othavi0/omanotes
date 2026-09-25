@@ -10,6 +10,6 @@ The list used to be ordered by `status ASC, updated_at DESC`, so the last item e
 - In Notes or Todos the anchor is a visible row: the row just below the drop point, or the last visible row of the block when the drop is past it (`dropMove` in `ui/Item.js`). The hidden rows keep their places and their relative order.
 - A move is not an action (`CONTEXT.md`), so it writes no history entry and leaves `updated_at` alone.
 - `Db.move` reorders its cached `items` right away, so the dropped row does not jump back until the reload. The reload after the write replaces that list.
-- A reload during a drag rebuilds every row of the list, so the drag ends there without a move.
+- A reload during a drag rebuilds every row of the list, so the drag ends there without a move. An alarm write, from a tick or from the Alarms tab, is one more cause of a reload (ADR-0015), so a ring that lands during a drag ends it too.
 - A draggable row keeps a vertical drag from the list, so the list does not scroll under a drag. While the search has text the rows do not drag, and a vertical drag scrolls the list.
 - Rows written with `sqlite3` outside Omanotes get the column default, 0, and rows with the same position fall back to the newest id first. Unlike the search copy (ADR-0012), no trigger places them.

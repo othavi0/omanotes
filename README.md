@@ -2,14 +2,15 @@
 
 ![Omanotes preview](preview.png)
 
-Notes and todos in one panel on the Omarchy bar. Everything is stored in a local SQLite database, and a History tab logs each change.
+Notes, todos and alarms in one panel on the Omarchy bar. Everything is stored in a local SQLite database, and a History tab logs each change to an item.
 
 ## Features
 
 - One list for notes and todos. Unread notes and pending todos come first, read notes and completed todos after them, and you set the order inside each of those two blocks by dragging.
 - The right-hand pane is the editor: a title field and a body. Leaving the editor saves it.
 - Driven by the mouse, with Esc to close the panel.
-- A History tab that logs every change (`added`, `edited`, `completed`, `reopened`, `converted`, `deleted`). Entries can be deleted one by one or cleared.
+- An Alarms tab. Each alarm has a time, a label, the days it repeats, a snooze length and a ring length. The bar shows the next alarm, and a due alarm rings on a card under the bar.
+- A History tab that logs every change to an item (`added`, `edited`, `completed`, `reopened`, `converted`, `deleted`). Entries can be deleted one by one or cleared. Alarms are not logged.
 - The panel reloads when the database file changes, so edits from the IPC or from `sqlite3` show up without reopening it.
 - An IPC target to add, list, toggle and remove items from scripts.
 
@@ -41,6 +42,18 @@ Delete, the History trash and Clear history each need a second click on the same
 
 The History tab shows a note marked read as `read` and a note marked unread as `unread`. The database stores them as `completed` and `reopened`, like a todo's.
 
+## Alarms
+
+Open the panel, pick **Alarms** and press **+ Alarm**, or choose Alarm in the New menu. Type the time as `07:30` or `0730`, then set a label, the days it repeats, how long a snooze lasts and how long it rings. Leaving the editor saves the alarm. An alarm with no repeat days rings once and switches itself off. The switch on each row turns the alarm off and on, and switching it on arms it from now, so a time that passed while it was off does not ring.
+
+The bar chip shows the next alarm: `07:30` when it is today, `Sat 07:30` on another day, and the snooze time after a snooze. When an alarm is due, a card drops under the bar on every screen, the chip turns to a bell with the alarm's label, and a sound loops. Snooze or Stop it on the card, or click the chip. If you do nothing, the alarm snoozes itself after its ring length, up to 3 times. The panel stays closed and the card takes no keyboard focus.
+
+An alarm found more than 10 minutes late, after the computer slept, does not ring. You get one notification that lists every missed alarm.
+
+The sound is `/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga`, played by the first of `pw-play`, `paplay`, `mpv` and `ffplay` that is installed. When none can play it, the alarm rings silently and the journal says so.
+
+The alarms are kept once per shell by the plugin's service, so several monitors share one clock and one ring. In a shell without the service, the tab says so and the chip shows the note glyph alone.
+
 ## IPC
 
 The target is `scratchpad` (a legacy name, see [ADR-0003](docs/adr/0003-keep-the-scratchpad-name-for-data-and-ipc.md)). Every method takes all its arguments, so pass `""` for an empty body:
@@ -68,12 +81,12 @@ Writes are asynchronous. `{"ok":true}` means the write is queued. A write that f
 
 ## Data
 
-The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is the `MIGRATIONS` list in `data/Db.js`: an `items` table for notes and todos with a `position` for the order, a `history` table, and a folded copy of each title and body for search. At start the plugin runs every migration above the database's `user_version` in one transaction (ADR-0011), and the test harness seeds its database the same way.
+The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is the `MIGRATIONS` list in `data/Db.js`: an `items` table for notes and todos with a `position` for the order, a `history` table, a folded copy of each title and body for search, and an `alarms` table whose instants are epoch milliseconds and whose `days` is a bitmask of weekdays with bit 0 for Sunday. At start the plugin runs every migration above the database's `user_version` in one transaction (ADR-0011), and the test harness seeds its database the same way. An alarm row inserted with `sqlite3` is armed at its insert time, so it does not ring for a time that passed before it existed.
 
 ## Development
 
 - `npm run validate` runs `omarchy plugin validate .`.
-- `npm test` runs `node --test test/`, then `test/render.sh`, `test/behavior.sh`, `test/panel.sh`, `test/startup.sh` and `test/teardown.sh`. The unit tests need `sqlite3`. The other five start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
+- `npm test` runs `node --test test/`, then `test/render.sh`, `test/behavior.sh`, `test/panel.sh`, `test/alarm.sh`, `test/startup.sh` and `test/teardown.sh`. The unit tests need `sqlite3`. The other six start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
 
 Design decisions are in [`docs/adr/`](docs/adr/) and the project vocabulary is in [`CONTEXT.md`](CONTEXT.md).
 
