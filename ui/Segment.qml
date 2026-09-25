@@ -6,7 +6,7 @@ import qs.Commons
 
 // Mutually exclusive segmented control: the Items/History tabs, the
 // All/Notes/Todos filter, and the draft's Note/Todo picker. Each chip is
-// pinned to Style.spacing.controlHeight like every other control in the kit.
+// pinned to Style.spacing.controlHeight, like ActionButton and Field.
 RowLayout {
     id: root
 
@@ -14,7 +14,6 @@ RowLayout {
     property string value: ""
     property bool fill: true
     property color foreground: Color.foreground
-    property color accent: Color.accent
 
     signal picked(string v)
 
@@ -34,9 +33,9 @@ RowLayout {
             Layout.leftMargin: index === 0 ? 0 : -1
             implicitWidth: inner.implicitWidth + Style.space(22)
             implicitHeight: Style.spacing.controlHeight
-            color: on ? Style.selectedFillFor(root.foreground, root.accent) : (ma.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : "transparent")
+            color: on ? Style.selectedFillFor(root.foreground, Color.accent) : (ma.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent")
             border.width: 1
-            border.color: on ? Util.alpha(root.foreground, 0.55) : Style.normalBorderFor(root.foreground, root.accent)
+            border.color: on ? Util.alpha(root.foreground, 0.55) : Style.normalBorderFor(root.foreground, Color.accent)
             z: on ? 1 : 0
 
             Row {

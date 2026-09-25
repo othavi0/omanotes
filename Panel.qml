@@ -10,10 +10,8 @@ import "ui" as Ui
 Panel {
     id: root
     moduleName: "othavi0.omanotes"
-    // BarWidget.qml owns the `scratchpad` IPC handler. The kit Panel also
-    // registers the same target, so the shell's "will not be used" warning
-    // against BarWidget's handler here is benign (both dispatch to the same
-    // open/close/toggle functions).
+    // BarWidget.qml owns the `scratchpad` IPC handler. manageIpc: false keeps
+    // the kit Panel's own handler for this target disabled.
     ipcTarget: "scratchpad"
     manageIpc: false
 
@@ -59,8 +57,6 @@ Panel {
         else historyTab.resetFocus()
     }
 
-    readonly property color contentForeground: bar ? bar.barForeground : Color.foreground
-
     property int activeTab: 0
 
     // The popup card. The kit Panel is only the state machine (open/close/
@@ -88,7 +84,7 @@ Panel {
                 Layout.fillWidth: true
                 db: db
                 activeTab: root.activeTab
-                foreground: root.contentForeground
+                foreground: root.barForeground
                 onTabPicked: function(index) { root.activeTab = index }
                 onNewRequested: {
                     root.activeTab = 0
@@ -105,16 +101,15 @@ Panel {
                     id: mainTab
                     db: db
                     toast: toast
-                    foreground: root.contentForeground
+                    foreground: root.barForeground
                     onCloseRequested: root.close()
                 }
 
-                // History — read-only mutation log.
                 Ui.HistoryTab {
                     id: historyTab
                     db: db
                     toast: toast
-                    foreground: root.contentForeground
+                    foreground: root.barForeground
                     onCloseRequested: root.close()
                 }
             }

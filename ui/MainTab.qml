@@ -22,7 +22,6 @@ Item {
     property QtObject db: null              // Panel's Data.Db instance
     property var toast: null                // ui/Toast instance (Panel-owned)
     property color foreground: Color.foreground
-    property color accent: Color.accent
 
     signal closeRequested()                 // Esc in the list closes the panel
 
@@ -274,7 +273,6 @@ Item {
                     id: searchField
                     Layout.fillWidth: true
                     foreground: root.foreground
-                    accent: root.accent
                     activeFocusOnTab: false
                     onTextChanged: filterDebounce.restart()
                     onAccepted: root.focusList()
@@ -292,7 +290,6 @@ Item {
                     Layout.fillWidth: true
                     value: root.filterType
                     foreground: root.foreground
-                    accent: root.accent
                     options: [
                         { value: "all", label: "All", count: root.db ? (root.db.totalNotes + root.db.totalTodos) : 0 },
                         { value: "note", label: "Notes", count: root.db ? root.db.totalNotes : 0 },
@@ -320,7 +317,6 @@ Item {
                             item: modelData
                             selected: Number(modelData.id) === root.selectedId && !root.draftNew
                             foreground: root.foreground
-                            accent: root.accent
                             nowSeconds: root.nowSeconds
                             onPicked: root.pickItem(modelData.id)
                             onToggled: {
@@ -334,7 +330,6 @@ Item {
                         visible: listView.count === 0
                         filtered: root._filtered
                         foreground: root.foreground
-                        accent: root.accent
                         onNewNote: root.startNew("note")
                         onNewTodo: root.startNew("todo")
                         onClearSearch: {
@@ -364,7 +359,6 @@ Item {
                 deleteArmed: root.deleteArmed
                 nowSeconds: root.nowSeconds
                 foreground: root.foreground
-                accent: root.accent
                 onLeaveRequested: root.commitEditor(true)
                 onToggleDraftTypeRequested: function(v) { root.draftType = v }
                 onToggleRequested: root.toggleStatus()

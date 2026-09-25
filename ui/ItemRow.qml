@@ -13,7 +13,6 @@ Rectangle {
     property var item: ({})
     property bool selected: false
     property color foreground: Color.foreground
-    property color accent: Color.accent
     property int nowSeconds: 0
 
     signal picked()
@@ -25,8 +24,8 @@ Rectangle {
     height: Style.space(30)
     radius: Style.cornerRadius
     color: root.selected
-        ? Style.selectedFillFor(root.foreground, root.accent)
-        : (rowMouse.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : "transparent")
+        ? Style.selectedFillFor(root.foreground, Color.accent)
+        : (rowMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent")
 
     MouseArea {
         id: rowMouse
@@ -40,7 +39,7 @@ Rectangle {
         x: Style.space(10)
         y: (root.height - height) / 2
         text: root.todo ? (root.done ? Icons.boxOn : Icons.boxOff) : Icons.note
-        color: root.done ? Util.alpha(root.foreground, 0.45) : (root.todo ? root.foreground : root.accent)
+        color: root.done ? Util.alpha(root.foreground, 0.45) : (root.todo ? root.foreground : Color.accent)
         font.family: Style.font.family
         font.pixelSize: Style.font.icon
 
