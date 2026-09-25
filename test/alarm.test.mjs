@@ -168,12 +168,11 @@ test("a manual snooze resets autoSnoozes to 0 and an automatic one adds 1", () =
   assert.deepEqual(A.snoozePatch(alarm({ autoSnoozes: 1 }), 15, true, NOW), { snoozedUntil: NOW + 15 * MIN, autoSnoozes: 2 })
 })
 
-test("a snooze length outside 1 to 180 minutes falls back to the default", () => {
-  for (const minutes of [0, 181, -5, NaN, undefined, "x"]) {
-    assert.equal(A.snoozePatch(alarm(), minutes, false, NOW).snoozedUntil, NOW + 9 * MIN, String(minutes))
+test("a snooze length is clamped to 1..180 minutes and only a missing or non-numeric one uses the default", () => {
+  const cases = [[0, 1], [-5, 1], [181, 180], [1000, 180], [2.6, 3], ["15", 15], [NaN, 9], [undefined, 9], [null, 9], ["", 9], ["x", 9]]
+  for (const [minutes, expected] of cases) {
+    assert.equal(A.snoozePatch(alarm(), minutes, false, NOW).snoozedUntil, NOW + expected * MIN, String(minutes))
   }
-  assert.equal(A.snoozePatch(alarm(), 1, false, NOW).snoozedUntil, NOW + MIN)
-  assert.equal(A.snoozePatch(alarm(), 180, false, NOW).snoozedUntil, NOW + 180 * MIN)
 })
 
 test("expire drops events that rang for ringSeconds and snoozes only those alarms", () => {

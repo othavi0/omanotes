@@ -128,8 +128,8 @@ function tick(alarms, nowMs) {
 
 function snoozeMinutes(minutes) {
   var n = Number(minutes)
-  if (!isFinite(n) || n < MIN_SNOOZE_MINUTES || n > MAX_SNOOZE_MINUTES) return DEFAULT_SNOOZE_MINUTES
-  return Math.round(n)
+  if (minutes === undefined || minutes === null || minutes === "" || !isFinite(n)) return DEFAULT_SNOOZE_MINUTES
+  return Math.max(MIN_SNOOZE_MINUTES, Math.min(MAX_SNOOZE_MINUTES, Math.round(n)))
 }
 
 // A manual snooze is the person answering, so it restarts the automatic count.
