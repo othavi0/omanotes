@@ -2,13 +2,15 @@
   "schemaVersion": 1,
   "id": "othavi0.omanotes",
   "name": "Omanotes",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "othavi0",
-  "description": "Omanotes: short notes + todo list manager + history tab, mouse-driven, SQLite-backed with file-watcher auto-refresh",
+  "description": "Omanotes: short notes, todos and alarms, with a history tab. Mouse-driven, SQLite-backed, with file-watcher auto-refresh",
   "kinds": [
+    "service",
     "bar-widget"
   ],
   "entryPoints": {
+    "service": "Service.qml",
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
