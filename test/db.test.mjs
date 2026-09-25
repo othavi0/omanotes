@@ -932,6 +932,33 @@ test("parseAlarms turns sqlite3 rows into records with numbers, a days list and 
   assert.throws(() => Db.parseAlarms("nope"), { message: "unreadable sqlite3 output" })
 })
 
+test("parseAlarms turns a row a hand edit left out of range into one the builders accept, and drops one it cannot read", (t) => {
+  const db = openDb(t)
+  const inserted = db.run("INSERT INTO alarms (id, hour, minute, label, days, enabled, snooze_minutes, ring_minutes,"
+    + " snoozed_until_ms, last_fired_at_ms, armed_at_ms, auto_snoozes) VALUES"
+    + " (1, 6.4, 29.6, 'Hand', 3, 1, 9.5, 1.4, -1, 1700000000000.5, -3.2, 2.7),"
+    + " (2, 7, 0, 'Plain', 0, 1, 9, 5, 0, 0, 0, 0)", false)
+  assert.equal(inserted.status, 0, inserted.stderr)
+  const alarms = Db.parseAlarms(db.run(Db.alarmsSql(), true).stdout)
+  assert.deepEqual(alarms[0], {
+    id: 1, hour: 6, minute: 30, label: "Hand", days: [0, 1], enabled: true, snoozeMinutes: 10, ringMinutes: 1,
+    snoozedUntil: 0, lastFiredAt: 1700000000001, armedAt: 0, autoSnoozes: 3
+  })
+  for (const alarm of alarms) {
+    assert.doesNotThrow(() => Db.saveAlarmSql(alarm), "row " + alarm.id + " can be written back")
+  }
+  const unreadable = JSON.stringify([
+    { id: 3, hour: "x", minute: 0, label: "", days: 0, enabled: 1, snooze_minutes: 9, ring_minutes: 5,
+      snoozed_until_ms: 0, last_fired_at_ms: 0, armed_at_ms: 0, auto_snoozes: 0 },
+    { id: 0, hour: 7, minute: 0, label: "", days: 0, enabled: 1, snooze_minutes: 9, ring_minutes: 5,
+      snoozed_until_ms: 0, last_fired_at_ms: 0, armed_at_ms: 0, auto_snoozes: 0 },
+    { id: 4, hour: 30, minute: 75, label: "", days: 0, enabled: 1, snooze_minutes: 900, ring_minutes: 90,
+      snoozed_until_ms: 0, last_fired_at_ms: 0, armed_at_ms: 0, auto_snoozes: 500 }
+  ])
+  assert.deepEqual(Db.parseAlarms(unreadable).map((a) => [a.id, a.hour, a.minute, a.snoozeMinutes, a.ringMinutes, a.autoSnoozes]),
+    [[4, 23, 59, 180, 60, 99]], "an unreadable hour and a non-positive id are dropped, the rest is clamped")
+})
+
 test("mergeAlarms lays each pending record over its row, drops a pending null and brings no gone row back", () => {
   const rows = [alarmRecord({ id: 1 }), alarmRecord({ id: 2, hour: 9 }), alarmRecord({ id: 3, hour: 10 })]
   const pending = {

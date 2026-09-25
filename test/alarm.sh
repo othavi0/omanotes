@@ -517,6 +517,20 @@ ipc closePanel 1
 expect "closing the panel of widget 1 leaves its draft saved once" "SELECT COUNT(*) FROM alarms WHERE label = 'Failing'" "1"
 replies "the alarm edits wrote no history row" "$(sql "SELECT COUNT(*) FROM history")" "5"
 
+# A hand edit can leave values no builder writes back: a fractional hour,
+# instants below zero or with a fraction. The alarm is still consumed once.
+sql "INSERT INTO alarms (id, hour, minute, label, days, enabled, snoozed_until_ms, last_fired_at_ms, armed_at_ms)
+  VALUES (30, 10.4, 0, 'Malformed', 0, 1, -1, 0.5, $yesterday.5)"
+state_has "the service picks up the malformed alarm" '"alarms":9'
+notices_before="$(wc -l < "$cfg_dir/notify.log")"
+t1030="$(ms "$day 10:30")"
+for second in 0 1 2; do ipc tick "$(( t1030 + second * 1000 ))" > /dev/null; done
+replies "the malformed alarm is missed with one notification over three ticks" \
+  "$(( $(wc -l < "$cfg_dir/notify.log") - notices_before ))" "1"
+expect "and is consumed and switched off, written back whole" \
+  "SELECT hour || ':' || enabled || ':' || last_fired_at_ms || ':' || snoozed_until_ms FROM alarms WHERE id = 30" \
+  "10:0:$(ms "$day 10:00"):0"
+
 # The limit counts an insert still in flight, and a refused draft stays open.
 filler=$(( 49 - $(sql "SELECT COUNT(*) FROM alarms") ))
 sql "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < $filler)

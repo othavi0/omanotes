@@ -228,7 +228,7 @@ QtObject {
 
     property var _alarmRows: []
     property var _insertSeqs: []
-    property var _alarmPending: ({})      // id -> { seq, record | null, retry }
+    property var _alarmPending: ({})      // id -> { seq, record | null, retry, unwritable }
     property int _alarmSeq: 0             // the last seq handed to a write
     property int _alarmDoneSeq: 0         // the highest seq whose write ended. The queue is FIFO, so it only grows
     property int _alarmsReadSeq: 0        // _alarmDoneSeq when the running alarms read started
@@ -267,7 +267,7 @@ QtObject {
         root._alarmRows = rows
         var pending = root._alarmPending
         for (var id in pending) {
-            if (pending[id].seq <= root._alarmsReadSeq && !pending[id].retry) delete pending[id]
+            if (pending[id].seq <= root._alarmsReadSeq && !pending[id].retry && !pending[id].unwritable) delete pending[id]
         }
         root._insertSeqs = root._insertSeqs.filter(function(seq) { return seq > root._alarmsReadSeq })
         root.alarms = Db.mergeAlarms(rows, pending)
@@ -288,17 +288,19 @@ QtObject {
     }
 
     // Lays `record` (null to delete) over its row now and queues the write.
-    // Returns "" or why it was refused.
+    // Returns "" or why it was refused. A record that cannot become SQL is
+    // laid over all the same and no read takes it off, so a tick never finds
+    // the occurrence it just consumed due again.
     function _pendAlarm(id, record, caller) {
+        if (!root.ready) return root._log("not ready")
         var kind = record === null ? "deleteAlarm" : "saveAlarm"
         var seq = root._alarmSeq + 1
         var error = root._queueAlarm(kind, function() { return record === null ? Db.deleteAlarmSql(id) : Db.saveAlarmSql(record) },
             { id: Number(id), seq: seq, record: record, caller: caller || null })
-        if (error !== "") return error
         root._alarmSeq = seq
-        root._alarmPending[Number(id)] = { seq: seq, record: record, retry: false }
+        root._alarmPending[Number(id)] = { seq: seq, record: record, retry: false, unwritable: error !== "" }
         root.alarms = Db.mergeAlarms(root._alarmRows, root._alarmPending)
-        return ""
+        return error
     }
 
     function saveAlarm(record, caller) {
