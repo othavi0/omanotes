@@ -38,7 +38,13 @@ QtObject {
     // after a change.
     property string listFilter: "all"
     property string listQuery: ""
-    property bool _listStale: false            // a list() arrived while one was running
+
+    // A read asked for while its Process runs is marked stale and re-runs when
+    // that Process ends, failed or not, so the last reload always lands.
+    property bool _countsStale: false
+    property bool _listStale: false
+    property bool _allItemsStale: false
+    property bool _historyStale: false
 
     signal itemsUpdated(var items)
     signal countsUpdated()
@@ -110,6 +116,10 @@ QtObject {
         }
         onExited: function(exitCode) {
             var c = root._parsed("counts", exitCode, countsStdout, countsStderr, Db.parseCounts)
+            if (root._countsStale) {
+                Qt.callLater(root.loadCounts)
+                return
+            }
             if (c === null) return
             root.unreadNotes = c.unreadNotes
             root.inProgressTodos = c.inProgressTodos
@@ -131,11 +141,11 @@ QtObject {
         }
         onExited: function(exitCode) {
             var rows = root._parsed("list", exitCode, listStdout, listStderr, Db.parseRows)
-            if (rows === null) return
             if (root._listStale) {
                 Qt.callLater(function() { root.list(root.listFilter, root.listQuery) })
                 return
             }
+            if (rows === null) return
             root.items = rows
             if (root.allItemsProcess.running || root._allItemsStale) root._itemsPending = true
             else root.itemsUpdated(rows)
@@ -146,7 +156,6 @@ QtObject {
     // panel never judges a row missing from a filtered list against allItems
     // from before the change.
     property bool _itemsPending: false
-    property bool _allItemsStale: false
     property Process allItemsProcess: Process {
         stdout: StdioCollector {
             id: allItemsStdout
@@ -183,6 +192,10 @@ QtObject {
         }
         onExited: function(exitCode) {
             var rows = root._parsed("history", exitCode, historyStdout, historyStderr, Db.parseRows)
+            if (root._historyStale) {
+                Qt.callLater(root.historyList)
+                return
+            }
             if (rows === null) return
             root.history = rows
             root.historyUpdated(rows)
@@ -336,7 +349,9 @@ QtObject {
     }
 
     function loadCounts() {
-        if (!root.ready || root.countsProcess.running) return
+        if (!root.ready) return
+        if (root.countsProcess.running) { root._countsStale = true; return }
+        root._countsStale = false
         root.countsProcess.command = Db.sqliteCommand(root.dbPath, Db.countsSql(), true)
         root.countsProcess.running = true
     }
@@ -362,7 +377,9 @@ QtObject {
     }
 
     function historyList() {
-        if (!root.ready || root.historyProcess.running) return
+        if (!root.ready) return
+        if (root.historyProcess.running) { root._historyStale = true; return }
+        root._historyStale = false
         root.historyProcess.command = Db.sqliteCommand(root.dbPath, Db.historySql(), true)
         root.historyProcess.running = true
     }
