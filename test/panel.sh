@@ -44,6 +44,17 @@ ShellRoot {
       mainTab.editorTitle = title
       return "ok"
     }
+    function filterPanel(type: string, query: string): string {
+      var mainTab = sr.find(widget.item.panelItem, "MainTab")
+      if (!mainTab) return "no MainTab"
+      mainTab.filterType = type
+      mainTab.searchText = query
+      return "ok"
+    }
+    function panelRows(): int {
+      var mainTab = sr.find(widget.item.panelItem, "MainTab")
+      return mainTab ? mainTab.itemList.length : -1
+    }
     function quit(): void { Qt.exit(0) }
   }
 }
@@ -80,6 +91,9 @@ replies() {
   if [[ "$got" == "$want" ]]; then pass "$what"; else fail "$what: want '$want', got '$got'"; fi
 }
 by_id() { node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).sort((a, b) => a.id - b.id)))' "$1"; }
+all_of() {
+  by_id "$(sqlite3 "$db" "SELECT json_group_array(json_object('id', id, 'type', type, 'title', title, 'body', COALESCE(body, ''), 'status', status)) FROM items WHERE type = '$1'")"
+}
 
 replies "addNote answers ok" "$(ipc scratchpad addNote "IPC-NOTE" "ipc body")" '{"ok":true}'
 expect "addNote writes the note" \
@@ -94,8 +108,7 @@ for _ in $(seq 50); do
   [[ "$listed" == *'"IPC-NOTE"'* ]] && break
   sleep 0.2
 done
-replies "listNotes returns every note with its fields" "$(by_id "$listed")" \
-  "$(by_id "$(sqlite3 "$db" "SELECT json_group_array(json_object('id', id, 'type', type, 'title', title, 'body', COALESCE(body, ''), 'status', status)) FROM items WHERE type = 'note'")")"
+replies "listNotes returns every note with its fields" "$(by_id "$listed")" "$(all_of note)"
 
 replies "toggleTodo answers ok" "$(ipc scratchpad toggleTodo 2)" '{"ok":true}'
 expect "toggleTodo completes the pending todo" "SELECT status FROM items WHERE id = 2" "1"
@@ -111,6 +124,32 @@ expect "toggleTodo again reopens the completed todo" "SELECT status FROM items W
 expect "the reopen is logged in history" \
   "SELECT COUNT(*) FROM history WHERE action = 'reopened' AND title = 'Renew the domain'" "1"
 replies "toggleTodo on a missing id is refused" "$(ipc scratchpad toggleTodo 999)" '{"ok":false,"error":"item not found: 999"}'
+
+# The panel shares the widget's Db, so its filter and search must not narrow the IPC.
+replies "the panel takes a filter and a search" "$(ipc omanotes-test filterPanel note coffee)" "ok"
+rows=""
+for _ in $(seq 50); do
+  rows="$(ipc omanotes-test panelRows)"
+  [[ "$rows" == "1" ]] && break
+  sleep 0.2
+done
+replies "the filtered panel lists one row" "$rows" "1"
+# The cache may still be catching up on the reopen above, so poll.
+lists_all() {
+  local what="$1" call="$2" type="$3" got="" want
+  want="$(all_of "$type")"
+  for _ in $(seq 50); do
+    got="$(by_id "$(ipc scratchpad "$call")")"
+    [[ "$got" == "$want" ]] && break
+    sleep 0.2
+  done
+  replies "$what" "$got" "$want"
+}
+lists_all "listNotes ignores the panel's filter" listNotes note
+lists_all "listTodos ignores the panel's filter" listTodos todo
+replies "toggleTodo finds a todo the panel hides" "$(ipc scratchpad toggleTodo 3)" '{"ok":true}'
+expect "toggleTodo completes the hidden todo" "SELECT status FROM items WHERE id = 3" "1"
+ipc omanotes-test filterPanel all "" > /dev/null
 
 replies "remove answers ok" "$(ipc scratchpad remove "$note_id")" '{"ok":true}'
 expect "remove deletes the item" "SELECT COUNT(*) FROM items WHERE id = $note_id" "0"

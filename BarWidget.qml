@@ -35,7 +35,7 @@ BarWidget {
 
     // Mutations go through the async sqlite3 Process, so each call acks
     // immediately and the FileView watcher's reload converges the change onto
-    // the panels + list() cache afterwards.
+    // the panels + allItems cache afterwards.
     function ipcAdd(type, title, body) {
         var t = String(title || "").trim()
         if (t === "") return JSON.stringify({ ok: false, error: "title is required" })
@@ -43,7 +43,7 @@ BarWidget {
         return JSON.stringify({ ok: true })
     }
     function ipcList(type) {
-        var list = db.items || []
+        var list = db.allItems
         var out = []
         for (var i = 0; i < list.length; ++i) {
             if (String(list[i].type) !== type) continue
@@ -59,7 +59,7 @@ BarWidget {
     }
     function ipcToggle(id) {
         var n = Number(id)
-        var list = db.items || []
+        var list = db.allItems
         for (var i = 0; i < list.length; ++i) {
             if (Number(list[i].id) === n) {
                 db.setStatus(n, Number(list[i].status) === 1 ? 0 : 1)

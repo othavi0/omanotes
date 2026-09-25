@@ -6,8 +6,8 @@ import "Db.js" as Db
 // Omanotes data layer: the single entry point for all database access.
 // Views call this component's methods instead of building SQL or touching
 // sqlite3 directly. Writes are serialized through one Process (one at a
-// time); each read (counts/list/history) uses its own dedicated Process so
-// they refresh independently.
+// time); each read (counts/list/all items/history) uses its own dedicated
+// Process so they refresh independently.
 QtObject {
     id: root
 
@@ -23,6 +23,9 @@ QtObject {
 
     // Cached rows (populated by reads; the UI binds to these).
     property var items: []                     // list() results
+    // Every item, whatever list() last filtered: the IPC reads this, and the
+    // panel sharing this Db narrows `items`.
+    property var allItems: []
     property var history: []                   // historyList() results
     property int unreadNotes: 0                // notes with status 0
     property int inProgressTodos: 0            // todos with status 0
@@ -90,6 +93,25 @@ QtObject {
             var rows = Db.parseRows(listStdout.text)
             root.items = rows
             root.itemsUpdated(rows)
+        }
+    }
+
+    property bool _allItemsStale: false
+    property Process allItemsProcess: Process {
+        stdout: StdioCollector {
+            id: allItemsStdout
+            waitForEnd: true
+        }
+        onExited: function(exitCode) {
+            if (exitCode !== 0) {
+                root.fail("list read failed (exit " + exitCode + ")")
+                return
+            }
+            if (root._allItemsStale) {
+                Qt.callLater(root.listAll)
+                return
+            }
+            root.allItems = Db.parseRows(allItemsStdout.text)
         }
     }
 
@@ -226,6 +248,14 @@ QtObject {
         root.listProcess.running = true
     }
 
+    function listAll() {
+        if (!root.ready) return
+        if (root.allItemsProcess.running) { root._allItemsStale = true; return }
+        root._allItemsStale = false
+        root.allItemsProcess.command = Db.sqliteCommand(root.dbPath, Db.listSql("all", ""), true)
+        root.allItemsProcess.running = true
+    }
+
     function historyList() {
         if (!root.ready || root.historyProcess.running) return
         root.historyProcess.command = Db.sqliteCommand(root.dbPath, Db.historySql(), true)
@@ -237,6 +267,7 @@ QtObject {
     function load() {
         root.loadCounts()
         root.list(root.listFilter, root.listQuery)
+        root.listAll()
         root.historyList()
     }
 
