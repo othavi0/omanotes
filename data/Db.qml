@@ -21,6 +21,11 @@ QtObject {
 
     property bool ready: false                 // init() completed
 
+    // "items": counts, list, every item and history, for a widget and its
+    // panel. "alarms": only the alarms table, for the alarm service. Both
+    // run init() and the migration race (ADR-0011).
+    property string scope: "items"
+
     // Cached rows (populated by reads; the UI binds to these).
     property var items: []                     // list() results
     // Every item, whatever list() last filtered: the IPC reads this, and the
@@ -202,6 +207,136 @@ QtObject {
         }
     }
 
+    // The alarms as the service must see them: the last read, with every
+    // write this Db made and no later read has confirmed laid over it
+    // (ADR-0015). A write lays its whole record over the row at once, so the
+    // next tick never sees the state from before it, whether the write is
+    // queued, waiting on a lock or being retried.
+    property var alarms: []
+    property bool alarmsLoaded: false
+    signal alarmAdded(int id)
+
+    property var _alarmRows: []
+    property var _alarmPending: ({})      // id -> { seq, record | null, retry }
+    property int _alarmSeq: 0             // the last seq handed to a write
+    property int _alarmDoneSeq: 0         // the highest seq whose write ended. The queue is FIFO, so it only grows
+    property int _alarmsReadSeq: 0        // _alarmDoneSeq when the running alarms read started
+    property bool _alarmsStale: false
+
+    property Process alarmsProcess: Process {
+        stdout: StdioCollector {
+            id: alarmsStdout
+            waitForEnd: true
+        }
+        stderr: StdioCollector {
+            id: alarmsStderr
+            waitForEnd: true
+        }
+        onExited: function(exitCode) {
+            var rows = root._parsed("alarms", exitCode, alarmsStdout, alarmsStderr, Db.parseAlarms)
+            if (root._alarmsStale) {
+                Qt.callLater(root.listAlarms)
+                return
+            }
+            if (rows === null) return
+            root._alarmsLanded(rows)
+        }
+    }
+
+    function listAlarms() {
+        if (!root.ready) return
+        if (root.alarmsProcess.running) { root._alarmsStale = true; return }
+        root._alarmsStale = false
+        root._alarmsReadSeq = root._alarmDoneSeq
+        root.alarmsProcess.command = Db.sqliteCommand(root.dbPath, Db.alarmsSql(), true)
+        root.alarmsProcess.running = true
+    }
+
+    // Drops every pending entry whose write ended before this read started
+    // and is not waiting for a retry, then lays the rest over the rows.
+    function _alarmsLanded(rows) {
+        root._alarmRows = rows
+        var pending = root._alarmPending
+        for (var id in pending) {
+            if (pending[id].seq <= root._alarmsReadSeq && !pending[id].retry) delete pending[id]
+        }
+        root.alarms = Db.mergeAlarms(rows, pending)
+        root.alarmsLoaded = true
+    }
+
+    // Lays `record` (null to delete) over its row now and queues the write.
+    // Returns "" or why it was refused.
+    function _pendAlarm(id, record) {
+        var kind = record === null ? "deleteAlarm" : "saveAlarm"
+        var seq = root._alarmSeq + 1
+        var error = root._write(kind, function() { return record === null ? Db.deleteAlarmSql(id) : Db.saveAlarmSql(record) },
+            { id: Number(id), seq: seq, record: record })
+        if (error !== "") return error
+        root._alarmSeq = seq
+        root._alarmPending[Number(id)] = { seq: seq, record: record, retry: false }
+        root.alarms = Db.mergeAlarms(root._alarmRows, root._alarmPending)
+        return ""
+    }
+
+    function saveAlarm(record) {
+        return root._pendAlarm(record.id, record)
+    }
+
+    function deleteAlarm(id) {
+        return root._pendAlarm(id, null)
+    }
+
+    // Not laid over: the row has no id until the insert lands, which emits
+    // alarmAdded(id). A failure emits failed and writeFailed("insertAlarm").
+    function insertAlarm(record) {
+        return root._write("insertAlarm", function() { return Db.insertAlarmSql(record) }, { record: record })
+    }
+
+    // What a finished alarm write does to the overlay. A write that failed
+    // keeps its entry and is retried with back-off, and the retry sends the
+    // newest state of that alarm because a later change replaced the entry.
+    // A row that is gone (CHANGES 0) only drops the entry, quietly.
+    function _alarmWriteEnded(kind, args, exitCode, stdout, stderr) {
+        if (kind === "insertAlarm") {
+            if (exitCode !== 0) {
+                root._failWrite(kind, args, Db.errorText(stderr.text, exitCode), false)
+                return
+            }
+            root.alarmAdded(Db.parseId(stdout.text))
+            reloadDebounce.restart()
+            return
+        }
+        var entry = root._alarmPending[args.id]
+        var current = !!entry && entry.seq === args.seq
+        root._alarmDoneSeq = args.seq
+        if (exitCode !== 0) {
+            if (current) {
+                entry.retry = true
+                alarmRetry.start()
+            }
+            root.fail(Db.errorText(stderr.text, exitCode))
+            return
+        }
+        alarmRetry.interval = 500
+        if (!Db.parseFound(stdout.text)) {
+            if (current) delete root._alarmPending[args.id]
+            root.fail("alarm not found", true)
+        }
+        reloadDebounce.restart()
+    }
+
+    property Timer alarmRetry: Timer {
+        interval: 500
+        repeat: false
+        onTriggered: {
+            interval = Math.min(interval * 2, 30000)
+            var pending = root._alarmPending
+            for (var id in pending) {
+                if (pending[id].retry && root._pendAlarm(Number(id), pending[id].record) !== "") restart()
+            }
+        }
+    }
+
     property string _writeKind: ""
     property var _writeArgs: null
     property bool _writeFromScript: false
@@ -226,6 +361,11 @@ QtObject {
             root._writeArgs = null
             root._writeFromScript = false
             Qt.callLater(root._runNextWrite)
+
+            if (kind === "saveAlarm" || kind === "deleteAlarm" || kind === "insertAlarm") {
+                root._alarmWriteEnded(kind, args, exitCode, writeStdout, writeStderr)
+                return
+            }
 
             if (exitCode !== 0) {
                 if (kind === "migrate" && Db.migrationRaced(writeStderr.text)) {
@@ -387,6 +527,10 @@ QtObject {
     // Re-fetch everything with the last list() filter (used by the watcher,
     // after writes, and as the reopen safety net).
     function load() {
+        if (root.scope === "alarms") {
+            root.listAlarms()
+            return
+        }
         root.loadCounts()
         root.list(root.listFilter, root.listQuery)
         root.listAll()
