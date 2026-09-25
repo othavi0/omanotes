@@ -1,7 +1,8 @@
 # Sourced by the offscreen Quickshell scripts in test/. Builds a
 # throwaway `qs -p` config dir (kit symlinked from the installed shell, ui/ and
 # data/ from this checkout) and a throwaway XDG_DATA_HOME holding a seeded
-# scratchpad.db at the current schema version.
+# scratchpad.db at the current schema version. The rows are written at version
+# 0 and then migrated, as the items of a database from before versioning are.
 
 worktree="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 shell_root="${OMARCHY_PATH:-/usr/share/omarchy}/shell"
@@ -27,10 +28,17 @@ ln -s "$worktree/data" "$cfg_dir/data"
 
 mkdir -p "$data_home/omarchy"
 db="$data_home/omarchy/scratchpad.db"
-node --input-type=module -e '
-  const { loadQmlLib } = await import(process.argv[1])
-  process.stdout.write(loadQmlLib(process.argv[2], ["migrateSql"]).migrateSql(0).join(";\n") + ";\n")
-' "$worktree/test/lib/load-qml-lib.mjs" "$worktree/data/Db.js" | sqlite3 "$db"
+# `run_db_js v0` applies the schema of version 0, `run_db_js migrate` takes the
+# database from version 0 to the current one.
+run_db_js() {
+  node --input-type=module -e '
+    const { loadQmlLib } = await import(process.argv[1])
+    const Db = loadQmlLib(process.argv[2], ["MIGRATIONS", "migrateSql"])
+    const sql = process.argv[3] === "v0" ? Db.MIGRATIONS[0] : Db.migrateSql(0)
+    process.stdout.write(sql.join(";\n") + ";\n")
+  ' "$worktree/test/lib/load-qml-lib.mjs" "$worktree/data/Db.js" "$1" | sqlite3 "$db"
+}
+run_db_js v0
 
 now="$(date +%s)"
 sqlite3 "$db" "INSERT INTO items (id, type, title, body, status, created_at, updated_at) VALUES
@@ -45,7 +53,7 @@ INSERT INTO history (id, type, title, action, ts) VALUES
   (2, 'note', 'Buy coffee', 'completed', $now - 90000),
   (3, 'todo', 'Old errand', 'deleted', $now - 100000),
   (4, 'note', 'Ideas for the panel', 'edited', $now - 3600);"
-
+run_db_js migrate
 
 # A plain command, so a caller that backgrounds it gets the pid of `timeout`
 # in `$!`; killing that pid then reaches qs.

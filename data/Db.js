@@ -21,8 +21,23 @@ function now() {
   return Math.floor(Date.now() / 1000)
 }
 
+// The copy of a title or body that search matches against: lower case, without
+// the accents of the Combining Diacritical Marks block. It works one UTF-16
+// unit at a time and leaves surrogates as they are, because the migration
+// applies the same map one character at a time in SQL (foldedSql), and both
+// must give every item the same copy.
+function searchChar(c) {
+  if (c >= "\ud800" && c <= "\udfff") return c
+  return c.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").normalize("NFC")
+}
+
+function searchText(text) {
+  return String(text).replace(/[\s\S]/g, searchChar)
+}
+
 // Unified list. filterType is "all"|"note"|"todo";
-// query is an optional case-insensitive substring match on title or body.
+// query is an optional substring match on title or body that ignores case and
+// accents (searchText).
 // Sort order: pending (unread/in-progress, status 0) always on top, then
 // recency — `status ASC, updated_at DESC`.
 function listSql(filterType, query) {
@@ -32,10 +47,10 @@ function listSql(filterType, query) {
     if (ft !== "note" && ft !== "todo") ft = "all"
     else where.push("type = " + q(ft))
   }
-  var needle = String(query || "").trim()
+  var needle = searchText(String(query || "").trim())
   if (needle !== "") {
     var pattern = q("%" + likeEscape(needle) + "%")
-    where.push("(title LIKE " + pattern + " ESCAPE '\\' OR body LIKE " + pattern + " ESCAPE '\\')")
+    where.push("(search_title LIKE " + pattern + " ESCAPE '\\' OR search_body LIKE " + pattern + " ESCAPE '\\')")
   }
   var sql = "SELECT id, type, title, body, status, created_at, updated_at FROM items"
   if (where.length > 0) sql += " WHERE " + where.join(" AND ")
@@ -62,16 +77,25 @@ function transaction(statements) {
   return ["BEGIN IMMEDIATE"].concat(statements, ["COMMIT"])
 }
 
+function bodySql(body) {
+  return (body === null || body === undefined || body === "") ? "NULL" : q(body)
+}
+
+function searchBodySql(body) {
+  return bodySql(body) === "NULL" ? "NULL" : q(searchText(body))
+}
+
 // Insert a new item (status 0) + "added" history row, and return its id.
 // The `SELECT last_insert_rowid()` sits between the two INSERTs so it captures
 // the items row (a later history INSERT would otherwise move last_insert_rowid).
 function addSql(type, title, body) {
   var t = (type === "todo") ? "todo" : "note"
   var ts = now()
-  var b = (body === null || body === undefined || body === "") ? "NULL" : q(body)
+  var b = bodySql(body)
   return transaction([
-    "INSERT INTO items (type, title, body, status, created_at, updated_at) VALUES ("
-      + q(t) + ", " + q(title) + ", " + b + ", 0, " + ts + ", " + ts + ")",
+    "INSERT INTO items (type, title, body, search_title, search_body, status, created_at, updated_at) VALUES ("
+      + q(t) + ", " + q(title) + ", " + b + ", " + q(searchText(title)) + ", " + searchBodySql(body)
+      + ", 0, " + ts + ", " + ts + ")",
     "SELECT last_insert_rowid() AS id",
     "INSERT INTO history (type, title, action, ts) VALUES ("
       + q(t) + ", " + q(title) + ", 'added', " + ts + ")"
@@ -113,11 +137,11 @@ function setStatusSql(id, status) {
 // INSERT…SELECT reads the item's own type + title after the UPDATE.
 function updateSql(id, title, body) {
   var nid = sqlId(id)
-  var b = (body === null || body === undefined || body === "") ? "NULL" : q(body)
   var ts = now()
   return transaction([
-    "UPDATE items SET title = " + q(title) + ", body = " + b + ", updated_at = " + ts
-      + " WHERE id = " + nid,
+    "UPDATE items SET title = " + q(title) + ", body = " + bodySql(body)
+      + ", search_title = " + q(searchText(title)) + ", search_body = " + searchBodySql(body)
+      + ", updated_at = " + ts + " WHERE id = " + nid,
     CHANGES,
     "INSERT INTO history (type, title, action, ts) "
       + "SELECT type, title, 'edited', " + ts + " FROM items WHERE id = " + nid
@@ -165,11 +189,41 @@ function clearHistorySql() {
   return "DELETE FROM history"
 }
 
+// searchText(column) in SQL, for the rows written before the search copy:
+// each character through search_map, joined back in order.
+function foldedSql(column) {
+  var ch = "substr(" + column + ", n.i, 1)"
+  return "(WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(" + column + "))"
+    + " SELECT group_concat(coalesce(search_map.folded, " + ch + "), '' ORDER BY n.i)"
+    + " FROM n LEFT JOIN search_map ON search_map.ch = " + ch + ")"
+}
+
+// Adds the search copy and fills it for the items already there. search_map
+// holds every character searchChar changes; SQLite's lower() only knows ASCII,
+// so it covers that too. Building the map takes tens of milliseconds, so it is
+// built only when a database needs this step.
+function searchCopyMigration() {
+  var rows = []
+  for (var u = 0; u < 0x10000; u++) {
+    var c = String.fromCharCode(u)
+    var s = searchChar(c)
+    if (s !== c) rows.push("(" + q(c) + ", " + q(s) + ")")
+  }
+  return [
+    "ALTER TABLE items ADD COLUMN search_title TEXT",
+    "ALTER TABLE items ADD COLUMN search_body TEXT",
+    "CREATE TEMP TABLE search_map (ch TEXT PRIMARY KEY, folded TEXT NOT NULL) WITHOUT ROWID",
+    "INSERT INTO search_map VALUES " + rows.join(", "),
+    "UPDATE items SET search_title = " + foldedSql("items.title")
+      + ", search_body = CASE WHEN items.body IS NULL THEN NULL ELSE " + foldedSql("items.body") + " END"
+  ]
+}
+
 // The schema, as the steps that build it. Entry i takes a database from
-// user_version i to i + 1, one statement per element (ADR-0001). A shipped
-// entry never changes: a schema change appends one (ADR-0011). The first
-// entry keeps IF NOT EXISTS because databases made before versioning have its
-// tables at version 0.
+// user_version i to i + 1: its statements, one per element (ADR-0001), or a
+// function that returns them. A shipped entry never changes: a schema change
+// appends one (ADR-0011). The first entry keeps IF NOT EXISTS because
+// databases made before versioning have its tables at version 0.
 var MIGRATIONS = [
   [
     "CREATE TABLE IF NOT EXISTS items ("
@@ -181,7 +235,8 @@ var MIGRATIONS = [
       + "id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL,"
       + " action TEXT NOT NULL, ts INTEGER NOT NULL)",
     "CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts DESC)"
-  ]
+  ],
+  searchCopyMigration
 ]
 
 var VERSION_CHANGED = "version_changed"
@@ -192,7 +247,10 @@ var VERSION_CHANGED = "version_changed"
 // first statements then fail with VERSION_CHANGED and nothing is written.
 function migrateSql(version) {
   var steps = []
-  for (var v = version; v < MIGRATIONS.length; v++) steps = steps.concat(MIGRATIONS[v])
+  for (var v = version; v < MIGRATIONS.length; v++) {
+    var entry = MIGRATIONS[v]
+    steps = steps.concat(typeof entry === "function" ? entry() : entry)
+  }
   if (steps.length === 0) return []
   return transaction([
     "CREATE TEMP TABLE migrating_from (version INTEGER CONSTRAINT " + VERSION_CHANGED
