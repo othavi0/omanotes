@@ -14,7 +14,8 @@ const NAMES = [
   "updateSql", "deleteItemSql", "convertTypeSql", "historySql", "deleteHistorySql",
   "clearHistorySql", "sqliteCommand", "initCommand", "MIGRATIONS", "migrateSql",
   "parseVersion", "migrationRaced", "parseRows", "parseCounts", "parseId", "parseFound",
-  "errorText", "moveSql", "movedRows"
+  "errorText", "moveSql", "movedRows", "sqlInt", "daysMask", "maskDays", "alarmsSql", "insertAlarmSql",
+  "saveAlarmSql", "deleteAlarmSql", "parseAlarms", "mergeAlarms"
 ]
 const Db = loadQmlLib(DB_JS, NAMES)
 
@@ -58,7 +59,6 @@ function spawn(argv, env) {
   return r
 }
 
-// Start-up as Db.qml runs it: read the version, then migrate from it.
 function start(path, env, lib = Db) {
   const read = spawn(lib.initCommand(dirname(path), path), env)
   assert.equal(read.status, 0, read.stderr)
@@ -74,8 +74,6 @@ function tempPath(t) {
   return join(dir, "omarchy", "scratchpad.db")
 }
 
-// A throwaway database made by start-up and driven through sqliteCommand, the
-// same argv Db.qml hands to Process.
 function openDb(t, env) {
   const path = tempPath(t)
   start(path, env)
@@ -169,11 +167,11 @@ function migrated(items) {
   }))
 }
 
-const TABLES = "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history') ORDER BY name"
+const TABLES = "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('items', 'history', 'alarms') ORDER BY name"
 
-test("start-up on a missing database creates the data dir, both tables and the current version", (t) => {
+test("start-up on a missing database creates the data dir, the three tables and the current version", (t) => {
   const db = openDb(t)
-  assert.deepEqual(db.read(TABLES).map((r) => r.name), ["history", "items"])
+  assert.deepEqual(db.read(TABLES).map((r) => r.name), ["alarms", "history", "items"])
   assert.equal(db.version(), Db.MIGRATIONS.length)
 })
 
@@ -776,4 +774,199 @@ test("countsSql: the history count is the real total, past the 500 rows historyS
   const r = db.run(Db.countsSql(), true)
   assert.equal(r.status, 0, r.stderr)
   assert.equal(Db.parseCounts(r.stdout).history, 603)
+})
+
+const ALARM_COLUMNS = "id, hour, minute, label, days, enabled, snooze_minutes, ring_minutes,"
+  + " snoozed_until_ms, last_fired_at_ms, armed_at_ms, auto_snoozes"
+
+function alarmRecord(patch) {
+  return {
+    hour: 7, minute: 30, label: "Wake up", days: [1, 2, 3, 4, 5], enabled: true, snoozeMinutes: 9, ringMinutes: 5,
+    snoozedUntil: 0, lastFiredAt: 0, armedAt: T0 * 1000, autoSnoozes: 0, ...patch
+  }
+}
+
+function alarmRows(db) {
+  return db.read("SELECT " + ALARM_COLUMNS + " FROM alarms ORDER BY id")
+}
+
+test("start-up creates the alarms table too, and a version 3 database with rows gains it and keeps every row", (t) => {
+  const db = openDb(t)
+  assert.deepEqual(db.read("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'alarms'").map((r) => r.name), ["alarms"])
+  const V3 = loadQmlLib(DB_JS, NAMES)
+  V3.MIGRATIONS.splice(3)
+  const old = seed(openV0Db(t))
+  start(old.path, undefined, V3)
+  assert.equal(old.version(), 3)
+  const before = old.snapshot()
+  start(old.path)
+  assert.equal(old.version(), Db.MIGRATIONS.length)
+  assert.deepEqual(old.snapshot(), before)
+  assert.deepEqual(alarmRows(old), [])
+})
+
+test("the alarms table refuses an hour of 24, a days mask of 128, a 41-character label and minutes out of range", (t) => {
+  const db = openDb(t)
+  const insert = (cols) => db.run("INSERT INTO alarms (hour, minute, label, days, snooze_minutes, ring_minutes) VALUES (" + cols + ")", false)
+  assert.equal(insert("7, 30, 'ok', 0, 9, 5").status, 0)
+  for (const cols of ["24, 0, 'x', 0, 9, 5", "7, 60, 'x', 0, 9, 5", "7, 30, '" + "x".repeat(41) + "', 0, 9, 5",
+    "7, 30, 'x', 128, 9, 5", "7, 30, 'x', 0, 0, 5", "7, 30, 'x', 0, 181, 5", "7, 30, 'x', 0, 9, 0", "7, 30, 'x', 0, 9, 61"]) {
+    const r = insert(cols)
+    assert.notEqual(r.status, 0, cols)
+    assert.match(r.stderr, /CHECK constraint failed/)
+  }
+  assert.equal(alarmRows(db).length, 1)
+})
+
+test("a row inserted with sqlite3 is armed at its insert time and takes the defaults", (t) => {
+  const db = openDb(t)
+  const before = Date.now()
+  db.write("INSERT INTO alarms (hour, minute) VALUES (6, 15)")
+  const row = alarmRows(db)[0]
+  assert.equal(row.label, "")
+  assert.equal(row.days, 0)
+  assert.equal(row.enabled, 1)
+  assert.equal(row.snooze_minutes, 9)
+  assert.equal(row.ring_minutes, 5)
+  assert.equal(row.auto_snoozes, 0)
+  assert.ok(row.armed_at_ms >= Math.floor(before / 1000) * 1000 && row.armed_at_ms <= Date.now(), "armed_at_ms " + row.armed_at_ms)
+})
+
+test("sqlInt accepts a whole number inside its range and refuses everything else", () => {
+  assert.equal(Db.sqlInt(7, 0, 23), 7)
+  assert.equal(Db.sqlInt("23", 0, 23), 23)
+  assert.equal(Db.sqlInt(0, 0, 23), 0)
+  for (const v of [24, -1, 1.5, "7.0x", "", null, undefined, NaN, true, "1e2", " 7"]) {
+    assert.throws(() => Db.sqlInt(v, 0, 23), { message: "invalid value: " + v }, String(v))
+  }
+})
+
+test("daysMask and maskDays turn a getDay() list into a 7-bit mask and back, sorted and unique", () => {
+  assert.equal(Db.daysMask([0, 6]), 65)
+  assert.equal(Db.daysMask([1, 2, 3, 4, 5]), 62)
+  assert.equal(Db.daysMask([5, 1, 5]), 34)
+  assert.equal(Db.daysMask([]), 0)
+  assert.equal(Db.daysMask([7, -1]), 0)
+  assert.deepEqual(Db.maskDays(65), [0, 6])
+  assert.deepEqual(Db.maskDays(62), [1, 2, 3, 4, 5])
+  assert.deepEqual(Db.maskDays(0), [])
+  assert.deepEqual(Db.maskDays("34"), [1, 5])
+  assert.deepEqual(Db.maskDays(255), [0, 1, 2, 3, 4, 5, 6])
+})
+
+test("insertAlarmSql stores every field, prints the id and writes no history row", (t) => {
+  const db = seeded(t)
+  const history = db.history()
+  const id = Db.parseId(db.write(Db.insertAlarmSql(alarmRecord({ label: "Jane's pills", days: [0, 6], enabled: false, snoozedUntil: 5, lastFiredAt: 6, autoSnoozes: 2 }))))
+  assert.equal(id, 1)
+  assert.deepEqual(alarmRows(db), [{
+    id: 1, hour: 7, minute: 30, label: "Jane's pills", days: 65, enabled: 0, snooze_minutes: 9, ring_minutes: 5,
+    snoozed_until_ms: 5, last_fired_at_ms: 6, armed_at_ms: T0 * 1000, auto_snoozes: 2
+  }])
+  assert.deepEqual(db.history(), history)
+  assert.equal(Db.parseId(db.write(Db.insertAlarmSql(alarmRecord()))), 2)
+})
+
+test("alarmsSql lists the alarms by time of day, then id", (t) => {
+  const db = openDb(t)
+  db.write(Db.insertAlarmSql(alarmRecord({ hour: 22, minute: 0 })))
+  db.write(Db.insertAlarmSql(alarmRecord({ hour: 7, minute: 45 })))
+  db.write(Db.insertAlarmSql(alarmRecord({ hour: 7, minute: 30 })))
+  db.write(Db.insertAlarmSql(alarmRecord({ hour: 7, minute: 30 })))
+  assert.deepEqual(ids(db.read(Db.alarmsSql())), [3, 4, 2, 1])
+})
+
+test("saveAlarmSql writes every mutable column, and sending it twice leaves one identical row", (t) => {
+  const db = openDb(t)
+  const id = Db.parseId(db.write(Db.insertAlarmSql(alarmRecord())))
+  const record = alarmRecord({ id, hour: 8, minute: 5, label: "Gym", days: [1, 3, 5], enabled: false, snoozeMinutes: 10,
+    ringMinutes: 2, snoozedUntil: 11, lastFiredAt: 12, armedAt: 13, autoSnoozes: 3 })
+  assert.equal(Db.parseFound(db.write(Db.saveAlarmSql(record))), true)
+  const once = alarmRows(db)
+  assert.deepEqual(once, [{
+    id, hour: 8, minute: 5, label: "Gym", days: 42, enabled: 0, snooze_minutes: 10, ring_minutes: 2,
+    snoozed_until_ms: 11, last_fired_at_ms: 12, armed_at_ms: 13, auto_snoozes: 3
+  }])
+  assert.equal(Db.parseFound(db.write(Db.saveAlarmSql(record))), true)
+  assert.deepEqual(alarmRows(db), once)
+})
+
+test("saveAlarmSql and deleteAlarmSql print CHANGES 0 for a missing id and write nothing", (t) => {
+  const db = seeded(t)
+  db.write(Db.insertAlarmSql(alarmRecord()))
+  const before = { alarms: alarmRows(db), ...db.snapshot() }
+  assert.equal(Db.parseFound(db.write(Db.saveAlarmSql(alarmRecord({ id: 99 })))), false)
+  assert.equal(Db.parseFound(db.write(Db.deleteAlarmSql(99))), false)
+  assert.deepEqual({ alarms: alarmRows(db), ...db.snapshot() }, before)
+  assert.equal(Db.parseFound(db.write(Db.deleteAlarmSql(1))), true)
+  assert.deepEqual(alarmRows(db), [])
+  assert.deepEqual(db.snapshot(), { items: before.items, history: before.history })
+})
+
+test("an alarm builder refuses a field out of range before any SQL exists", () => {
+  assert.throws(() => Db.insertAlarmSql(alarmRecord({ hour: 24 })), { message: "invalid value: 24" })
+  assert.throws(() => Db.saveAlarmSql(alarmRecord({ id: 1, minute: -1 })), { message: "invalid value: -1" })
+  assert.throws(() => Db.saveAlarmSql(alarmRecord({ id: 1, ringMinutes: 61 })), { message: "invalid value: 61" })
+  assert.throws(() => Db.saveAlarmSql(alarmRecord({ id: "abc" })), { message: "invalid id: abc" })
+  assert.throws(() => Db.deleteAlarmSql("1; DROP TABLE alarms"), { message: /invalid id/ })
+})
+
+test("no alarm builder touches history", () => {
+  for (const sql of [Db.alarmsSql(), Db.insertAlarmSql(alarmRecord()), Db.saveAlarmSql(alarmRecord({ id: 1 })), Db.deleteAlarmSql(1)]) {
+    assert.doesNotMatch([].concat(sql).join("\n"), /history/i)
+  }
+})
+
+test("parseAlarms turns sqlite3 rows into records with numbers, a days list and a boolean", (t) => {
+  const db = openDb(t)
+  db.write(Db.insertAlarmSql(alarmRecord({ label: "Wake up", days: [0, 6], enabled: true })))
+  const r = db.run(Db.alarmsSql(), true)
+  assert.deepEqual(Db.parseAlarms(r.stdout), [{
+    id: 1, hour: 7, minute: 30, label: "Wake up", days: [0, 6], enabled: true, snoozeMinutes: 9, ringMinutes: 5,
+    snoozedUntil: 0, lastFiredAt: 0, armedAt: T0 * 1000, autoSnoozes: 0
+  }])
+  assert.deepEqual(Db.parseAlarms(""), [])
+  assert.throws(() => Db.parseAlarms("nope"), { message: "unreadable sqlite3 output" })
+})
+
+test("parseAlarms turns a row a hand edit left out of range into one the builders accept, and drops one it cannot read", (t) => {
+  const db = openDb(t)
+  const inserted = db.run("INSERT INTO alarms (id, hour, minute, label, days, enabled, snooze_minutes, ring_minutes,"
+    + " snoozed_until_ms, last_fired_at_ms, armed_at_ms, auto_snoozes) VALUES"
+    + " (1, 6.4, 29.6, 'Hand', 3, 1, 9.5, 1.4, -1, 1700000000000.5, -3.2, 2.7),"
+    + " (2, 7, 0, 'Plain', 0, 1, 9, 5, 0, 0, 0, 0)", false)
+  assert.equal(inserted.status, 0, inserted.stderr)
+  const alarms = Db.parseAlarms(db.run(Db.alarmsSql(), true).stdout)
+  assert.deepEqual(alarms[0], {
+    id: 1, hour: 6, minute: 30, label: "Hand", days: [0, 1], enabled: true, snoozeMinutes: 10, ringMinutes: 1,
+    snoozedUntil: 0, lastFiredAt: 1700000000001, armedAt: 0, autoSnoozes: 3
+  })
+  for (const alarm of alarms) {
+    assert.doesNotThrow(() => Db.saveAlarmSql(alarm), "row " + alarm.id + " can be written back")
+  }
+  const unreadable = JSON.stringify([
+    { id: 3, hour: "x", minute: 0, label: "", days: 0, enabled: 1, snooze_minutes: 9, ring_minutes: 5,
+      snoozed_until_ms: 0, last_fired_at_ms: 0, armed_at_ms: 0, auto_snoozes: 0 },
+    { id: 0, hour: 7, minute: 0, label: "", days: 0, enabled: 1, snooze_minutes: 9, ring_minutes: 5,
+      snoozed_until_ms: 0, last_fired_at_ms: 0, armed_at_ms: 0, auto_snoozes: 0 },
+    { id: 4, hour: 30, minute: 75, label: "", days: 0, enabled: 1, snooze_minutes: 900, ring_minutes: 90,
+      snoozed_until_ms: 0, last_fired_at_ms: 0, armed_at_ms: 0, auto_snoozes: 500 }
+  ])
+  assert.deepEqual(Db.parseAlarms(unreadable).map((a) => [a.id, a.hour, a.minute, a.snoozeMinutes, a.ringMinutes, a.autoSnoozes]),
+    [[4, 23, 59, 180, 60, 99]], "an unreadable hour and a non-positive id are dropped, the rest is clamped")
+})
+
+test("mergeAlarms lays each pending record over its row, drops a pending null and brings no gone row back", () => {
+  const rows = [alarmRecord({ id: 1 }), alarmRecord({ id: 2, hour: 9 }), alarmRecord({ id: 3, hour: 10 })]
+  const pending = {
+    2: { seq: 5, record: alarmRecord({ id: 2, hour: 9, enabled: false }), retry: false },
+    3: { seq: 6, record: null, retry: false },
+    4: { seq: 7, record: alarmRecord({ id: 4, hour: 11 }), retry: true }
+  }
+  const merged = Db.mergeAlarms(rows, pending)
+  assert.deepEqual(ids(merged), [1, 2])
+  assert.equal(merged[1].enabled, false)
+  assert.deepEqual(merged[0], rows[0])
+  assert.deepEqual(Db.mergeAlarms(rows, {}), rows)
+  assert.deepEqual(ids(rows), [1, 2, 3], "the rows are not changed in place")
 })

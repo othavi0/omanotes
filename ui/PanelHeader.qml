@@ -10,6 +10,7 @@ RowLayout {
     id: root
 
     property QtObject db: null
+    property QtObject service: null
     property int activeTab: Tabs.items
     property color foreground: Color.foreground
 
@@ -21,9 +22,11 @@ RowLayout {
     spacing: Style.spacing.xxl
 
     Segment {
-        Layout.preferredWidth: Style.space(260)
+        Layout.preferredWidth: Style.space(360)
+        Layout.fillWidth: false
         options: [
             { value: String(Tabs.items), label: "Items", icon: Icons.all, count: root.db ? root.db.totalNotes + root.db.totalTodos : 0 },
+            { value: String(Tabs.alarms), label: "Alarms", icon: Icons.alarm, count: root.service ? root.service.onCount : 0 },
             { value: String(Tabs.history), label: "History", icon: Icons.history, count: root.db ? root.db.totalHistory : 0 }
         ]
         value: String(root.activeTab)
@@ -34,7 +37,8 @@ RowLayout {
     Item { Layout.fillWidth: true }
 
     Text {
-        text: (root.db ? root.db.unreadNotes : 0) + " unread · " + (root.db ? root.db.pendingTodos : 0) + " pending"
+        text: root.activeTab === Tabs.alarms && root.service ? root.service.nextSummary
+            : (root.db ? root.db.unreadNotes : 0) + " unread · " + (root.db ? root.db.pendingTodos : 0) + " pending"
         color: Util.alpha(root.foreground, 0.62)
         font.family: Style.font.family
         font.pixelSize: Style.font.bodySmall
@@ -79,7 +83,7 @@ RowLayout {
                 model: [
                     { type: "note", label: "Note", icon: Icons.note },
                     { type: "todo", label: "Todo", icon: Icons.boxOff }
-                ]
+                ].concat(root.service ? [{ type: "alarm", label: "Alarm", icon: Icons.alarm }] : [])
                 delegate: ActionButton {
                     required property var modelData
                     Layout.fillWidth: true

@@ -5,11 +5,12 @@
   "description": "Omanotes Omarchy bar-widget plugin: notes + todos + history, mouse-driven, SQLite-backed with file-watcher auto-refresh.",
   "scripts": {
     "validate": "omarchy plugin validate .",
-    "test": "npm run test:unit && npm run test:render && npm run test:behavior && npm run test:panel && npm run test:startup && npm run test:teardown",
+    "test": "npm run test:unit && npm run test:render && npm run test:behavior && npm run test:panel && npm run test:alarm && npm run test:startup && npm run test:teardown",
     "test:unit": "node --test test/",
     "test:render": "test/render.sh",
     "test:behavior": "test/behavior.sh",
     "test:panel": "test/panel.sh",
+    "test:alarm": "test/alarm.sh",
     "test:startup": "test/startup.sh",
     "test:teardown": "test/teardown.sh"
   },
