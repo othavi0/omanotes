@@ -355,6 +355,82 @@ function mergeAlarms(rows, pending) {
   return out
 }
 
+// The settings record, { soundOn, sound, soundFile, volume, snoozeMinutes,
+// ringMinutes, historyDays, checkUpdates }, one spec per key. It drives the
+// read, the write and the fallbacks. `column` stays inside this file. The
+// sound catalog lives in ui/Settings.js and is not checked here, so a new
+// sound needs no migration.
+var SETTINGS = {
+  soundOn: { column: "sound_on", kind: "bool", fallback: true },
+  sound: { column: "sound", kind: "text", fallback: "alarm-clock-elapsed" },
+  soundFile: { column: "sound_file", kind: "text", fallback: "" },
+  volume: { column: "volume", kind: "int", min: 0, max: 100, fallback: 100 },
+  snoozeMinutes: { column: "snooze_minutes", kind: "int", min: 1, max: 180, fallback: 9 },
+  ringMinutes: { column: "ring_minutes", kind: "int", min: 1, max: 60, fallback: 5 },
+  historyDays: { column: "history_days", kind: "pick", options: [0, 90, 30], fallback: 0 },
+  checkUpdates: { column: "check_updates", kind: "bool", fallback: true }
+}
+
+// The settings row and the file size, always one row: a row deleted by hand
+// reads as NULLs, which parseSettings turns into the fallbacks.
+function settingsSql() {
+  return "SELECT s.*, pc.page_count * ps.page_size AS db_bytes"
+    + " FROM pragma_page_count pc, pragma_page_size ps LEFT JOIN settings s ON s.id = 1"
+}
+
+function settingValue(key, value) {
+  var spec = SETTINGS[key]
+  if (!spec) throw new Error("unknown setting: " + key)
+  var ok = spec.kind === "bool" ? typeof value === "boolean"
+    : spec.kind === "text" ? typeof value === "string"
+    : spec.kind === "pick" ? spec.options.indexOf(value) >= 0
+    : typeof value === "number" && value === Math.round(value) && value >= spec.min && value <= spec.max
+  if (!ok) throw new Error("invalid setting: " + key + " " + JSON.stringify(value))
+  if (spec.kind === "bool") return value ? 1 : 0
+  if (spec.kind === "text") return q(value)
+  return value
+}
+
+// One absolute upsert of every key in `patch`, so two panels writing
+// different keys never undo each other. Throws on an unknown key or a value
+// outside its spec: the controls clamp, this refuses.
+function setSettingsSql(patch) {
+  var keys = Object.keys(patch || {})
+  if (keys.length === 0) throw new Error("empty setting patch")
+  var columns = keys.map(function(k) { return SETTINGS[k] ? SETTINGS[k].column : k })
+  var values = keys.map(function(k) { return settingValue(k, patch[k]) })
+  return transaction([
+    "INSERT INTO settings (id, " + columns.join(", ") + ") VALUES (1, " + values.join(", ") + ")"
+      + " ON CONFLICT(id) DO UPDATE SET " + columns.map(function(c) { return c + " = excluded." + c }).join(", ")
+  ])
+}
+
+// sqlite3 -json output of settingsSql -> { settings, bytes }. Like
+// parseAlarms, a value a hand edit left out of range is clamped or falls
+// back, so a read never fails on it. "" gives every fallback.
+function parseSettings(text) {
+  var rows = parseRows(text)
+  var row = rows.length > 0 ? rows[0] : {}
+  var settings = {}
+  for (var key in SETTINGS) {
+    var spec = SETTINGS[key]
+    var v = row[spec.column]
+    if (v === null || v === undefined) settings[key] = spec.fallback
+    else if (spec.kind === "bool") settings[key] = Number(v) === 0 ? false : Number(v) === 1 ? true : spec.fallback
+    else if (spec.kind === "text") settings[key] = String(v)
+    else if (spec.kind === "pick") settings[key] = spec.options.indexOf(Number(v)) >= 0 ? Number(v) : spec.fallback
+    else settings[key] = clampedInt(v, spec.min, spec.max, spec.fallback)
+  }
+  return { settings: settings, bytes: Number(row.db_bytes) || 0 }
+}
+
+function mergeSettings(settings, patch) {
+  var out = {}
+  for (var key in settings) out[key] = settings[key]
+  for (var k in patch) out[k] = patch[k]
+  return out
+}
+
 // searchText(column) in SQL: each character through search_map, joined back
 // in order.
 function foldedSql(column) {
@@ -443,6 +519,22 @@ var MIGRATIONS = [
       + " last_fired_at_ms INTEGER NOT NULL DEFAULT 0,"
       + " armed_at_ms INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),"
       + " auto_snoozes INTEGER NOT NULL DEFAULT 0 CHECK (auto_snoozes BETWEEN 0 AND 99))"
+  ],
+  // Settings (ADR-0016): one typed row. The CHECKs refuse a hand edit out of
+  // range, and the DEFAULTs repeat the fallbacks of SETTINGS for a fresh row.
+  // The volume starts at 100, the volume the ring played at before.
+  [
+    "CREATE TABLE settings ("
+      + "id INTEGER PRIMARY KEY CHECK (id = 1),"
+      + " sound_on INTEGER NOT NULL DEFAULT 1 CHECK (sound_on IN (0, 1)),"
+      + " sound TEXT NOT NULL DEFAULT 'alarm-clock-elapsed',"
+      + " sound_file TEXT NOT NULL DEFAULT '',"
+      + " volume INTEGER NOT NULL DEFAULT 100 CHECK (volume BETWEEN 0 AND 100),"
+      + " snooze_minutes INTEGER NOT NULL DEFAULT 9 CHECK (snooze_minutes BETWEEN 1 AND 180),"
+      + " ring_minutes INTEGER NOT NULL DEFAULT 5 CHECK (ring_minutes BETWEEN 1 AND 60),"
+      + " history_days INTEGER NOT NULL DEFAULT 0 CHECK (history_days >= 0),"
+      + " check_updates INTEGER NOT NULL DEFAULT 1 CHECK (check_updates IN (0, 1)))",
+    "INSERT INTO settings (id) VALUES (1)"
   ]
 ]
 

@@ -15,7 +15,8 @@ const NAMES = [
   "clearHistorySql", "sqliteCommand", "initCommand", "MIGRATIONS", "migrateSql",
   "parseVersion", "migrationRaced", "parseRows", "parseCounts", "parseId", "parseFound",
   "errorText", "moveSql", "movedRows", "sqlInt", "daysMask", "maskDays", "alarmsSql", "insertAlarmSql",
-  "saveAlarmSql", "deleteAlarmSql", "parseAlarms", "mergeAlarms"
+  "saveAlarmSql", "deleteAlarmSql", "parseAlarms", "mergeAlarms", "SETTINGS", "settingsSql", "setSettingsSql",
+  "parseSettings", "mergeSettings"
 ]
 const Db = loadQmlLib(DB_JS, NAMES)
 
@@ -969,4 +970,91 @@ test("mergeAlarms lays each pending record over its row, drops a pending null an
   assert.deepEqual(merged[0], rows[0])
   assert.deepEqual(Db.mergeAlarms(rows, {}), rows)
   assert.deepEqual(ids(rows), [1, 2, 3], "the rows are not changed in place")
+})
+
+const SETTING_DEFAULTS = {
+  soundOn: true, sound: "alarm-clock-elapsed", soundFile: "", volume: 100, snoozeMinutes: 9, ringMinutes: 5,
+  historyDays: 0, checkUpdates: true
+}
+
+function settingsOf(db) {
+  const r = db.run(Db.settingsSql(), true)
+  assert.equal(r.status, 0, r.stderr)
+  return Db.parseSettings(r.stdout)
+}
+
+test("start-up creates one settings row with the defaults, and a version 4 database with rows gains it and keeps every row", (t) => {
+  const db = openDb(t)
+  assert.deepEqual(db.read("SELECT COUNT(*) AS n FROM settings")[0].n, 1)
+  const read = settingsOf(db)
+  assert.deepEqual(read.settings, SETTING_DEFAULTS)
+  assert.equal(read.bytes, db.bytes().length, "the size is the file's")
+  const V4 = loadQmlLib(DB_JS, NAMES)
+  V4.MIGRATIONS.splice(4)
+  const old = seed(openV0Db(t))
+  start(old.path, undefined, V4)
+  assert.equal(old.version(), 4)
+  const before = old.snapshot()
+  start(old.path)
+  assert.equal(old.version(), Db.MIGRATIONS.length)
+  assert.deepEqual(old.snapshot(), before)
+  assert.deepEqual(settingsOf(old).settings, SETTING_DEFAULTS)
+})
+
+test("the settings table refuses a second row and values out of range written with sqlite3", (t) => {
+  const db = openDb(t)
+  for (const sql of ["INSERT INTO settings (id) VALUES (2)", "UPDATE settings SET volume = 101", "UPDATE settings SET volume = -1",
+    "UPDATE settings SET snooze_minutes = 0", "UPDATE settings SET ring_minutes = 61", "UPDATE settings SET sound_on = 2",
+    "UPDATE settings SET history_days = -1", "UPDATE settings SET check_updates = 2"]) {
+    const r = db.run(sql, false)
+    assert.notEqual(r.status, 0, sql)
+    assert.match(r.stderr, /CHECK constraint failed/, sql)
+  }
+  assert.deepEqual(settingsOf(db).settings, SETTING_DEFAULTS)
+})
+
+test("setSettingsSql writes only the keys it is given, and sending it twice leaves the same row", (t) => {
+  const db = openDb(t)
+  const sql = Db.setSettingsSql({ volume: 40, soundOn: false, sound: "custom", soundFile: "/home/me/it's here.ogg" })
+  db.write(sql)
+  db.write(sql)
+  db.write(Db.setSettingsSql({ snoozeMinutes: 12 }))
+  assert.deepEqual(settingsOf(db).settings,
+    { ...SETTING_DEFAULTS, volume: 40, soundOn: false, sound: "custom", soundFile: "/home/me/it's here.ogg", snoozeMinutes: 12 })
+  assert.equal(db.read("SELECT COUNT(*) AS n FROM settings")[0].n, 1)
+})
+
+test("setSettingsSql brings a row deleted by hand back, and the read shows the defaults until then", (t) => {
+  const db = openDb(t)
+  db.write("DELETE FROM settings")
+  assert.deepEqual(settingsOf(db).settings, SETTING_DEFAULTS, "no row reads as the defaults")
+  assert.ok(settingsOf(db).bytes > 0, "and still carries the size")
+  db.write(Db.setSettingsSql({ ringMinutes: 7 }))
+  assert.deepEqual(settingsOf(db).settings, { ...SETTING_DEFAULTS, ringMinutes: 7 })
+})
+
+test("setSettingsSql refuses an unknown key, a value outside its spec and an empty patch before any SQL exists", () => {
+  for (const patch of [{ colour: "red" }, { volume: -1 }, { volume: 101 }, { volume: 50.5 }, { volume: "50" },
+    { snoozeMinutes: 0 }, { ringMinutes: 61 }, { historyDays: 7 }, { soundOn: 1 }, { checkUpdates: "yes" },
+    { sound: 3 }, { soundFile: null }, {}]) {
+    assert.throws(() => Db.setSettingsSql(patch), /setting/, JSON.stringify(patch))
+  }
+})
+
+test("parseSettings turns a row a hand edit left out of range into settings the builders accept", () => {
+  const text = JSON.stringify([{ id: 1, sound_on: 0, sound: "bell", sound_file: "", volume: 250, snooze_minutes: 0,
+    ring_minutes: 6.4, history_days: 7, check_updates: 5, db_bytes: 12288 }])
+  assert.deepEqual(Db.parseSettings(text), {
+    settings: { ...SETTING_DEFAULTS, soundOn: false, sound: "bell", volume: 100, snoozeMinutes: 1, ringMinutes: 6 },
+    bytes: 12288
+  })
+  assert.deepEqual(Db.parseSettings(""), { settings: SETTING_DEFAULTS, bytes: 0 }, "a Db not read yet has the defaults")
+  assert.throws(() => Db.parseSettings("not json"), /unreadable/)
+})
+
+test("mergeSettings lays a patch over the settings without changing them in place", () => {
+  const base = Db.parseSettings("").settings
+  const merged = Db.mergeSettings(base, { volume: 30, soundOn: false })
+  assert.deepEqual(merged, { ...SETTING_DEFAULTS, volume: 30, soundOn: false })
+  assert.deepEqual(base, SETTING_DEFAULTS)
 })
