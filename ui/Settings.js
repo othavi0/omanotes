@@ -42,6 +42,7 @@ function baseName(path) {
 var SECTIONS = [
   { id: "sound", label: "Alarm sound" },
   { id: "alarms", label: "Alarms" },
+  { id: "updates", label: "Updates" },
   { id: "history", label: "History" },
   { id: "data", label: "Data" }
 ]
@@ -74,13 +75,14 @@ function pathText(path, home) {
 
 // What a section row shows on its right, from the same settings the page
 // edits: "Bell" or "off", "9 / 5 min". `info` carries what is not a
-// setting: { bytes }.
+// setting: { bytes, version, hasUpdate }.
 function sectionMeta(id, settings, info) {
   if (!settings) return ""
   if (id === "sound") return settings.soundOn ? soundName(settings) : "off"
   if (id === "alarms") return settings.snoozeMinutes + " / " + settings.ringMinutes + " min"
   if (id === "history") return keepText(settings.historyDays)
   if (id === "data") return sizeText(info ? info.bytes : 0)
+  if (id === "updates") return info && info.hasUpdate ? "new" : (info && info.version) || ""
   return ""
 }
 
@@ -89,4 +91,64 @@ function soundName(settings) {
   var key = settings ? settings.sound : DEFAULT_SOUND
   if (key === CUSTOM && settings.soundFile) return baseName(settings.soundFile)
   return (catalogEntry(key) || catalogEntry(DEFAULT_SOUND)).name
+}
+
+// "1.1.0 · main · 4e06360", the Version row.
+function versionText(local) {
+  if (!local) return ""
+  return [local.version, local.git ? local.branch : "not a git checkout", local.head].filter(function(p) { return p !== "" }).join(" · ")
+}
+
+// "1.1.0 · 4e06360", the header while Settings is open.
+function versionShort(local) {
+  if (!local) return ""
+  return [local.version, local.head].filter(function(p) { return p !== "" }).join(" · ")
+}
+
+function commitsText(n) {
+  return n + " new commit" + (n === 1 ? "" : "s")
+}
+
+// "Checked just now", "Checked 5 min ago", "Checked 2 h ago", "Checked 3 d ago".
+function checkedAgoText(atMs, nowMs) {
+  if (!atMs) return "Not checked yet"
+  var minutes = Math.floor(Math.max(0, nowMs - atMs) / 60000)
+  if (minutes < 1) return "Checked just now"
+  if (minutes < 60) return "Checked " + minutes + " min ago"
+  if (minutes < 24 * 60) return "Checked " + Math.floor(minutes / 60) + " h ago"
+  return "Checked " + Math.floor(minutes / (24 * 60)) + " d ago"
+}
+
+var REFUSALS = {
+  dirty: "The plugin folder has local changes, so pulling could lose them. Nothing was changed.",
+  offMain: "The plugin folder is not on main. Nothing was changed.",
+  diverged: "The plugin folder has commits that origin/main lacks. Nothing was changed.",
+  notGit: "The plugin folder is not a git checkout of its own.",
+  noOrigin: "The plugin folder has no origin to pull from."
+}
+
+// The line the Updates section leads with, for view.phase.
+function updateHeadline(view, local) {
+  switch (view.phase) {
+  case "none": return "This copy is not a git checkout. Update it with omarchy plugin update."
+  case "unchecked": return "Not checked yet"
+  case "checking": return "Checking origin/main…"
+  case "upToDate": return "You have the latest version."
+  case "available": return commitsText(view.behind) + " on origin/main"
+  case "blocked": return REFUSALS[view.error] || "Nothing was changed."
+  case "offline": return "Could not reach origin. Check the connection and try again."
+  case "updating": return "Updating to " + view.to + "…"
+  case "updated": return "Updated to " + view.to + ". The plugin reloaded."
+  }
+  if (view.error === "invalid") return "The new version did not validate, so the plugin stayed at " + (local ? local.head : "its version") + "."
+  if (view.error === "stopped") return "The update stopped before it finished."
+  return "The update failed" + (view.detail ? ": " + view.detail : ".")
+}
+
+// The steps of an update in progress, each done, now or todo.
+function updateSteps(view) {
+  var steps = [{ key: "fetch", label: "Fetching origin/main" }, { key: "pull", label: "Pulling " + commitsText(view.behind).replace(" new", "") },
+    { key: "reload", label: "Reloading the plugin" }]
+  var at = steps.map(function(s) { return s.key }).indexOf(view.step)
+  return steps.map(function(s, i) { return { label: s.label, state: i < at ? "done" : i === at ? "now" : "todo" } })
 }

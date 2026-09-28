@@ -1385,7 +1385,8 @@ ShellRoot {
   function metas() {
     return ["sound", "alarms"].map(function(id) {
       var row = sr.named(settingsTab, "section:" + id)
-      return row.children[1].children[2].text
+      var cells = row.children[1].children
+      return cells[cells.length - 1].text
     }).join("|")
   }
   function keepChip(text) { return sr.findByText(sr.named(settingsTab, "keep"), text) }

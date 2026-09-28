@@ -212,6 +212,14 @@ Item {
         onAlarmWriteFailed: function(kind, record, message, caller) { root.writeFailed(kind, record, message, caller) }
     }
 
+    // The only automatic check, so several monitors never mean several
+    // fetches. A test drives the clock and never fetches.
+    Data.Updater {
+        id: updater
+        daily: root.clockRunning && root.settings.checkUpdates
+        checkUpdates: root.settings.checkUpdates
+    }
+
     SystemClock {
         id: clock
         enabled: root.clockRunning

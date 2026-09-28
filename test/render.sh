@@ -44,6 +44,24 @@ for stub in pw-play omarchy-notification-send; do
   chmod +x "$cfg_dir/bin/$stub"
 done
 
+# A clone three commits behind its origin, for the Updates page. The page
+# checks it itself, through the real script.
+(
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
+    GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
+  git init --quiet --bare -b main "$cfg_dir/origin.git"
+  git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/dev" 2> /dev/null
+  printf '{\n  "version": "1.1.0"\n}\n' > "$cfg_dir/dev/manifest.json"
+  git -C "$cfg_dir/dev" add -A && git -C "$cfg_dir/dev" commit --quiet -m "feat: first"
+  git -C "$cfg_dir/dev" push --quiet origin main
+  git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/clone"
+  for subject in "feat(alarm): aba Alarms, toque e som" "feat: configurações" "fix: busca ignora acento no corpo"; do
+    git -C "$cfg_dir/dev" commit --quiet --allow-empty -m "$subject"
+  done
+  git -C "$cfg_dir/dev" push --quiet origin main
+)
+update_head="$(git -C "$cfg_dir/clone" rev-parse --short HEAD)"
+
 cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
 import QtQuick.Layouts
@@ -69,13 +87,19 @@ ShellRoot {
   // A scene that finds fewer controls than this measured nothing.
   readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3, menu: 12, trash: 4, drag: 9,
     alarms: 14, alarmdraft: 14, alarmconfirm: 14, alarmblank: 3, ringcard: 11,
-    settings: 11, settingsalarms: 8, settingshistory: 3, settingsdata: 4 })
+    settings: 11, settingsalarms: 8, settingshistory: 3, settingsdata: 4, settingsupdates: 4 })
   readonly property string longTitle: "Renew the domain before the card on file expires, then move the DNS records to the new registrar, check the MX entries, and write down every step so the next renewal takes five minutes instead of an afternoon"
   readonly property string outDir: Quickshell.env("OUT_DIR")
 
   Data.ItemsDb {
     id: db
     Component.onCompleted: db.init()
+  }
+
+  Data.Updater {
+    id: updater
+    pluginDir: Quickshell.env("UPDATE_CLONE")
+    launcher: []
   }
 
   // The alarm service, with its clock off and no ring window: the card is
@@ -208,6 +232,17 @@ ShellRoot {
         var path = texts.filter(function(t) { return t.indexOf("scratchpad.db · ") >= 0 && / KB$/.test(t) })
         sr.expect(sceneName, path.length === 1 && texts.indexOf("Back up now") >= 0 && texts.indexOf("Open folder") >= 0,
           "Data names the database file, its size, Back up now and Open folder (" + path.join("|") + ")")
+      } else if (sceneName === "settingsupdates") {
+        var headline = sr.find(settingsTab, /^QQuickText$/).filter(function(t) { return t.item.objectName === "updateHeadline" })
+        sr.expect(sceneName, headline.length === 1 && headline[0].item.text === "3 new commits on origin/main",
+          "a check from the page finds the three new commits (" + (headline.length ? headline[0].item.text : "-") + ")")
+        sr.expect(sceneName, texts.indexOf("fix: busca ignora acento no corpo") >= 0 && texts.indexOf("Update") >= 0,
+          "the page lists the commits and offers Update")
+        sr.expect(sceneName, header.children.length > 0 && sr.find(header, /^Segment$/)[0].item.options[3].dot === true,
+          "the gear carries the dot")
+        var summary = sr.find(header, /^QQuickText$/).map(function(t) { return t.item.text })
+        sr.expect(sceneName, summary.indexOf("1.1.0 · " + Quickshell.env("UPDATE_HEAD")) >= 0, "the header names the version and the head [" + summary.join("|") + "]")
+        sr.expect(sceneName, texts.indexOf("new") >= 0, "the Updates row reads new")
       } else if (sceneName === "settingsalarms") {
         sr.expect(sceneName, texts.indexOf("9 min") >= 0 && texts.indexOf("5 min") >= 0 && texts.indexOf("9 / 5 min") >= 0,
           "the steppers and the Alarms row read the defaults")
@@ -295,6 +330,7 @@ ShellRoot {
     else if (name === "settingsalarms") settingsTab.pickSection("alarms")
     else if (name === "settingshistory") settingsTab.pickSection("history")
     else if (name === "settingsdata") settingsTab.pickSection("data")
+    else if (name === "settingsupdates") { settingsTab.pickSection("updates"); updater.check() }
     settleTimer.restart()
   }
 
@@ -305,8 +341,13 @@ ShellRoot {
     onTriggered: sr.captureScene()
   }
 
+  property int waits: 0
   function captureScene() {
     var name = sr.currentScene
+    if (name === "settingsupdates" && updater.view.phase === "checking" && sr.waits++ < 20) {
+      settleTimer.restart()
+      return
+    }
     // An open popup draws in the window's overlay, outside the frame, and
     // grabToImage cannot grab the window itself. The frame starts at the
     // window's origin, so the popup keeps its place when moved under it.
@@ -340,6 +381,7 @@ ShellRoot {
           Layout.fillWidth: true
           db: db
           service: svc.item
+          updater: updater
           activeTab: sr.activeTab
         }
 
@@ -364,6 +406,7 @@ ShellRoot {
             id: settingsTab
             db: db
             service: svc.item
+            updater: updater
           }
         }
       }
@@ -395,8 +438,9 @@ if [[ -n "${1:-}" ]]; then
   echo "output dir: $out_dir"
 fi
 status=0
-export OMANOTES_WORKTREE="$worktree" NOW_MS="$now_ms" PATH="$cfg_dir/bin:$PATH"
-SCENES=browse,draft,empty,toast,history,menu,trash,drag,alarms,alarmdraft,alarmconfirm,settings,settingsalarms,settingshistory,settingsdata OUT_DIR="$out_dir" run_qs || status=1
+export OMANOTES_WORKTREE="$worktree" NOW_MS="$now_ms" PATH="$cfg_dir/bin:$PATH" UPDATE_CLONE="$cfg_dir/clone" UPDATE_HEAD="$update_head" \
+  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+SCENES=browse,draft,empty,toast,history,menu,trash,drag,alarms,alarmdraft,alarmconfirm,settings,settingsalarms,settingsupdates,settingshistory,settingsdata OUT_DIR="$out_dir" run_qs || status=1
 # A one-shot due one minute after NOW_MS rings in its own run, so the other
 # scenes never see it.
 sqlite3 "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES (5, 14, 3, 'Wake up', 0, 1, $midnight)"

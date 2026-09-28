@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
+import "data" as Data
 import "ui" as Ui
 import "ui/Tabs.js" as Tabs
 
@@ -47,6 +48,13 @@ Panel {
         root.tabAt(root.activeTab).resetFocus()
     }
 
+    // For the gear's dot and the Updates page. It never checks by itself:
+    // the service's Updater owns the daily check.
+    Data.Updater {
+        id: updater
+        checkUpdates: root.db ? root.db.settings.checkUpdates : true
+    }
+
     property int activeTab: Tabs.items
     readonly property var shownTab: root.tabAt(root.activeTab)
     function tabAt(index) { return [itemsTab, alarmsTab, historyTab, settingsTab][index] }
@@ -86,6 +94,7 @@ Panel {
                 Layout.fillWidth: true
                 db: root.db
                 service: root.service
+                updater: updater
                 activeTab: root.activeTab
                 foreground: root.barForeground
                 onTabPicked: function(index) { root.activeTab = index }
@@ -133,6 +142,7 @@ Panel {
                     id: settingsTab
                     db: root.db
                     service: root.service
+                    updater: updater
                     toast: toast
                     bar: root.bar
                     foreground: root.barForeground

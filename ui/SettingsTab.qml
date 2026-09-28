@@ -20,6 +20,7 @@ FocusScope {
 
     property QtObject db: null
     property QtObject service: null
+    property QtObject updater: null
     property var toast: null
     property QtObject bar: null
     property color foreground: Color.foreground
@@ -27,8 +28,13 @@ FocusScope {
     property string section: Settings.SECTIONS[0].id
     readonly property var settings: root.db ? root.db.settings : ({})
     readonly property int sectionIndex: Math.max(0, root.sectionIds.indexOf(root.section))
+    readonly property var info: ({
+        bytes: root.db ? root.db.dbBytes : 0,
+        version: root.updater && root.updater.local ? root.updater.local.version : "",
+        hasUpdate: root.updater ? root.updater.showDot : false
+    })
     readonly property var sectionIds: Settings.SECTIONS.map(function(s) { return s.id })
-    readonly property var sectionIcons: ({ sound: Icons.volume, alarms: Icons.alarm, history: Icons.history, data: Icons.database })
+    readonly property var sectionIcons: ({ sound: Icons.volume, alarms: Icons.alarm, updates: Icons.update, history: Icons.history, data: Icons.database })
 
     function save(patch) {
         if (!root.db) return
@@ -38,6 +44,7 @@ FocusScope {
 
     function pickSection(id) {
         confirm.cancel()
+        if (id === "updates" && root.updater) root.updater.refresh()
         root.section = id
         focusSink.forceActiveFocus()
     }
@@ -136,8 +143,15 @@ FocusScope {
                         font.family: Style.font.family
                         font.pixelSize: Style.font.body
                     }
+                    Rectangle {
+                        visible: sectionRow.modelData.id === "updates" && root.info.hasUpdate
+                        Layout.preferredWidth: Style.space(7)
+                        Layout.preferredHeight: Style.space(7)
+                        radius: width / 2
+                        color: Color.urgent
+                    }
                     Text {
-                        text: Settings.sectionMeta(sectionRow.modelData.id, root.settings, { bytes: root.db ? root.db.dbBytes : 0 })
+                        text: Settings.sectionMeta(sectionRow.modelData.id, root.settings, root.info)
                         color: Util.alpha(root.foreground, Tone.secondary)
                         font.family: Style.font.family
                         font.pixelSize: Style.font.caption
@@ -234,6 +248,14 @@ FocusScope {
                         font.pixelSize: Style.font.caption
                     }
                     Item { Layout.fillHeight: true }
+                }
+
+                UpdateSettings {
+                    updater: root.updater
+                    settings: root.settings
+                    ringing: !!root.service && root.service.ringing !== null
+                    foreground: root.foreground
+                    onSave: function(patch) { root.save(patch) }
                 }
 
                 ColumnLayout {
