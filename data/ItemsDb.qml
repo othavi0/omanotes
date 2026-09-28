@@ -17,6 +17,7 @@ DbCore {
     property int totalNotes: 0                 // all notes, unfiltered
     property int totalTodos: 0                 // all todos, unfiltered
     property int totalHistory: 0               // all history, past historyList()'s limit
+    property real oldestHistory: 0             // seconds of the oldest entry, 0 with none
 
     // Last list() filter, remembered so load() can re-fetch the same subset
     // after a change.
@@ -79,6 +80,7 @@ DbCore {
             root.totalNotes = c.notes
             root.totalTodos = c.todos
             root.totalHistory = c.history
+            root.oldestHistory = c.oldestHistory
             root.countsUpdated()
         }
     }
@@ -278,5 +280,14 @@ DbCore {
 
     function clearHistory() {
         return root._write("clearHistory", Db.clearHistorySql, null)
+    }
+
+    // Entries age while nothing is written, so opening the panel applies the
+    // Keep choice. It writes only when an entry is past the cutoff, so an
+    // open on a pruned history fires no watcher and reloads no Db.
+    function pruneHistoryIfDue() {
+        var days = root.settings.historyDays
+        if (!Db.prunes(days, root.oldestHistory, Db.now())) return ""
+        return root._write("pruneHistory", function() { return Db.pruneHistorySql(days) }, null)
     }
 }

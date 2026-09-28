@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const S = loadQmlLib(new URL("../ui/Settings.js", import.meta.url), [
-  "SOUND_DIR", "DEFAULT_SOUND", "CUSTOM", "SOUNDS", "pathFor", "soundPath", "soundName", "SECTIONS", "sectionMeta"
+  "SOUND_DIR", "DEFAULT_SOUND", "CUSTOM", "SOUNDS", "pathFor", "soundPath", "soundName", "SECTIONS", "sectionMeta", "KEEP_CHOICES", "keepText"
 ])
 
 const DIR = "/usr/share/sounds/freedesktop/stereo/"
@@ -40,4 +40,10 @@ test("each section row names what its page holds, and the sound row reads off wh
   assert.equal(S.sectionMeta("sound", settings({ sound: "bell" })), "Bell")
   assert.equal(S.sectionMeta("sound", settings({ sound: "bell", soundOn: false })), "off")
   assert.equal(S.sectionMeta("alarms", settings({ snoozeMinutes: 12, ringMinutes: 3 })), "12 / 3 min")
+})
+
+test("the Keep choice reads forever or a number of days", () => {
+  assert.deepEqual(S.KEEP_CHOICES.map((c) => c.label), ["Forever", "90 days", "30 days"])
+  assert.equal(S.sectionMeta("history", settings({ historyDays: 0 })), "forever")
+  assert.equal(S.sectionMeta("history", settings({ historyDays: 30 })), "30d")
 })

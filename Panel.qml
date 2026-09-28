@@ -35,6 +35,7 @@ Panel {
             return
         }
         root.db.load()
+        root.db.pruneHistoryIfDue()
         if (root.activeTab === Tabs.items) itemsTab.resetFocus()
         else root.activeTab = Tabs.items
     }

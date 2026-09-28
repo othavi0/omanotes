@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
+import "../data/Db.js" as Db
 import "Icons.js" as Icons
 import "Settings.js" as Settings
 import "Tone.js" as Tone
@@ -26,7 +27,7 @@ FocusScope {
     readonly property var settings: root.db ? root.db.settings : ({})
     readonly property int sectionIndex: Math.max(0, root.sectionIds.indexOf(root.section))
     readonly property var sectionIds: Settings.SECTIONS.map(function(s) { return s.id })
-    readonly property var sectionIcons: ({ sound: Icons.volume, alarms: Icons.alarm })
+    readonly property var sectionIcons: ({ sound: Icons.volume, alarms: Icons.alarm, history: Icons.history })
 
     function save(patch) {
         if (!root.db) return
@@ -35,11 +36,29 @@ FocusScope {
     }
 
     function pickSection(id) {
+        confirm.cancel()
         root.section = id
         focusSink.forceActiveFocus()
     }
 
-    function resetFocus() { focusSink.forceActiveFocus() }
+    function resetFocus() {
+        confirm.cancel()
+        focusSink.forceActiveFocus()
+    }
+
+    // A Keep that would remove entries is armed like every destructive
+    // button (Arm in CONTEXT.md); one that removes nothing saves at once.
+    function pickKeep(days) {
+        if (!root.db) return
+        if (Db.prunes(days, root.db.oldestHistory, Db.now()) && !confirm.press("keep:" + days)) {
+            if (root.toast) root.toast.show("Removes entries older than " + days + " days. Click again to confirm.")
+            return
+        }
+        confirm.cancel()
+        root.save({ historyDays: days })
+    }
+
+    ArmedConfirm { id: confirm }
 
     // Holds focus for the tab, so KeyboardPanel's focusTarget lands inside
     // it and Esc reaches Panel.qml.
@@ -201,6 +220,28 @@ FocusScope {
                         color: Util.alpha(root.foreground, Tone.muted)
                         font.family: Style.font.family
                         font.pixelSize: Style.font.caption
+                    }
+                    Item { Layout.fillHeight: true }
+                }
+
+                ColumnLayout {
+                    spacing: Style.spacing.lg
+
+                    SettingRow {
+                        Layout.fillWidth: true
+                        label: "Keep entries"
+                        caption: "Older entries are removed when the panel opens."
+                        foreground: root.foreground
+                        Segment {
+                            objectName: "keep"
+                            fill: false
+                            options: Settings.KEEP_CHOICES.map(function(c) {
+                                return { value: String(c.value), label: confirm.isArmedFor("keep:" + c.value) ? "Confirm" : c.label }
+                            })
+                            value: String(root.settings.historyDays)
+                            foreground: root.foreground
+                            onPicked: function(v) { root.pickKeep(Number(v)) }
+                        }
                     }
                     Item { Layout.fillHeight: true }
                 }

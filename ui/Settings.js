@@ -41,8 +41,20 @@ function baseName(path) {
 // The Settings sections, in the order of the list.
 var SECTIONS = [
   { id: "sound", label: "Alarm sound" },
-  { id: "alarms", label: "Alarms" }
+  { id: "alarms", label: "Alarms" },
+  { id: "history", label: "History" }
 ]
+
+var KEEP_CHOICES = [
+  { value: 0, label: "Forever" },
+  { value: 90, label: "90 days" },
+  { value: 30, label: "30 days" }
+]
+
+// The History row's meta: "forever" or "30d".
+function keepText(days) {
+  return days > 0 ? days + "d" : "forever"
+}
 
 // What a section row shows on its right, from the same settings the page
 // edits: "Bell" or "off", "9 / 5 min".
@@ -50,6 +62,7 @@ function sectionMeta(id, settings) {
   if (!settings) return ""
   if (id === "sound") return settings.soundOn ? soundName(settings) : "off"
   if (id === "alarms") return settings.snoozeMinutes + " / " + settings.ringMinutes + " min"
+  if (id === "history") return keepText(settings.historyDays)
   return ""
 }
 

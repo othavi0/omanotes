@@ -1342,6 +1342,9 @@ logged "a new search starts the list from the top" "SCROLLED-SEARCH rows=40 top=
 
 # A seventh run drives the Settings tab of the real Panel, without the
 # service, as panel.sh does: every setting saves through the widget's Db.
+recent_history="$(sqlite3 "$db" "SELECT COUNT(*) FROM history")"
+sqlite3 "$db" "INSERT INTO history (type, title, action, ts) VALUES
+  ('note', 'Aged 40', 'added', $(date +%s) - 40 * 86400), ('note', 'Aged 100', 'added', $(date +%s) - 100 * 86400)"
 cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
 import QtTest
@@ -1385,6 +1388,12 @@ ShellRoot {
       return row.children[1].children[2].text
     }).join("|")
   }
+  function keepChip(text) { return sr.findByText(sr.named(settingsTab, "keep"), text) }
+  function keep(label) {
+    var armed = ["Forever", "90 days", "30 days", "Confirm"].filter(function(t) { return t === "Confirm" && !!sr.keepChip(t) })
+    console.log(label + " days=" + db.settings.historyDays + " armed=" + (armed.length > 0) + " history=" + db.totalHistory
+      + " toast=[" + toast.text + "]")
+  }
   function state(label) {
     var s = db.settings
     console.log(label + " tab=" + panel.activeTab + " section=" + settingsTab.section + " sound=" + s.sound + " on=" + s.soundOn
@@ -1406,12 +1415,26 @@ ShellRoot {
     function() { var plus = sr.buttonWithIcon(sr.named(settingsTab, "snooze"), Icons.plus); sr.click(plus); sr.click(plus) },
     function() { sr.click(sr.buttonWithIcon(sr.named(settingsTab, "ring"), Icons.minus)) },
     function() { sr.state("STEPPERS") },
-    function() { Quickshell.execDetached(["chmod", "444", db.dbPath]) },
+    function() { sr.click(sr.named(settingsTab, "section:history")); sr.keep("KEEP-START") },
+    function() { toast.text = ""; sr.click(sr.keepChip("30 days")) },
+    function() { sr.keep("KEEP-ARMED") },
+    function() { sr.click(sr.named(settingsTab, "section:alarms")); sr.click(sr.named(settingsTab, "section:history")); sr.keep("KEEP-AFTER-SECTION") },
+    function() { sr.click(sr.keepChip("30 days")) },
+    function() { sr.click(sr.keepChip("Confirm")) },
+    function() { sr.keep("KEEP-30") },
+    function() { toast.text = ""; sr.click(sr.keepChip("90 days")) },
+    function() { sr.keep("KEEP-90") },
+    function() { sr.click(sr.named(settingsTab, "section:alarms")); Quickshell.execDetached(["chmod", "444", db.dbPath]) },
     function() { toast.text = ""; sr.click(sr.buttonWithIcon(sr.named(settingsTab, "ring"), Icons.plus)); sr.state("WRITE-SENT") },
     function() { sr.state("WRITE-FAILED") },
     function() { Quickshell.execDetached(["chmod", "644", db.dbPath]) },
     function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
     function() { console.log("ESC-IN-SETTINGS open=" + panel.opened) },
+    function() {
+      Quickshell.execDetached(["sqlite3", db.dbPath, "INSERT INTO history (type, title, action, ts) VALUES "
+        + "('note', 'Aged 95', 'added', CAST(strftime('%s', 'now') AS INTEGER) - 95 * 86400)"])
+    },
+    function() { console.log("AGED-WHILE-CLOSED history=" + db.totalHistory) },
     function() { panel.open() },
     function() { console.log("REOPEN tab=" + panel.activeTab); Qt.exit(0) }
   ]
@@ -1461,6 +1484,16 @@ logged "a write that fails goes back to the file and says why" \
   "WRITE-FAILED .* ring=4 .* toast=\[Error: Setting not saved: .*readonly database.*\]$"
 logged "Esc in Settings closes the panel" "ESC-IN-SETTINGS open=false$"
 logged "the panel reopens on Items" "REOPEN tab=0$"
+logged "History starts on Forever" "KEEP-START days=0 armed=false"
+logged "the first click on a Keep that removes entries only arms it and says what it removes" \
+  "KEEP-ARMED days=0 armed=true history=$(( recent_history + 2 )) toast=\[Removes entries older than 30 days. Click again to confirm.\]$"
+logged "switching sections cancels it" "KEEP-AFTER-SECTION days=0 armed=false"
+logged "the second click keeps 30 days and removes the older entries at once" "KEEP-30 days=30 armed=false history=$recent_history "
+logged "a longer Keep that removes nothing saves on the first click" "KEEP-90 days=90 armed=false history=$recent_history toast=\[\]$"
+logged "an entry past the Keep can age in while the panel is closed" "AGED-WHILE-CLOSED history=$(( recent_history + 1 ))$"
+expect "opening the panel removes it, and no other entry" \
+  "SELECT (SELECT COUNT(*) FROM history WHERE title LIKE 'Aged %') || '|' || (SELECT COUNT(*) FROM history) || '|' || (SELECT history_days FROM settings)" \
+  "0|$recent_history|90"
 expect "the settings row holds every change and nothing of the failed write" \
   "SELECT sound || '|' || sound_on || '|' || volume || '|' || snooze_minutes || '|' || ring_minutes FROM settings" "bell|0|40|11|4"
 

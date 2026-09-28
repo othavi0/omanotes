@@ -69,7 +69,7 @@ ShellRoot {
   // A scene that finds fewer controls than this measured nothing.
   readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3, menu: 12, trash: 4, drag: 9,
     alarms: 14, alarmdraft: 14, alarmconfirm: 14, alarmblank: 3, ringcard: 11,
-    settings: 11, settingsalarms: 8 })
+    settings: 11, settingsalarms: 8, settingshistory: 3 })
   readonly property string longTitle: "Renew the domain before the card on file expires, then move the DNS records to the new registrar, check the MX entries, and write down every step so the next renewal takes five minutes instead of an afternoon"
   readonly property string outDir: Quickshell.env("OUT_DIR")
 
@@ -200,6 +200,10 @@ ShellRoot {
         sr.expect(sceneName, stops.length === 2, "the sound being tested and Test both show stop (" + stops.length + ")")
         sr.expect(sceneName, texts.indexOf("Alarm clock") >= 0 && texts.indexOf("Custom file…") >= 0 && texts.indexOf("100%") >= 0,
           "the page names the sounds and the volume")
+      } else if (sceneName === "settingshistory") {
+        var keep = sr.find(settingsTab, /^Segment$/).filter(function(c) { return c.item.objectName === "keep" })
+        sr.expect(sceneName, keep.length === 1 && keep[0].item.value === "0" && texts.indexOf("forever") >= 0,
+          "History keeps entries forever by default")
       } else if (sceneName === "settingsalarms") {
         sr.expect(sceneName, texts.indexOf("9 min") >= 0 && texts.indexOf("5 min") >= 0 && texts.indexOf("9 / 5 min") >= 0,
           "the steppers and the Alarms row read the defaults")
@@ -285,6 +289,7 @@ ShellRoot {
     else if (name === "ringcard") svc.item.tick(sr.nowMs + 60000)
     else if (name === "settings") { settingsTab.pickSection("sound"); svc.item.previewKey = "alarm-clock-elapsed" }
     else if (name === "settingsalarms") settingsTab.pickSection("alarms")
+    else if (name === "settingshistory") settingsTab.pickSection("history")
     settleTimer.restart()
   }
 
@@ -386,7 +391,7 @@ if [[ -n "${1:-}" ]]; then
 fi
 status=0
 export OMANOTES_WORKTREE="$worktree" NOW_MS="$now_ms" PATH="$cfg_dir/bin:$PATH"
-SCENES=browse,draft,empty,toast,history,menu,trash,drag,alarms,alarmdraft,alarmconfirm,settings,settingsalarms OUT_DIR="$out_dir" run_qs || status=1
+SCENES=browse,draft,empty,toast,history,menu,trash,drag,alarms,alarmdraft,alarmconfirm,settings,settingsalarms,settingshistory OUT_DIR="$out_dir" run_qs || status=1
 # A one-shot due one minute after NOW_MS rings in its own run, so the other
 # scenes never see it.
 sqlite3 "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES (5, 14, 3, 'Wake up', 0, 1, $midnight)"

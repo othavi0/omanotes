@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { spawn as spawnAsync, spawnSync } from "node:child_process"
 import { once } from "node:events"
 import { setTimeout as sleep } from "node:timers/promises"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
@@ -16,7 +16,7 @@ const NAMES = [
   "parseVersion", "migrationRaced", "parseRows", "parseCounts", "parseId", "parseFound",
   "errorText", "moveSql", "movedRows", "sqlInt", "daysMask", "maskDays", "alarmsSql", "insertAlarmSql",
   "saveAlarmSql", "deleteAlarmSql", "parseAlarms", "mergeAlarms", "SETTINGS", "settingsSql", "setSettingsSql",
-  "parseSettings", "mergeSettings"
+  "parseSettings", "mergeSettings", "pruneHistorySql", "prunes"
 ]
 const Db = loadQmlLib(DB_JS, NAMES)
 
@@ -538,12 +538,12 @@ test("listSql: a quote and LIKE wildcards in the search are matched literally", 
 
 test("countsSql: empty database counts zero", (t) => {
   const db = openDb(t)
-  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 0, pendingTodos: 0, notes: 0, todos: 0, history: 0 }])
+  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 0, pendingTodos: 0, notes: 0, todos: 0, history: 0, oldest: 0 }])
 })
 
 test("countsSql: unread notes, pending todos and totals per type", (t) => {
   const db = seeded(t)
-  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 1, pendingTodos: 2, notes: 2, todos: 3, history: 3 }])
+  assert.deepEqual(db.read(Db.countsSql()), [{ unreadNotes: 1, pendingTodos: 2, notes: 2, todos: 3, history: 3, oldest: T0 - 100000 }])
 })
 
 test("addSql: stores the item, prints its id and logs it as added", (t) => {
@@ -747,7 +747,7 @@ test("errorText: sqlite3's own message, without its argument position", (t) => {
 })
 
 test("parseCounts: empty output counts zero", () => {
-  assert.deepEqual(Db.parseCounts(""), { unreadNotes: 0, pendingTodos: 0, notes: 0, todos: 0, history: 0 })
+  assert.deepEqual(Db.parseCounts(""), { unreadNotes: 0, pendingTodos: 0, notes: 0, todos: 0, history: 0, oldestHistory: 0 })
 })
 
 test("parseId: plain integer output", () => {
@@ -1057,4 +1057,62 @@ test("mergeSettings lays a patch over the settings without changing them in plac
   const merged = Db.mergeSettings(base, { volume: 30, soundOn: false })
   assert.deepEqual(merged, { ...SETTING_DEFAULTS, volume: 30, soundOn: false })
   assert.deepEqual(base, SETTING_DEFAULTS)
+})
+
+const DAY = 86400
+
+// History entries aged `days` from now, as the prune measures them.
+function agedHistory(db, days) {
+  const now = Math.floor(Date.now() / 1000)
+  db.write("INSERT INTO history (type, title, action, ts) VALUES "
+    + days.map((d) => "('note', 'aged " + d + "', 'added', " + (now - d * DAY) + ")").join(", "))
+}
+function historyTitles(db) {
+  return db.read("SELECT title FROM history ORDER BY ts DESC").map((r) => r.title)
+}
+
+test("keeping 30 days removes, in the same write, only the entries older than 30 days", (t) => {
+  const db = openDb(t)
+  agedHistory(db, [1, 29, 31, 95])
+  const sql = Db.setSettingsSql({ historyDays: 30 })
+  assert.equal(sql[0], "BEGIN IMMEDIATE")
+  assert.equal(sql[sql.length - 1], "COMMIT")
+  db.write(sql)
+  assert.deepEqual(historyTitles(db), ["aged 1", "aged 29"])
+  assert.equal(settingsOf(db).settings.historyDays, 30)
+})
+
+test("keeping entries forever removes none", (t) => {
+  const db = openDb(t)
+  agedHistory(db, [1, 400])
+  db.write(Db.setSettingsSql({ historyDays: 0 }))
+  assert.deepEqual(historyTitles(db), ["aged 1", "aged 400"])
+})
+
+test("a prune with nothing past the cutoff leaves the file untouched, so no watcher fires", async (t) => {
+  const db = openDb(t)
+  agedHistory(db, [1, 10])
+  const before = db.bytes()
+  const mtime = statSync(db.path).mtimeMs
+  await sleep(20)
+  db.write(Db.pruneHistorySql(30))
+  assert.deepEqual(db.bytes(), before)
+  assert.equal(statSync(db.path).mtimeMs, mtime)
+  assert.throws(() => Db.pruneHistorySql(0), /invalid value/)
+})
+
+test("the counts carry the oldest history entry, for the prune on open", (t) => {
+  const db = openDb(t)
+  const now = Math.floor(Date.now() / 1000)
+  agedHistory(db, [3, 40])
+  const counts = Db.parseCounts(db.run(Db.countsSql(), true).stdout)
+  assert.equal(counts.oldestHistory, now - 40 * DAY)
+})
+
+test("prunes: only a Keep of some days with an entry older than them removes anything", () => {
+  const now = T0
+  assert.equal(Db.prunes(30, now - 31 * DAY, now), true)
+  assert.equal(Db.prunes(30, now - 29 * DAY, now), false)
+  assert.equal(Db.prunes(0, now - 400 * DAY, now), false, "forever keeps everything")
+  assert.equal(Db.prunes(30, 0, now), false, "an empty history has nothing to remove")
 })

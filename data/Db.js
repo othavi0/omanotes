@@ -65,14 +65,17 @@ function topOfBlockSql(status) {
 
 // Counts for the bar tooltip and the panel header: unread notes and pending
 // todos, unfiltered totals per type for the filter segment, and
-// every history entry, including those past historySql()'s limit.
+// every history entry, including those past historySql()'s limit. `oldest`
+// is the time of the oldest entry, 0 with none, so opening the panel knows
+// whether the Keep choice has anything to remove without another read.
 function countsSql() {
   return "SELECT "
     + "(SELECT COUNT(*) FROM items WHERE type = 'note' AND status = 0) AS unreadNotes, "
     + "(SELECT COUNT(*) FROM items WHERE type = 'todo' AND status = 0) AS pendingTodos, "
     + "(SELECT COUNT(*) FROM items WHERE type = 'note') AS notes, "
     + "(SELECT COUNT(*) FROM items WHERE type = 'todo') AS todos, "
-    + "(SELECT COUNT(*) FROM history) AS history"
+    + "(SELECT COUNT(*) FROM history) AS history, "
+    + "(SELECT COALESCE(MIN(ts), 0) FROM history) AS oldest"
 }
 
 // One argument per statement: the CLI stops at the first failing argument and
@@ -234,6 +237,18 @@ function clearHistorySql() {
   return "DELETE FROM history"
 }
 
+// Removes the history entries older than `days`. With none that old it
+// deletes nothing, and SQLite leaves the file as it was.
+function pruneHistorySql(days) {
+  return "DELETE FROM history WHERE ts < CAST(strftime('%s', 'now') AS INTEGER) - " + sqlInt(days, 1, 36500) + " * 86400"
+}
+
+// True when keeping `days` of history would remove an entry, from the
+// oldest entry's time (seconds, 0 with none) and now (seconds).
+function prunes(days, oldest, nowSeconds) {
+  return days > 0 && oldest > 0 && oldest < nowSeconds - days * 86400
+}
+
 // A whole number in [min, max], for interpolation into SQL text (ADR-0002),
 // as sqlId is for ids.
 function sqlInt(value, min, max) {
@@ -393,16 +408,18 @@ function settingValue(key, value) {
 
 // One absolute upsert of every key in `patch`, so two panels writing
 // different keys never undo each other. Throws on an unknown key or a value
-// outside its spec: the controls clamp, this refuses.
+// outside its spec: the controls clamp, this refuses. A shorter Keep prunes
+// in the same transaction, so the History tab never shows what it drops.
 function setSettingsSql(patch) {
   var keys = Object.keys(patch || {})
   if (keys.length === 0) throw new Error("empty setting patch")
   var columns = keys.map(function(k) { return SETTINGS[k] ? SETTINGS[k].column : k })
   var values = keys.map(function(k) { return settingValue(k, patch[k]) })
+  var prune = patch.historyDays > 0 ? [pruneHistorySql(patch.historyDays)] : []
   return transaction([
     "INSERT INTO settings (id, " + columns.join(", ") + ") VALUES (1, " + values.join(", ") + ")"
       + " ON CONFLICT(id) DO UPDATE SET " + columns.map(function(c) { return c + " = excluded." + c }).join(", ")
-  ])
+  ].concat(prune))
 }
 
 // sqlite3 -json output of settingsSql -> { settings, bytes }. Like
@@ -607,7 +624,7 @@ function parseRows(text) {
   return rows
 }
 
-// Parse countsSql() output into { unreadNotes, pendingTodos, notes, todos, history }.
+// Parse countsSql() output into { unreadNotes, pendingTodos, notes, todos, history, oldestHistory }.
 function parseCounts(text) {
   var rows = parseRows(text)
   var row = rows.length > 0 ? rows[0] : {}
@@ -616,7 +633,8 @@ function parseCounts(text) {
     pendingTodos: Number(row.pendingTodos) || 0,
     notes: Number(row.notes) || 0,
     todos: Number(row.todos) || 0,
-    history: Number(row.history) || 0
+    history: Number(row.history) || 0,
+    oldestHistory: Number(row.oldest) || 0
   }
 }
 
