@@ -9,6 +9,7 @@ The live database is kept on purpose (ADR-0003), and `CREATE TABLE IF NOT EXISTS
 - The first entry is the schema from before versioning, with `IF NOT EXISTS`, because databases made then have its tables at version 0. Later entries run once per database and do not need to be idempotent.
 - Each widget starts its own `Db` (ADR-0004), so two start-ups can read the same version. The transaction first checks that the version is still the one it read, and fails with `version_changed` otherwise, writing nothing. `DbCore.qml` then reads the version again instead of reporting an error. Any other failure is reported and retried with back-off.
 - The fourth entry creates the `alarms` table (ADR-0015). The alarm service's `Db` races the migration with the widgets' Dbs, so a start with N monitors runs N + 1 migration attempts, and `test/startup.sh` counts them.
+- The fifth entry creates the `settings` table and its one row (ADR-0016).
 - A start-up at the current version only reads, so a second start changes nothing in the file.
 - A database at a version above `MIGRATIONS.length`, written by a newer Omanotes, is used as it is.
 - `test/lib/harness.sh` writes its rows on the first entry's schema and then runs `migrateSql(0)`, so the QML tests start at the current version with rows that went through every migration, and `test/startup.sh` checks the version a missing database ends at.

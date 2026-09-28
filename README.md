@@ -13,6 +13,7 @@ Notes, todos and alarms in one panel on the Omarchy bar. Everything is stored in
 - A History tab that logs every change to an item (`added`, `edited`, `completed`, `reopened`, `converted`, `deleted`). Entries can be deleted one by one or cleared. Alarms are not logged.
 - The panel reloads when the database file changes, so edits from the IPC or from `sqlite3` show up without reopening it.
 - An IPC target to add, list, toggle and remove items from scripts.
+- A Settings tab for the alarm sound, the new-alarm defaults, updates, how long history is kept and a backup of the database.
 
 ## Install
 
@@ -50,9 +51,19 @@ The bar chip shows the next alarm: `07:30` when it is today, `Sat 07:30` on anot
 
 An alarm found more than 10 minutes late, after the computer slept, does not ring. You get one notification that lists every missed alarm.
 
-The sound is `/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga`, played by the first of `pw-play`, `paplay`, `mpv` and `ffplay` that is installed. When none can play it, the alarm rings silently and the journal says so.
+The sound is one of the freedesktop sounds in `/usr/share/sounds/freedesktop/stereo/` or a file you pick, set in Settings, played by the first of `pw-play`, `paplay`, `mpv` and `ffplay` that is installed. A picked file that is gone plays the default alarm clock. When nothing can play it, the alarm rings silently and the journal says so.
 
 The alarms are kept once per shell by the plugin's service, so several monitors share one clock and one ring. In a shell without the service, the tab says so and the chip shows the note glyph alone.
+
+## Settings
+
+The gear at the end of the tabs opens Settings. Changes save as you make them.
+
+- **Alarm sound** switches the sound on or off, picks one of six sounds or a file of your own, and sets the volume. The play button on a row and **Test** play the sound once, at the volume shown; they need the plugin's service.
+- **Alarms** sets the snooze and ring lengths a new alarm starts with. Alarms you already have keep their own.
+- **Updates** shows the version, checks `origin/main` for new commits and updates the plugin. Update pulls `origin/main` into the plugin folder with `--ff-only`, validates it and reloads the shell, and a notification says when it is done. If the folder has local changes, is on another branch or has commits of its own, nothing is touched. With **Check daily** on, the service checks once a day and the gear shows a dot when there is something new.
+- **History** keeps entries forever, 90 days or 30 days. A shorter choice that removes entries needs a second click, and older entries are removed again each time the panel opens.
+- **Data** shows where the database is and its size. **Back up now** copies it next to itself as `scratchpad-<date>.db`, and a second backup the same day replaces the first.
 
 ## IPC
 
@@ -81,12 +92,12 @@ Writes are asynchronous. `{"ok":true}` means the write is queued. A write that f
 
 ## Data
 
-The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is the `MIGRATIONS` list in `data/Db.js`: an `items` table for notes and todos with a `position` for the order, a `history` table, a folded copy of each title and body for search, and an `alarms` table whose instants are epoch milliseconds and whose `days` is a bitmask of weekdays with bit 0 for Sunday. At start the plugin runs every migration above the database's `user_version` in one transaction (ADR-0011), and the test harness seeds its database the same way. An alarm row inserted with `sqlite3` is armed at its insert time, so it does not ring for a time that passed before it existed. The service writes the whole row each time it changes an alarm, so a `sqlite3` edit to that alarm made just before a service write lands, or while a failed write waits for its retry, is overwritten. A value stored out of range by hand, such as a fractional hour, is rounded into range and written back with the next change.
+The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is the `MIGRATIONS` list in `data/Db.js`: an `items` table for notes and todos with a `position` for the order, a `history` table, a folded copy of each title and body for search, and a `settings` table with one row, an `alarms` table whose instants are epoch milliseconds and whose `days` is a bitmask of weekdays with bit 0 for Sunday. At start the plugin runs every migration above the database's `user_version` in one transaction (ADR-0011), and the test harness seeds its database the same way. An alarm row inserted with `sqlite3` is armed at its insert time, so it does not ring for a time that passed before it existed. The service writes the whole row each time it changes an alarm, so a `sqlite3` edit to that alarm made just before a service write lands, or while a failed write waits for its retry, is overwritten. A value stored out of range by hand, such as a fractional hour, is rounded into range and written back with the next change.
 
 ## Development
 
 - `npm run validate` runs `omarchy plugin validate .`.
-- `npm test` runs `node --test test/`, then `test/render.sh`, `test/behavior.sh`, `test/panel.sh`, `test/alarm.sh`, `test/startup.sh` and `test/teardown.sh`. The unit tests need `sqlite3`. The other six start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
+- `npm test` runs `node --test test/`, then `test/update.sh`, `test/render.sh`, `test/behavior.sh`, `test/panel.sh`, `test/alarm.sh`, `test/startup.sh` and `test/teardown.sh`. The unit tests need `sqlite3`, and `test/update.sh` needs `git` and `flock`. The other six start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
 
 Design decisions are in [`docs/adr/`](docs/adr/) and the project vocabulary is in [`CONTEXT.md`](CONTEXT.md).
 

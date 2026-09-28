@@ -11,3 +11,4 @@ The editor sits next to the list and the user moves between items all the time, 
 - Deleting the item open in the editor throws its text away first, so the selection that moves to the next row commits nothing.
 - An open draft hides the selected row, so while a draft is open, focus meant for the list goes to the draft's title (`focusList` in `ui/ItemsTab.qml`). Clicking a row then keeps the draft in front of the user.
 - Opening the panel resets the tab's focus once. The tabs are focus scopes, and the kit's `KeyboardPanel.focusTarget` gives the shown tab keyboard focus when the panel maps, so no delayed retry moves focus away from text typed right after opening (`onOpenedChanged` in `Panel.qml`).
+- The Settings tab has no editor. Each of its controls is a click or a release with nothing left half typed, so it saves at once, and Settings takes no part in the commit on leaving (ADR-0016).
