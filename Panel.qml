@@ -48,7 +48,7 @@ Panel {
 
     property int activeTab: Tabs.items
     readonly property var shownTab: root.tabAt(root.activeTab)
-    function tabAt(index) { return [itemsTab, alarmsTab, historyTab][index] }
+    function tabAt(index) { return [itemsTab, alarmsTab, historyTab, settingsTab][index] }
 
     // The popup card. The kit Panel is only the state machine (open/close/
     // toggle IPC); without a popup window nothing is ever drawn, so the bar
@@ -125,6 +125,15 @@ Panel {
                     id: historyTab
                     db: root.db
                     toast: toast
+                    foreground: root.barForeground
+                }
+
+                Ui.SettingsTab {
+                    id: settingsTab
+                    db: root.db
+                    service: root.service
+                    toast: toast
+                    bar: root.bar
                     foreground: root.barForeground
                 }
             }

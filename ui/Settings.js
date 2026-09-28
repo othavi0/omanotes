@@ -38,6 +38,21 @@ function baseName(path) {
   return parts[parts.length - 1]
 }
 
+// The Settings sections, in the order of the list.
+var SECTIONS = [
+  { id: "sound", label: "Alarm sound" },
+  { id: "alarms", label: "Alarms" }
+]
+
+// What a section row shows on its right, from the same settings the page
+// edits: "Bell" or "off", "9 / 5 min".
+function sectionMeta(id, settings) {
+  if (!settings) return ""
+  if (id === "sound") return settings.soundOn ? soundName(settings) : "off"
+  if (id === "alarms") return settings.snoozeMinutes + " / " + settings.ringMinutes + " min"
+  return ""
+}
+
 // "Bell", or the custom file's name.
 function soundName(settings) {
   var key = settings ? settings.sound : DEFAULT_SOUND

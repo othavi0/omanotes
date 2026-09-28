@@ -36,6 +36,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "ui/Icons.js" as Icons
+import "ui/Tabs.js" as Tabs
 
 ShellRoot {
   id: sr
@@ -49,6 +50,14 @@ ShellRoot {
       if (hit) return hit
     }
     return null
+  }
+  function findAll(obj, match, out) {
+    out = out || []
+    if (!obj) return out
+    if (match(obj)) out.push(obj)
+    var kids = obj.data || []
+    for (var i = 0; i < kids.length; ++i) sr.findAll(kids[i], match, out)
+    return out
   }
   function findText(obj, part) {
     if (!obj) return null
@@ -127,6 +136,20 @@ ShellRoot {
       return String(widget.item.service) + "|" + (button.text === Icons.noteFilled ? "note glyph" : button.text) + "|" + button.implicitWidth
         + "|" + (empty ? empty.text : "no empty state")
     }
+    // The Settings tab of a panel without the service: the gear is there,
+    // the sound pages are there, and only the buttons that play say why
+    // they do nothing.
+    function noServiceSettings(): string {
+      var panel = widget.item.panelItem
+      var header = sr.find(panel, "PanelHeader")
+      var segment = sr.find(header, "Segment")
+      var gear = segment.options[3]
+      panel.activeTab = Tabs.settings
+      var tab = sr.find(panel, "SettingsTab")
+      var inert = sr.findAll(tab, function(o) { return o.visible && o.tooltipText === "Needs the Omanotes service" })
+      return gear.tooltip + "|" + (gear.icon === Icons.cog ? "cog" : gear.icon) + "|" + (tab ? tab.section : "no SettingsTab")
+        + "|" + inert.length + " inert"
+    }
     function toast(): string {
       var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
       return itemsTab ? itemsTab.toast.text : "no ItemsTab"
@@ -183,6 +206,8 @@ done
 replies "the bar tooltip and the panel header count unread notes and pending todos" "$counts" "$want_counts"
 replies "without a service the chip is the note glyph in the icon slot and the Alarms tab says so" \
   "$(ipc omanotes-test noService)" "null|note glyph|27|Alarms need the Omanotes service"
+replies "without a service the gear opens Settings on the sound, whose six play buttons and Test say they need it" \
+  "$(ipc omanotes-test noServiceSettings)" "Settings|cog|sound|7 inert"
 
 # Reopens leave positions under the column default of 0, and a new item that
 # took the default would land below them.

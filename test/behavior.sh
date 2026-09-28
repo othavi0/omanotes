@@ -1340,5 +1340,129 @@ logged "and it stays there after the reload, with the dropped row selected and i
 logged "a status change in a scrolled list keeps the list where it was" "SCROLLED-TOGGLE kept$"
 logged "a new search starts the list from the top" "SCROLLED-SEARCH rows=40 top=true$"
 
+# A seventh run drives the Settings tab of the real Panel, without the
+# service, as panel.sh does: every setting saves through the widget's Db.
+cat > "$cfg_dir/shell.qml" <<'QML'
+import QtQuick
+import QtTest
+import Quickshell
+import "data" as Data
+import "ui/Icons.js" as Icons
+
+ShellRoot {
+  id: sr
+  property int stepIndex: 0
+  property bool started: false
+  property var panel: null
+  property var header: null
+  property var settingsTab: null
+  property var toast: null
+  readonly property var db: testDb
+
+  function findWhere(item, match) {
+    if (!item) return null
+    if (match(item)) return item
+    for (var i = 0; i < item.children.length; ++i) {
+      var hit = sr.findWhere(item.children[i], match)
+      if (hit) return hit
+    }
+    return null
+  }
+  function named(item, name) { return sr.findWhere(item, function(it) { return it.objectName === name }) }
+  function findByText(item, text) { return sr.findWhere(item, function(it) { return it.visible && it.text === text }) }
+  function buttonWithIcon(item, icon) {
+    return sr.findWhere(item, function(it) { return it.visible && it.iconText === icon && it.clicked !== undefined })
+  }
+  function click(item) { keys.mouseClick(item, item.width / 2, item.height / 2, Qt.LeftButton, Qt.NoModifier, -1) }
+  function clickAt(item, fraction) { keys.mouseClick(item, item.width * fraction, item.height / 2, Qt.LeftButton, Qt.NoModifier, -1) }
+  function gear() {
+    var segment = sr.findWhere(header, function(it) { return String(it).indexOf("Segment") === 0 })
+    return segment.children.filter(function(c) { return c.modelData !== undefined })[3]
+  }
+  function metas() {
+    return ["sound", "alarms"].map(function(id) {
+      var row = sr.named(settingsTab, "section:" + id)
+      return row.children[1].children[2].text
+    }).join("|")
+  }
+  function state(label) {
+    var s = db.settings
+    console.log(label + " tab=" + panel.activeTab + " section=" + settingsTab.section + " sound=" + s.sound + " on=" + s.soundOn
+      + " volume=" + s.volume + " snooze=" + s.snoozeMinutes + " ring=" + s.ringMinutes + " meta=[" + sr.metas() + "] toast=[" + toast.text + "]")
+  }
+
+  readonly property var steps: [
+    function() { sr.click(sr.gear()) },
+    function() { sr.state("GEAR") },
+    function() { sr.click(sr.named(settingsTab, "sound:bell")) },
+    function() { sr.state("BELL") },
+    function() { sr.click(sr.buttonWithIcon(sr.named(settingsTab, "sound:service-login"), Icons.play)) },
+    function() { sr.state("PLAY-WITHOUT-SERVICE") },
+    function() { sr.clickAt(sr.findWhere(settingsTab, function(it) { return String(it).indexOf("PanelSlider") === 0 }), 0.4) },
+    function() { sr.state("VOLUME") },
+    function() { sr.click(sr.findByText(settingsTab, "Off")) },
+    function() { sr.state("OFF") },
+    function() { sr.click(sr.named(settingsTab, "section:alarms")) },
+    function() { var plus = sr.buttonWithIcon(sr.named(settingsTab, "snooze"), Icons.plus); sr.click(plus); sr.click(plus) },
+    function() { sr.click(sr.buttonWithIcon(sr.named(settingsTab, "ring"), Icons.minus)) },
+    function() { sr.state("STEPPERS") },
+    function() { Quickshell.execDetached(["chmod", "444", db.dbPath]) },
+    function() { toast.text = ""; sr.click(sr.buttonWithIcon(sr.named(settingsTab, "ring"), Icons.plus)); sr.state("WRITE-SENT") },
+    function() { sr.state("WRITE-FAILED") },
+    function() { Quickshell.execDetached(["chmod", "644", db.dbPath]) },
+    function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
+    function() { console.log("ESC-IN-SETTINGS open=" + panel.opened) },
+    function() { panel.open() },
+    function() { console.log("REOPEN tab=" + panel.activeTab); Qt.exit(0) }
+  ]
+
+  Data.ItemsDb {
+    id: testDb
+    Component.onCompleted: testDb.init()
+  }
+  Loader {
+    source: Qt.resolvedUrl("Panel.qml")
+    onLoaded: {
+      item.db = testDb
+      sr.panel = item
+      var content = null
+      for (var i = 0; i < item.data.length; ++i)
+        if (String(item.data[i]).indexOf("KeyboardPanel") === 0) content = item.data[i].contentItem
+      sr.header = sr.findWhere(content, function(it) { return String(it).indexOf("PanelHeader") === 0 })
+      sr.settingsTab = sr.findWhere(content, function(it) { return String(it).indexOf("SettingsTab") === 0 })
+      sr.toast = sr.findWhere(content, function(it) { return String(it).indexOf("Toast") === 0 })
+      item.open()
+    }
+  }
+  Connections {
+    target: testDb
+    function onSettingsLoadedChanged() { if (!sr.started && testDb.settingsLoaded) { sr.started = true; stepTimer.start() } }
+  }
+  Timer {
+    id: stepTimer
+    interval: 600
+    repeat: true
+    onTriggered: if (sr.stepIndex < sr.steps.length) sr.steps[sr.stepIndex++]()
+  }
+  TestEvent { id: keys }
+}
+QML
+log_file="$cfg_dir/qs-settings.log"
+run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
+logged "the gear opens Settings on the Alarm sound page, which reads the defaults" \
+  "GEAR tab=3 section=sound sound=alarm-clock-elapsed on=true volume=100 snooze=9 ring=5 meta=\[Alarm clock\|9 / 5 min\]"
+logged "a click on a sound row picks it, and its row in the list names it" "BELL .* sound=bell .* meta=\[Bell\|9 / 5 min\]"
+logged "without the service a play button plays nothing and says nothing" "PLAY-WITHOUT-SERVICE .* toast=\[\]$"
+logged "a click on the volume track sets the volume there" "VOLUME .* volume=40 "
+logged "Off switches the sound off, and the list says off" "OFF .* on=false .* meta=\[off\|9 / 5 min\]"
+logged "each stepper click saves one step" "STEPPERS tab=3 section=alarms .* snooze=11 ring=4 meta=\[off\|11 / 4 min\]"
+logged "a write shows at once" "WRITE-SENT .* ring=5 "
+logged "a write that fails goes back to the file and says why" \
+  "WRITE-FAILED .* ring=4 .* toast=\[Error: Setting not saved: .*readonly database.*\]$"
+logged "Esc in Settings closes the panel" "ESC-IN-SETTINGS open=false$"
+logged "the panel reopens on Items" "REOPEN tab=0$"
+expect "the settings row holds every change and nothing of the failed write" \
+  "SELECT sound || '|' || sound_on || '|' || volume || '|' || snooze_minutes || '|' || ring_minutes FROM settings" "bell|0|40|11|4"
+
 echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))

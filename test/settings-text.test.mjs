@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const S = loadQmlLib(new URL("../ui/Settings.js", import.meta.url), [
-  "SOUND_DIR", "DEFAULT_SOUND", "CUSTOM", "SOUNDS", "pathFor", "soundPath", "soundName"
+  "SOUND_DIR", "DEFAULT_SOUND", "CUSTOM", "SOUNDS", "pathFor", "soundPath", "soundName", "SECTIONS", "sectionMeta"
 ])
 
 const DIR = "/usr/share/sounds/freedesktop/stereo/"
@@ -33,4 +33,11 @@ test("a sound the catalog does not know, from a hand edit, plays and reads as th
   assert.equal(S.soundPath(unknown), DIR + "alarm-clock-elapsed.oga")
   assert.equal(S.soundName(unknown), "Alarm clock")
   assert.equal(S.soundName(settings({ sound: "bell" })), "Bell")
+})
+
+test("each section row names what its page holds, and the sound row reads off when the sound is off", () => {
+  assert.deepEqual(S.SECTIONS.map((s) => s.label).slice(0, 2), ["Alarm sound", "Alarms"])
+  assert.equal(S.sectionMeta("sound", settings({ sound: "bell" })), "Bell")
+  assert.equal(S.sectionMeta("sound", settings({ sound: "bell", soundOn: false })), "off")
+  assert.equal(S.sectionMeta("alarms", settings({ snoozeMinutes: 12, ringMinutes: 3 })), "12 / 3 min")
 })

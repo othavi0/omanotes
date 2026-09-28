@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Renders PanelHeader, ItemsTab, AlarmsTab, HistoryTab, RingCard and Toast
+# Renders PanelHeader, ItemsTab, AlarmsTab, HistoryTab, SettingsTab, RingCard and Toast
 # against a real, seeded sqlite db, offscreen, and checks that every
-# ActionButton, Field, SearchField and Segment is exactly
+# ActionButton, Field, SearchField, Segment and Stepper is exactly
 # Style.spacing.controlHeight tall (the dev's hard rule: a button with an
 # icon must never be taller than a plain text button). TimeField is the one
 # control outside that rule (ADR-0008). Some scenes also check their own
@@ -9,8 +9,8 @@
 # kit's separators and section headers and shows the same EmptyState as
 # Items, the no-match button names what it clears, the New menu lists Note,
 # Todo and Alarm, an armed trash or Delete reads Confirm, the day chips run
-# Monday first, the tab Segment has three options, and the ring card names
-# Snooze and Stop. Exits non-zero if any check fails.
+# Monday first, the tab Segment has four options with an icon-only gear, the
+# ring card names Snooze and Stop, and each Settings page fits the panel. Exits non-zero if any check fails.
 #
 # Usage: test/render.sh [output-dir]
 #
@@ -53,6 +53,8 @@ import qs.Ui
 import "data" as Data
 import "ui" as Ui
 import "ui/Tabs.js" as Tabs
+import "ui/Icons.js" as Icons
+import "ui/Settings.js" as Settings
 
 ShellRoot {
   id: sr
@@ -66,7 +68,8 @@ ShellRoot {
   readonly property real nowMs: Number(Quickshell.env("NOW_MS"))
   // A scene that finds fewer controls than this measured nothing.
   readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3, menu: 12, trash: 4, drag: 9,
-    alarms: 14, alarmdraft: 14, alarmconfirm: 14, alarmblank: 3, ringcard: 11 })
+    alarms: 14, alarmdraft: 14, alarmconfirm: 14, alarmblank: 3, ringcard: 11,
+    settings: 11, settingsalarms: 8 })
   readonly property string longTitle: "Renew the domain before the card on file expires, then move the DNS records to the new registrar, check the MX entries, and write down every step so the next renewal takes five minutes instead of an afternoon"
   readonly property string outDir: Quickshell.env("OUT_DIR")
 
@@ -149,9 +152,7 @@ ShellRoot {
     } else if (sceneName === "alarms" || sceneName === "alarmdraft" || sceneName === "alarmconfirm") {
       var chips = sr.find(alarmsTab, /^ActionButton$/).filter(function(b) { return b.item.objectName === "dayChip" }).map(function(b) { return b.item.text })
       sr.expect(sceneName, chips.join(" ") === "M T W T F S S", "the day chips read [" + chips.join(" ") + "]")
-      var segment = sr.find(header, /^Segment$/)[0].item
-      sr.expect(sceneName, segment.width === Style.space(360) && segment.options.length === 3,
-        "the tab Segment is 360 wide with three options (" + segment.width + ", " + segment.options.length + ")")
+      sr.checkTabs(sceneName)
       var timeField = sr.find(alarmsTab, /^TimeField$/)
       sr.expect(sceneName, timeField.length === 1 && timeField[0].item.height === timeField[0].item.implicitHeight, "one TimeField takes the height its digits need")
       if (sceneName === "alarms") {
@@ -178,10 +179,44 @@ ShellRoot {
       var faded = sr.find(itemsTab, /^ItemRow$/).filter(function(r) { return r.item.opacity < 1 })
       sr.expect(sceneName, shown("dragFloat") === 1 && shown("dropLine") === 1 && faded.length === 1,
         "a drag shows the floating copy, the drop line and one faded row")
+    } else if (sceneName.indexOf("settings") === 0) {
+      sr.checkTabs(sceneName)
+      var page = sr.find(settingsTab, /StackLayout$/)[0].item
+      var rows = sr.find(settingsTab, /^SettingRow$/)
+      sr.expect(sceneName, rows.length > 0 && rows.every(function(r) { return r.item.width <= page.width + 0.5 }),
+        rows.length + " setting rows fit the page (" + rows.map(function(r) { return Math.round(r.item.width) }).join(",") + " <= " + Math.round(page.width) + ")")
+      var overflow = sr.find(settingsTab, /^(ActionButton|Segment|Stepper|PanelSlider)$/).filter(function(c) {
+        var right = c.item.mapToItem(settingsTab, c.item.width, 0).x
+        return right > settingsTab.width + 0.5
+      })
+      sr.expect(sceneName, overflow.length === 0, "no control reaches past the tab (" + overflow.map(function(c) { return c.name }).join(",") + ")")
+      var sections = sr.find(settingsTab, /^QQuickRectangle/).filter(function(r) { return String(r.item.objectName).indexOf("section:") === 0 })
+      sr.expect(sceneName, sections.length === Settings.SECTIONS.length, "the list shows " + sections.length + " sections")
+      var texts = sr.find(settingsTab, /^QQuickText$/).map(function(t) { return t.item.text })
+      if (sceneName === "settings") {
+        var sounds = sr.find(settingsTab, /^(QQuickRectangle|SoundRow)/).filter(function(r) { return String(r.item.objectName).indexOf("sound:") === 0 })
+        sr.expect(sceneName, sounds.length === 7, "the page lists six sounds and the custom file (" + sounds.length + ")")
+        var stops = sr.find(settingsTab, /^(ActionButton|PlayButton)$/).filter(function(b) { return b.item.iconText === Icons.stop })
+        sr.expect(sceneName, stops.length === 2, "the sound being tested and Test both show stop (" + stops.length + ")")
+        sr.expect(sceneName, texts.indexOf("Alarm clock") >= 0 && texts.indexOf("Custom file…") >= 0 && texts.indexOf("100%") >= 0,
+          "the page names the sounds and the volume")
+      } else if (sceneName === "settingsalarms") {
+        sr.expect(sceneName, texts.indexOf("9 min") >= 0 && texts.indexOf("5 min") >= 0 && texts.indexOf("9 / 5 min") >= 0,
+          "the steppers and the Alarms row read the defaults")
+      }
     } else if (sceneName === "trash") {
       var armed = sr.find(historyTab, /^ActionButton$/).filter(function(b) { return b.item.text === "Confirm" })
       sr.expect(sceneName, armed.length === 1, "one armed trash reads Confirm")
     }
+  }
+
+  function checkTabs(sceneName) {
+    var segment = sr.find(header, /^Segment$/)[0].item
+    var chips = sr.find(segment, /^QQuickRectangle/).filter(function(r) { return r.item.parent === segment })
+    var gear = chips[3] ? chips[3].item : null
+    sr.expect(sceneName, segment.options.length === 4 && segment.options[3].label === "" && !!gear && gear.width < chips[2].item.width,
+      "the tab Segment has four options, the last an icon-only gear narrower than History (" + (gear ? gear.width : "-") + ")")
+    sr.expect(sceneName, header.implicitWidth <= frame.width - 2 * Style.space(16), "the header fits the panel (" + header.implicitWidth + ")")
   }
 
   // A Popup is not an Item child, so it is looked up through `data`.
@@ -201,7 +236,7 @@ ShellRoot {
   }
 
   function checkHeights(sceneName, rootItem) {
-    var found = sr.find(rootItem, /^(ActionButton|Field|MinutesField|SearchField|Segment)$/)
+    var found = sr.find(rootItem, /^(ActionButton|PlayButton|Field|MinutesField|SearchField|Segment|Stepper)$/)
     var want = Style.spacing.controlHeight
     var parts = []
     for (var i = 0; i < found.length; ++i) {
@@ -235,8 +270,9 @@ ShellRoot {
     alarmsTab.discardEditor()
     toast.hide()
     header.closeMenu()
+    svc.item.stopPreview()
     sr.activeTab = (name === "history" || name === "historyblank" || name === "trash") ? Tabs.history
-      : name.indexOf("alarm") === 0 ? Tabs.alarms : Tabs.items
+      : name.indexOf("alarm") === 0 ? Tabs.alarms : name.indexOf("settings") === 0 ? Tabs.settings : Tabs.items
     if (name === "draft") itemsTab.startNew("todo")
     else if (name === "empty") itemsTab.searchText = "zzz_no_match_xyz"
     else if (name === "toast") toast.show("Deleted — " + sr.longTitle)
@@ -247,6 +283,8 @@ ShellRoot {
     else if (name === "alarmdraft") alarmsTab.startNew()
     else if (name === "alarmconfirm") { alarmsTab.pickAlarm(1); alarmsTab.armDelete() }
     else if (name === "ringcard") svc.item.tick(sr.nowMs + 60000)
+    else if (name === "settings") { settingsTab.pickSection("sound"); svc.item.previewKey = "alarm-clock-elapsed" }
+    else if (name === "settingsalarms") settingsTab.pickSection("alarms")
     settleTimer.restart()
   }
 
@@ -312,6 +350,11 @@ ShellRoot {
             id: historyTab
             db: db
           }
+          Ui.SettingsTab {
+            id: settingsTab
+            db: db
+            service: svc.item
+          }
         }
       }
 
@@ -343,7 +386,7 @@ if [[ -n "${1:-}" ]]; then
 fi
 status=0
 export OMANOTES_WORKTREE="$worktree" NOW_MS="$now_ms" PATH="$cfg_dir/bin:$PATH"
-SCENES=browse,draft,empty,toast,history,menu,trash,drag,alarms,alarmdraft,alarmconfirm OUT_DIR="$out_dir" run_qs || status=1
+SCENES=browse,draft,empty,toast,history,menu,trash,drag,alarms,alarmdraft,alarmconfirm,settings,settingsalarms OUT_DIR="$out_dir" run_qs || status=1
 # A one-shot due one minute after NOW_MS rings in its own run, so the other
 # scenes never see it.
 sqlite3 "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES (5, 14, 3, 'Wake up', 0, 1, $midnight)"

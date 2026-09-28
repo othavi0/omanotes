@@ -21,13 +21,16 @@ RowLayout {
 
     spacing: Style.spacing.xxl
 
+    // Natural widths: with equal cells History would squeeze and the gear
+    // would stretch.
     Segment {
-        Layout.preferredWidth: Style.space(360)
         Layout.fillWidth: false
+        fill: false
         options: [
             { value: String(Tabs.items), label: "Items", icon: Icons.all, count: root.db ? root.db.totalNotes + root.db.totalTodos : 0 },
             { value: String(Tabs.alarms), label: "Alarms", icon: Icons.alarm, count: root.service ? root.service.onCount : 0 },
-            { value: String(Tabs.history), label: "History", icon: Icons.history, count: root.db ? root.db.totalHistory : 0 }
+            { value: String(Tabs.history), label: "History", icon: Icons.history, count: root.db ? root.db.totalHistory : 0 },
+            { value: String(Tabs.settings), label: "", icon: Icons.cog, tooltip: "Settings" }
         ]
         value: String(root.activeTab)
         foreground: root.foreground

@@ -3,10 +3,13 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import qs.Commons
+import qs.Ui
 
-// Mutually exclusive segmented control: the Items/History tabs, the
-// All/Notes/Todos filter, and the draft's Note/Todo picker. Each chip is
-// pinned to Style.spacing.controlHeight, like ActionButton and Field.
+// Mutually exclusive segmented control: the panel's tabs, the
+// All/Notes/Todos filter, the draft's Note/Todo picker and the On/Off
+// choices of Settings. Each chip is pinned to Style.spacing.controlHeight,
+// like ActionButton and Field. An option may carry an icon, a count, a
+// tooltip and a dot; an empty label leaves the icon alone.
 RowLayout {
     id: root
 
@@ -52,6 +55,7 @@ RowLayout {
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
+                    visible: chip.modelData.label !== ""
                     text: chip.modelData.label
                     color: root.foreground
                     font.bold: chip.on
@@ -69,12 +73,30 @@ RowLayout {
                 }
             }
 
+            // Marks an option that wants a look, such as Settings with an
+            // update waiting.
+            Rectangle {
+                visible: !!chip.modelData.dot
+                width: Style.space(7)
+                height: width
+                radius: width / 2
+                color: Color.urgent
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.margins: Style.space(4)
+            }
+
             MouseArea {
                 id: ma
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.picked(chip.modelData.value)
+            }
+
+            PanelToolTip {
+                visible: !!chip.modelData.tooltip && ma.containsMouse
+                text: chip.modelData.tooltip || ""
             }
         }
     }
