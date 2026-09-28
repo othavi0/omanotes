@@ -24,8 +24,9 @@ ColumnLayout {
     readonly property var view: root.updater ? root.updater.view : ({ phase: "loading", commits: [], behind: 0 })
     readonly property bool blocked: !!root.updater && root.updater.blocked
     readonly property var local: root.updater ? root.updater.local : null
-    readonly property bool good: root.view.phase === "upToDate" || root.view.phase === "updated"
-    readonly property bool bad: root.view.phase === "blocked" || root.view.phase === "offline" || root.view.phase === "failed"
+    readonly property bool restartFailed: root.view.phase === "updated" && root.view.error === "restartFailed"
+    readonly property bool good: root.view.phase === "upToDate" || (root.view.phase === "updated" && !root.restartFailed)
+    readonly property bool bad: root.view.phase === "blocked" || root.view.phase === "offline" || root.view.phase === "failed" || root.restartFailed
 
     // Only the page whose click it was says what went wrong: the service's
     // Updater serves every monitor's panel.
@@ -137,7 +138,7 @@ ColumnLayout {
                 Text {
                     Layout.fillWidth: true
                     text: root.view.phase === "available"
-                        ? (root.blocked ? "An alarm is ringing. Update after it stops." : "Validates, pulls with --ff-only and reloads the plugin. Notes stay.")
+                        ? (root.blocked ? "An alarm is ringing. Update after it stops." : "Validates, pulls with --ff-only and restarts the shell. Notes stay.")
                         : root.view.phase === "checking" ? "" : Settings.checkedAgoText(root.view.at, root.updater ? root.updater.nowMs : 0)
                     wrapMode: Text.WordWrap
                     color: Util.alpha(root.foreground, Tone.secondary)

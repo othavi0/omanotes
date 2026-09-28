@@ -17,8 +17,8 @@ QtObject {
     property var launcher: ["systemd-run", "--user", "--collect", "--quiet", "-p", "RuntimeMaxSec=180"]
     property bool daily: false
     property bool checkUpdates: true            // the setting, bound by the owner
-    // True while the reload an update sets off would drop something: the
-    // service binds it to the ring.
+    // True while the reload and the restart an update sets off would drop
+    // something: the service binds it to the ring.
     property bool blocked: false
     // Longer than apply waits for the lock (60 s), so an apply queued behind
     // a check is not called lost.
@@ -57,8 +57,9 @@ QtObject {
     }
 
     // Runs apply outside the shell's process tree: the merge reloads the
-    // shell, which destroys this object and anything it started. The new
-    // panel reads the result from the state file. "" once asked for, or why
+    // plugin and the restart after it replaces the shell, and each destroys
+    // this object and anything it started. The new panel reads the result
+    // from the state file. "" once asked for, or why
     // not.
     function apply(caller) {
         if (root.blocked) return "An alarm is ringing"

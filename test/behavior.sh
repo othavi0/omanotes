@@ -1361,6 +1361,7 @@ recent_history="$(sqlite3 "$db" "SELECT COUNT(*) FROM history")"
 mkdir -p "$cfg_dir/bin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/omarchy-plugin-validate"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/omarchy-notification-send"
+printf '#!/usr/bin/env bash\necho restart >> "%s/restart.log"\n' "$cfg_dir" > "$cfg_dir/bin/omarchy-restart-shell"
 printf '#!/usr/bin/env bash\necho "Failed to connect to bus: No medium found" >&2\nexit 1\n' > "$cfg_dir/bin/launch-fails"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/launch-lost"
 chmod +x "$cfg_dir/bin/"*
@@ -1592,7 +1593,8 @@ logged "a check that cannot reach origin says offline with git's reason" "UPDATE
 logged "the daily check leaves an offline record alone until an hour has passed" "UPDATES-RETRY-EARLY phase=offline running=false "
 logged "and checks again at the hour" "UPDATES-RETRY-DUE phase=[a-zA-Z]+ running=true "
 logged "which finds the new commits again" "UPDATES-RETRIED phase=available "
-logged "Update pulls the clone and says so" "UPDATES-UPDATED phase=updated .* headline=\[Updated to $(git -C "$cfg_dir/dev" rev-parse --short HEAD). The plugin reloaded.\]"
+logged "Update pulls the clone and says so" "UPDATES-UPDATED phase=updated .* headline=\[Updated to $(git -C "$cfg_dir/dev" rev-parse --short HEAD). The shell restarted.\]"
+if [[ "$(cat "$cfg_dir/restart.log" 2> /dev/null)" == restart ]]; then pass "and restarts the shell once, through the stub"; else fail "and restarts the shell once, through the stub"; fi
 if [[ "$(git -C "$cfg_dir/clone" rev-parse HEAD)" == "$(git -C "$cfg_dir/dev" rev-parse HEAD)" ]]; then pass "the clone is at origin/main"; else fail "the clone is at origin/main"; fi
 expect "the copy holds the items of the database" "SELECT COUNT(*) FROM items" \
   "$(sqlite3 "$data_home/omarchy/scratchpad-$(date +%F).db" "SELECT COUNT(*) FROM items" 2>&1)"

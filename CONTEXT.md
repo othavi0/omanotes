@@ -177,8 +177,12 @@ Asking origin/main whether it has commits the plugin folder lacks. The service c
 _Avoid_: poll, sync
 
 **Update**:
-Pulling those commits into the plugin folder, fast-forward only, once the new version validates in a copy outside it. The shell reloads the plugin when the folder changes. It refuses a folder with local changes, on another branch, with commits of its own or with untracked files the pull would overwrite. Files git ignores do not count: an ignored file that origin/main starts to track is overwritten, as git does.
+Pulling those commits into the plugin folder, fast-forward only, once the new version validates in a copy outside it, then a restart. It refuses a folder with local changes, on another branch, with commits of its own or with untracked files the pull would overwrite. Files git ignores do not count: an ignored file that origin/main starts to track is overwritten, as git does.
 _Avoid_: upgrade, install
+
+**Restart**:
+Stopping the Omarchy shell and starting a new one, the last step of an update. The shell reloads the plugin when the folder changes, but that reload keeps the code it already compiled, so only a restart loads the new version. When the restart fails, the user runs `omarchy restart shell`.
+_Avoid_: reload (for loading new code), relaunch
 
 **Scratchpad**:
 The legacy name of the database file and of the IPC target, kept so existing notes and scripts keep working.

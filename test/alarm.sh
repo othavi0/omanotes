@@ -743,7 +743,8 @@ ipc closePanel 1
   git -C "$cfg_dir/dev" push --quiet origin main
 )
 printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/omarchy-plugin-validate"
-chmod +x "$cfg_dir/bin/omarchy-plugin-validate"
+printf '#!/usr/bin/env bash\necho restart >> "%s/restart.log"\n' "$cfg_dir" > "$cfg_dir/bin/omarchy-restart-shell"
+chmod +x "$cfg_dir/bin/omarchy-plugin-validate" "$cfg_dir/bin/omarchy-restart-shell"
 updater_is() {
   local what="$1" want="$2" got=""
   for _ in $(seq 50); do
@@ -767,6 +768,7 @@ stop_ring "Stop ends that ring"
 replies "then apply runs" "$(ipc applyUpdate)" "[]updating"
 updater_is "and ends updated" "updated|blocked:false"
 replies "with the clone at origin/main" "$(git -C "$cfg_dir/clone" rev-parse HEAD)" "$(git -C "$cfg_dir/dev" rev-parse HEAD)"
+replies "and the shell restarted once, through the stub" "$(cat "$cfg_dir/restart.log" 2> /dev/null)" "restart"
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true

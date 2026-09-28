@@ -120,7 +120,11 @@ function updateHeadline(view, local) {
     return REFUSALS[view.error] || "Nothing was changed."
   case "offline": return view.detail ? "Could not reach origin: " + view.detail : "Could not reach origin. Check the connection and try again."
   case "updating": return "Updating to " + shortHash(view.to) + "…"
-  case "updated": return "Updated to " + shortHash(view.to) + ". The plugin reloaded."
+  case "updated":
+    if (view.error === "restartFailed")
+      return "Updated to " + shortHash(view.to) + ", but the shell did not restart" + (view.detail ? ": " + view.detail.replace(/\.$/, "") : "") +
+        ". Run omarchy restart shell to load the new version."
+    return "Updated to " + shortHash(view.to) + ". The shell restarted."
   }
   var stayed = "so the plugin stayed at " + (local ? shortHash(local.head) : "its version")
   if (view.error === "invalid") return "The new version did not validate, " + stayed + (view.detail ? ": " + view.detail : ".")
@@ -129,11 +133,12 @@ function updateHeadline(view, local) {
   return "The update failed" + (view.detail ? ": " + view.detail : ".")
 }
 
-// The steps of an update in progress, each done, now or todo. The plugin
-// reloads right after the pull, and the panel closes with it.
+// The steps of an update in progress, each done, now or todo. The panel
+// closes when the pull lands and the shell reloads the plugin, and the
+// restart then replaces the shell.
 function updateSteps(view) {
   var steps = [{ key: "fetch", label: "Fetching origin/main" }, { key: "validate", label: "Validating the new version" },
-    { key: "pull", label: "Pulling " + commitsText(view.behind).replace(" new", "") }]
+    { key: "pull", label: "Pulling " + commitsText(view.behind).replace(" new", "") }, { key: "restart", label: "Restarting the shell" }]
   var at = steps.map(function(s) { return s.key }).indexOf(view.step)
   return steps.map(function(s, i) { return { label: s.label, state: i < at ? "done" : i === at ? "now" : "todo" } })
 }

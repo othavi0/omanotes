@@ -56,15 +56,27 @@ test("the Updates headline names what happened and what the user can do", () => 
   assert.equal(S.updateHeadline(view("available", { behind: 1 }), LOCAL), "1 new commit on origin/main")
   assert.equal(S.updateHeadline(view("blocked", { error: "dirty" }), LOCAL),
     "The plugin folder has local changes, so pulling could lose them. Nothing was changed.")
-  assert.equal(S.updateHeadline(view("updated", { to: "c41e9a2" }), LOCAL), "Updated to c41e9a2. The plugin reloaded.")
+  assert.equal(S.updateHeadline(view("updated", { to: "c41e9a2" }), LOCAL), "Updated to c41e9a2. The shell restarted.")
   assert.equal(S.updateHeadline(view("failed", { error: "invalid" }), LOCAL), "The new version did not validate, so the plugin stayed at 4e06360.")
   assert.equal(S.updateHeadline(view("failed", { error: "stopped" }), LOCAL), "The update stopped before it finished.")
   assert.equal(S.updateHeadline(view("upToDate"), LOCAL), "You have the latest version.")
 })
 
-test("an update in progress marks the steps done, now and todo", () => {
+test("an update in progress marks the steps done, now and todo, ending with the restart", () => {
   assert.deepEqual(S.updateSteps({ step: "validate", behind: 3 }).map((s) => s.label + ":" + s.state),
-    ["Fetching origin/main:done", "Validating the new version:now", "Pulling 3 commits:todo"])
+    ["Fetching origin/main:done", "Validating the new version:now", "Pulling 3 commits:todo", "Restarting the shell:todo"])
+  assert.deepEqual(S.updateSteps({ step: "restart", behind: 1 }).map((s) => s.state), ["done", "done", "done", "now"])
+})
+
+test("an update whose restart failed tells the user to restart the shell, with the reason when there is one", () => {
+  const view = (fields) => ({ phase: "updated", behind: 0, commits: [], error: "restartFailed", detail: "", step: "", to: "c41e9a2", ...fields })
+  assert.equal(S.updateHeadline(view({ detail: "Refusing to restart Omarchy shell while the session is locked." }), LOCAL),
+    "Updated to c41e9a2, but the shell did not restart: Refusing to restart Omarchy shell while the session is locked. " +
+    "Run omarchy restart shell to load the new version.")
+  assert.equal(S.updateHeadline(view({ detail: "omarchy-restart-shell not found" }), LOCAL),
+    "Updated to c41e9a2, but the shell did not restart: omarchy-restart-shell not found. Run omarchy restart shell to load the new version.")
+  assert.equal(S.updateHeadline(view({}), LOCAL),
+    "Updated to c41e9a2, but the shell did not restart. Run omarchy restart shell to load the new version.")
 })
 
 test("the state file's whole hashes read as seven characters", () => {
@@ -75,7 +87,7 @@ test("the state file's whole hashes read as seven characters", () => {
   assert.equal(S.versionShort(local), "1.1.0 · 4e06360")
   const view = (phase, fields) => ({ phase, behind: 0, commits: [], error: "", detail: "", step: "", to: "", ...fields })
   assert.equal(S.updateHeadline(view("updating", { to: "c41e9a2f00d1" }), local), "Updating to c41e9a2…")
-  assert.equal(S.updateHeadline(view("updated", { to: "c41e9a2f00d1" }), local), "Updated to c41e9a2. The plugin reloaded.")
+  assert.equal(S.updateHeadline(view("updated", { to: "c41e9a2f00d1" }), local), "Updated to c41e9a2. The shell restarted.")
   assert.equal(S.updateHeadline(view("failed", { error: "invalid" }), local), "The new version did not validate, so the plugin stayed at 4e06360.")
 })
 

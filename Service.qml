@@ -219,8 +219,8 @@ Item {
 
     // The shell's one Updater: every panel uses it, and it makes the only
     // automatic check, so several monitors never mean several fetches. A
-    // test drives the clock and never fetches. The reload an update sets off
-    // would drop a ring, so a ring blocks it.
+    // test drives the clock and never fetches. The reload and the restart an
+    // update sets off would drop a ring, so a ring blocks it.
     Data.Updater {
         id: updates
         daily: root.clockRunning && root.settings.checkUpdates

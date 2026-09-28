@@ -94,8 +94,19 @@ function view(local, state, running, requested, nowMs) {
     } else {
       v.phase = "updating"
     }
-  } else if (state.phase === "updated") v.phase = state.to === local.head ? "updated" : "unchecked"
-  else if (state.phase === "failed") {
+  } else if (state.phase === "updated") {
+    // step "restart" is an update that pulled and waits for the new shell.
+    // One that never recorded the restart's end reads as a failed restart.
+    if (state.to !== local.head) v.phase = "unchecked"
+    else if (state.step === "restart" && nowMs - state.at <= STALE_UPDATING_MS) v.phase = "updating"
+    else {
+      v.phase = "updated"
+      if (state.step === "restart") {
+        v.error = "restartFailed"
+        v.step = ""
+      }
+    }
+  } else if (state.phase === "failed") {
     v.phase = state.error === "offline" ? "offline" : BLOCKERS.indexOf(state.error) >= 0 ? "blocked" : "failed"
   } else if (state.head !== local.head) v.phase = "unchecked"
   else if (state.error === "offline") v.phase = "offline"
@@ -120,12 +131,15 @@ function dueForCheck(local, state, nowMs, failedAtMs) {
 
 // What the unit takes from the shell's environment, when set: the user
 // manager has its own PATH and may lack the rest, and the validator, the
-// notification and an ssh fetch need them.
-var UNIT_ENV = ["PATH", "XDG_STATE_HOME", "OMARCHY_PATH", "DBUS_SESSION_BUS_ADDRESS", "WAYLAND_DISPLAY", "SSH_AUTH_SOCK"]
+// restart, the notification and an ssh fetch need them. The restart finds
+// Hyprland through HYPRLAND_INSTANCE_SIGNATURE and guesses the newest
+// instance without it.
+var UNIT_ENV = ["PATH", "XDG_STATE_HOME", "OMARCHY_PATH", "DBUS_SESSION_BUS_ADDRESS", "WAYLAND_DISPLAY", "SSH_AUTH_SOCK",
+  "HYPRLAND_INSTANCE_SIGNATURE"]
 
-// argv that runs apply outside the shell's process tree, so the reload the
-// merge sets off does not kill it. The unit's name is also the request each
-// record of that apply carries. A test passes an empty launcher and runs
+// argv that runs apply outside the shell's process tree, so neither the
+// reload the merge sets off nor the restart after it kills it. The unit's
+// name is also the request each record of that apply carries. A test passes an empty launcher and runs
 // the script directly. `envOf(key)` reads the shell's environment.
 function applyCommand(launcher, unit, envOf, scriptPath, pluginDir) {
   var cmd = launcher.slice()

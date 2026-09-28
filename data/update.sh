@@ -5,21 +5,23 @@
 # status prints `key value` lines about the checkout and touches nothing.
 # check fetches origin/main and records what is new in the state file.
 # apply fetches, refuses anything that could lose work, validates origin/main
-# in a copy outside the plugin folder and only then fast-forwards main. The
-# shell's plugin watcher sees the merge and reloads the plugin.
+# in a copy outside the plugin folder and only then fast-forwards main. Then
+# it restarts the shell, the only way the shell loads the new code, and
+# notifies.
 #
 # The state file, ${XDG_STATE_HOME:-~/.local/state}/omanotes/update, is how
-# a result outlives the reload: the merge rewrites the plugin folder, the
-# shell reloads and destroys whoever started this, and the new panel reads
-# the file. It is written whole to a temporary file and moved into place.
+# a result outlives the reload and the restart: the merge rewrites the plugin
+# folder, the shell's watcher reloads the plugin and destroys whoever started
+# this, the restart replaces the shell, and the new panel reads the file. It
+# is written whole to a temporary file and moved into place.
 # One `key value` per line; only the first space splits a line. Hashes are
 # whole; the panel shortens them. Every record apply writes carries the
 # request it was started with, so the panel that asked tells its own apply's
 # records from a check's.
 #
-# Exits 0 once a result is recorded, a refusal included, 3 when the lock
-# stayed taken and 1 when nothing could be recorded or an update that
-# landed could not be.
+# Exits 0 once a result is recorded, a refusal or a failed restart included,
+# 3 when the lock stayed taken and 1 when nothing could be recorded or an
+# update that landed could not be.
 
 main() {
   local mode="${1:-}" dir="${2:-}"
@@ -229,13 +231,28 @@ apply_mode() {
     return
   fi
   read_local "$dir"
-  phase="updated" step=""
-  local recorded=0
+  phase="updated" step="restart"
+  local recorded=0 news
   write_state || recorded=1
-  command -v omarchy-notification-send > /dev/null 2>&1 \
-    && omarchy-notification-send "Omanotes updated" \
-      "$(in_git "$dir" rev-parse --short "$from") → $(in_git "$dir" rev-parse --short "$to") · $behind commit$( (( behind == 1 )) || echo s)" 9>&-
+  restart_shell
+  step=""
+  write_state || recorded=1
+  news="$(in_git "$dir" rev-parse --short "$from") → $(in_git "$dir" rev-parse --short "$to") · $behind commit$( (( behind == 1 )) || echo s)"
+  [[ -z "$error" ]] || news="$news. Run omarchy restart shell to load it."
+  command -v omarchy-notification-send > /dev/null 2>&1 && omarchy-notification-send "Omanotes updated" "$news" 9>&-
   return "$recorded"
+}
+
+# The watcher's reload recreates the plugin from the components the shell
+# already compiled, so only a new shell loads the pulled code. This unit is
+# outside the shell and survives it. Sets error and detail on failure.
+restart_shell() {
+  local out
+  if ! command -v omarchy-restart-shell > /dev/null 2>&1; then
+    error="restartFailed" detail="omarchy-restart-shell not found"
+  elif ! out="$(omarchy-restart-shell 2>&1 > /dev/null 9>&-)"; then
+    error="restartFailed" detail="$(printf '%s\n' "$out" | head -n 1)"
+  fi
 }
 
 # One line, so bash has read the whole script before the merge rewrites it.

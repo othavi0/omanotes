@@ -15,9 +15,19 @@ trap 'rm -rf "$tmp"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
   GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com XDG_STATE_HOME="$tmp/state"
 mkdir "$tmp/bin"
-for stub in omarchy-shell omarchy-notification-send; do
-  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/%s.log"\n' "$tmp" "$stub" > "$tmp/bin/$stub"
-done
+# order.log has one line per restart, with the phase and step of the record
+# it found, and one per notification, in the order they ran.
+cat > "$tmp/bin/omarchy-notification-send" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$tmp/omarchy-notification-send.log"
+echo notify >> "$tmp/order.log"
+SH
+cat > "$tmp/bin/omarchy-restart-shell" <<SH
+#!/usr/bin/env bash
+echo "restart \$(sed -n 's/^phase //p' "\$XDG_STATE_HOME/omanotes/update") \$(sed -n 's/^step //p' "\$XDG_STATE_HOME/omanotes/update")" >> "$tmp/order.log"
+[[ -e "$tmp/restart-fails" ]] && { printf 'Refusing to restart Omarchy shell while the session is locked.\nsecond line\n' >&2; exit 1; }
+exit 0
+SH
 # The validator also notes the request of the record apply left before it
 # ran, and on demand fails, hangs until it is killed, or takes the state
 # folder's write permission away.
@@ -41,9 +51,17 @@ cat > "$tmp/gitbin/git" <<SH
 exec "$real_git" "\$@"
 SH
 chmod +x "$tmp/bin/"* "$tmp/gitbin/git"
+# The tools apply and the stubs use, and nothing else, for the run that must
+# find no omarchy-restart-shell: the real one would restart this session's
+# shell.
+mkdir "$tmp/sysbin"
+for tool in bash env sh sed awk grep head tail cat date mktemp mv rm mkdir flock timeout tar tr wc sort cut dirname; do
+  ln -s "$(command -v "$tool")" "$tmp/sysbin/$tool"
+done
 plain_path="$tmp/bin:$PATH"
 export PATH="$tmp/gitbin:$plain_path"
 state="$tmp/state/omanotes/update"
+[[ "$(command -v omarchy-restart-shell)" == "$tmp/bin/omarchy-restart-shell" ]] || { echo "the omarchy-restart-shell stub is not first in PATH" >&2; exit 1; }
 
 checks=0
 failures=0
@@ -165,6 +183,7 @@ replies "and leaves the head where it was" "$(head_of "$plugin")" "$first"
 replies "and writes nothing in the plugin folder, whose watcher would reload the shell" \
   "$(diff <(printf '%s\n' "$before") <(listing "$plugin") | grep -c '^[<>]' || true) paths changed" "0 paths changed"
 replies "the validator ran on a copy outside the plugin folder" "$(tail -n 1 "$tmp/validated.log" | grep -c "^$plugin" || true)" "0"
+replies "no refusal and no failed apply restarts the shell or notifies" "$(cat "$tmp/order.log" 2> /dev/null | wc -l)" "0"
 
 : > "$tmp/validate-request.log"
 run "$plugin" apply req-pull || true
@@ -173,13 +192,15 @@ replies "every record the apply wrote names its request, the one it left before 
   "$(cat "$tmp/validate-request.log")|$(field request)" "req-pull|req-pull"
 replies "and records the update from the old head to the new one" \
   "$(field phase)|$(field from)|$(field to)|$(field head)|$(field behind)|$(field error)|$(field step)" "updated|$first|$third|$third|5||"
-replies "the script never asks the shell to reload: its plugin watcher does" "$(cat "$tmp/omarchy-shell.log" 2> /dev/null | wc -l)" "0"
+replies "the shell restarts once, after the updated record, and the notification comes after the restart" \
+  "$(tr '\n' '|' < "$tmp/order.log")" "restart updated restart|notify|"
 replies "and one notification names the change" "$(cat "$tmp/omarchy-notification-send.log")" \
   "Omanotes updated $(git -C "$plugin" rev-parse --short "$first") → $(git -C "$plugin" rev-parse --short "$third") · 5 commits"
 run "$plugin" check
 replies "a check right after keeps the update as the news" "$(field phase)|$(field to)|$(field behind)|$(field error)" "updated|$third|5|"
 replies "and its record names no request" "$(field request)" ""
 replies "no git the script started held the lock" "$(cat "$tmp/git-fd9.log" 2> /dev/null | wc -l)" "0"
+: > "$tmp/order.log"
 
 # `status` from several panels at once while apply merges: none of them may
 # take index.lock from under the merge. The real git, so the loops run at
@@ -196,7 +217,9 @@ for round in 1 2 3 4 5 6 7 8; do
   [[ "$(field phase)" == updated && "$(head_of "$plugin")" == "$(head_of "$tmp/dev")" ]] && rounds=$((rounds + 1))
 done
 replies "eight applies with four status loops running each end updated" "$rounds" "8"
+replies "and each restarted the shell once" "$(grep -c '^restart updated restart$' "$tmp/order.log" || true)" "8"
 third="$(head_of "$plugin")"
+: > "$tmp/order.log"
 
 git -C "$plugin" remote remove origin
 run "$plugin" check
@@ -235,6 +258,7 @@ parent_head="$(head_of "$tmp/parent")"
 run "$tmp/parent/plugins/omanotes" apply || true
 replies "a copy inside another repository counts as no checkout" "$(field phase)|$(field error)" "failed|notGit"
 replies "and the parent repository is untouched" "$(head_of "$tmp/parent")|$(git -C "$tmp/parent" status --porcelain | wc -l)" "$parent_head|0"
+replies "none of these refusals restarts the shell" "$(wc -l < "$tmp/order.log")" "0"
 
 publish "feat: quinto" "fifth"
 ( run "$plugin" check ) & first_check=$!
@@ -259,6 +283,35 @@ run "$plugin" apply || true
 replies "an update that rewrites the update script itself still ends updated" "$(field phase)|$(field to)|$(head_of "$plugin")" "updated|$newest|$newest"
 replies "with the new script in place" "$(grep -c "The whole script is read first" "$plugin/data/update.sh")" "1"
 
+publish "feat: reinício recusado" "restart refused"
+before="$(head_of "$plugin")"
+touch "$tmp/restart-fails"
+: > "$tmp/order.log"
+: > "$tmp/omarchy-notification-send.log"
+code=0
+run "$plugin" apply req-restart || code=$?
+rm "$tmp/restart-fails"
+replies "a restart that fails keeps the update, records the restart's first error line and exits 0" \
+  "$code|$(field phase)|$(field error)|$(field detail)|$(field step)|$(field from)|$(head_of "$plugin")" \
+  "0|updated|restartFailed|Refusing to restart Omarchy shell while the session is locked.||$before|$(head_of "$tmp/dev")"
+replies "and still notifies after it, telling the user to restart the shell" \
+  "$(tr '\n' '|' < "$tmp/order.log")|$(grep -c 'omarchy restart shell' "$tmp/omarchy-notification-send.log")" "restart updated restart|notify||1"
+
+publish "feat: sem omarchy-restart-shell" "no restart command"
+mkdir "$tmp/norestart"
+ln -s "$tmp/bin/omarchy-notification-send" "$tmp/bin/omarchy-plugin-validate" "$tmp/norestart/"
+bare_path="$tmp/gitbin:$tmp/norestart:$tmp/sysbin"
+if [[ -n "$(PATH="$bare_path" command -v omarchy-restart-shell)" ]]; then
+  fail "the PATH without omarchy-restart-shell still finds one, so that apply did not run"
+else
+  code=0
+  PATH="$bare_path" run "$plugin" apply || code=$?
+  replies "without omarchy-restart-shell the update is kept and the missing restart recorded" \
+    "$code|$(field phase)|$(field error)|$(field detail)|$(head_of "$plugin")" "0|updated|restartFailed|omarchy-restart-shell not found|$(head_of "$tmp/dev")"
+fi
+newest="$(head_of "$plugin")"
+: > "$tmp/order.log"
+
 # systemd stops the unit with SIGTERM to all of it, on RuntimeMaxSec among
 # others: the copy being validated goes with it.
 publish "feat: sexto" "sixth"
@@ -271,6 +324,7 @@ wait "$unit" || true
 rm "$tmp/validate-hangs"
 replies "an apply stopped while it validates removes its copy" "$([[ -n "$tree" && ! -e "$tree" ]] && echo removed || echo "left $tree")" "removed"
 replies "and pulls nothing" "$(head_of "$plugin")" "$newest"
+replies "nor restarts the shell" "$(wc -l < "$tmp/order.log")" "0"
 
 touch "$tmp/validate-locks-state"
 code=0

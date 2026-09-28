@@ -73,6 +73,16 @@ test("view: an update that stopped writing for five minutes reads as failed, not
   assert.deepEqual([v.phase, v.error, v.canCheck, v.canUpdate], ["failed", "stopped", true, false])
 })
 
+test("view: an update restarting the shell reads as updating at the restart step, and one that never came back as a failed restart", () => {
+  const record = (ageMs) => U.parseState(stateText({ phase: "updated", step: "restart", to: "4e06360", at: (NOW - ageMs) / 1000 }))
+  const restarting = U.view(LOCAL, record(10000), false, false, NOW)
+  assert.deepEqual([restarting.phase, restarting.step, restarting.canCheck, restarting.canUpdate], ["updating", "restart", false, false])
+  const lost = U.view(LOCAL, record(U.STALE_UPDATING_MS + 1000), false, false, NOW)
+  assert.deepEqual([lost.phase, lost.error, lost.step, lost.canCheck], ["updated", "restartFailed", "", true])
+  const refused = U.view(LOCAL, U.parseState(stateText({ phase: "updated", to: "4e06360", error: "restartFailed", detail: "locked" })), false, false, NOW)
+  assert.deepEqual([refused.phase, refused.error, refused.detail], ["updated", "restartFailed", "locked"])
+})
+
 test("view: Update is offered only for new commits nothing blocks, Check whenever nothing runs", () => {
   const v = (fields, running = false) => U.view(LOCAL, U.parseState(stateText(fields)), running, false, NOW)
   assert.deepEqual([v({ behind: 3 }).canUpdate, v({ behind: 3 }).canCheck], [true, true])
@@ -102,12 +112,12 @@ test("dueForCheck: a check that left no record waits an hour before the next, wh
 
 test("applyCommand runs the script in its own unit with the shell's environment, or directly with no launcher, naming the request", () => {
   const env = { PATH: "/usr/bin:/opt/bin", XDG_STATE_HOME: "", OMARCHY_PATH: "/usr/share/omarchy", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus",
-    WAYLAND_DISPLAY: "wayland-1", SSH_AUTH_SOCK: "/run/user/1000/ssh-agent.socket", HOME: "/home/me" }
+    WAYLAND_DISPLAY: "wayland-1", SSH_AUTH_SOCK: "/run/user/1000/ssh-agent.socket", HYPRLAND_INSTANCE_SIGNATURE: "abc_1_2", HOME: "/home/me" }
   const lookup = (key) => env[key]
   assert.deepEqual(U.applyCommand(["systemd-run", "--user", "--collect", "--quiet"], "omanotes-update-7", lookup, "/p/data/update.sh", "/p"),
     ["systemd-run", "--user", "--collect", "--quiet", "--unit=omanotes-update-7", "--setenv=PATH=/usr/bin:/opt/bin",
       "--setenv=OMARCHY_PATH=/usr/share/omarchy", "--setenv=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus", "--setenv=WAYLAND_DISPLAY=wayland-1",
-      "--setenv=SSH_AUTH_SOCK=/run/user/1000/ssh-agent.socket", "bash", "/p/data/update.sh", "apply", "/p", "omanotes-update-7"])
+      "--setenv=SSH_AUTH_SOCK=/run/user/1000/ssh-agent.socket", "--setenv=HYPRLAND_INSTANCE_SIGNATURE=abc_1_2", "bash", "/p/data/update.sh", "apply", "/p", "omanotes-update-7"])
   assert.deepEqual(U.applyCommand([], "x", lookup, "/p/data/update.sh", "/p"), ["bash", "/p/data/update.sh", "apply", "/p", "x"],
     "the unit's name is the request its records answer")
 })
