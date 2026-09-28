@@ -80,6 +80,12 @@ import "ui/Tabs.js" as Tabs
 ShellRoot {
   id: sr
   property var cards: []
+  property string previewEnds: ""
+
+  Connections {
+    target: svc.item
+    function onPreviewEnded(key, playable) { sr.previewEnds += key + ":" + playable + ";" }
+  }
 
   Variants {
     id: monitors
@@ -166,6 +172,10 @@ ShellRoot {
     function tick(ms: string): string { svc.item.tick(Number(ms)); return sr.state() }
     function state(): string { return sr.state() }
     function settings(): string { return JSON.stringify(svc.item.settings) }
+    function preview(key: string, file: string, volume: int): string {
+      return "[" + svc.item.togglePreview(key, file, volume) + "]" + svc.item.previewKey
+    }
+    function previewState(): string { return svc.item.previewKey + "|" + sr.previewEnds }
     function chips(): string { return sr.chips() }
     function tooltip(n: int): string { return sr.chip(n).tooltipText }
     function pressChip(n: int, button: string): string {
@@ -632,6 +642,39 @@ sound_is "and plays" "$(( s0 + 3 ))" "$(( e0 + 2 ))"
 contains "the default sound instead" "$(last_start)" "-- /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
 state_has "with the sound not latched as broken" '"ringing":[92],"cards":3,"soundBroken":false'
 stop_ring "Stop ends that ring too"
+
+preview_is() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(ipc previewState)"
+    [[ "$got" == "$want" ]] && { pass "$what"; return; }
+    sleep 0.2
+  done
+  fail "$what: want '$want', got '$got'"
+}
+s0="$(starts)"; e0="$(ends)"
+replies "Test plays a sound once at the volume it is given" "$(ipc preview bell "$sound_file" 30)" "[]bell"
+sound_is "with one player" "$(( s0 + 1 ))" "$e0"
+contains "at that volume" "$(last_start)" "--volume 0.30 -- $sound_file"
+replies "the same sound again stops it" "$(ipc preview bell "$sound_file" 30)" "[]"
+sound_is "and ends its player" "$(( s0 + 1 ))" "$(( e0 + 1 ))"
+preview_is "which reports the end of a playable sound" "|bell:true;"
+ipc preview bell "$sound_file" 30 > /dev/null
+replies "another sound while one plays switches to it" "$(ipc preview chime "$sound_file" 60)" "[]chime"
+sound_is "ending the first player and starting a second" "$(( s0 + 3 ))" "$(( e0 + 2 ))"
+contains "at the second volume" "$(last_start)" "--volume 0.60 -- $sound_file"
+preview_is "and the key stays on the second sound" "chime|bell:true;bell:true;"
+contains "an alarm that rings during a preview" "$(ring_at 93 11 30)" '"ringing":[93],"cards":3'
+sound_is "stops the preview and starts the ring" "$(( s0 + 4 ))" "$(( e0 + 3 ))"
+preview_is "leaving no preview" "|bell:true;bell:true;chime:true;"
+replies "a preview asked for while an alarm rings is refused" "$(ipc preview bell "$sound_file" 30)" "[An alarm is ringing]"
+stop_ring "Stop ends the ring that took over"
+replies "a preview of a file that is gone starts" "$(ipc preview custom "$cfg_dir/gone.oga" 50)" "[]custom"
+preview_is "and ends as unplayable" "|bell:true;bell:true;chime:true;custom:false;"
+state_has "without latching the ring's sound as broken" '"soundBroken":false'
+contains "so the next ring still plays" "$(ring_at 94 11 40)" '"ringing":[94],"cards":3,"soundBroken":false'
+sound_is "with its player" "$(( s0 + 5 ))" "$(( e0 + 4 ))"
+stop_ring "Stop ends the last ring"
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true

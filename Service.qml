@@ -32,6 +32,8 @@ Item {
     readonly property var settings: store.settings
     readonly property string soundFile: Settings.soundPath(root.settings)
     readonly property string fallbackSoundFile: Settings.pathFor(Settings.DEFAULT_SOUND, null)
+    // The sound Settings is testing, "" when none.
+    property string previewKey: ""
 
     readonly property var alarms: store.alarms
     readonly property bool loaded: store.alarmsLoaded
@@ -59,6 +61,7 @@ Item {
 
     signal alarmAdded(int id, var caller)
     signal writeFailed(string kind, var record, string message, var caller)
+    signal previewEnded(string key, bool playable)
 
     function tick(nowMs) {
         root.nowMs = nowMs
@@ -118,11 +121,44 @@ Item {
         return true
     }
 
+    // Plays `file` once at `volume`, or stops it when `key` is already
+    // playing. "" or why it was refused: a ring owns the speaker. It never
+    // touches the ring's latch, so a bad test file cannot silence a ring.
+    function togglePreview(key, file, volume) {
+        if (root.ringing) return "An alarm is ringing"
+        if (root.previewKey === key) {
+            root.stopPreview()
+            return ""
+        }
+        root.previewKey = key
+        root._queuedPreview = { key: key, command: ["bash", "-c", root.soundScript, "omanotes-preview", String(file), String(volume)] }
+        if (preview.running) preview.running = false
+        else root._startQueuedPreview()
+        return ""
+    }
+
+    function stopPreview() {
+        root._queuedPreview = null
+        root.previewKey = ""
+        if (preview.running) preview.running = false
+    }
+
+    property var _queuedPreview: null
+    function _startQueuedPreview() {
+        var next = root._queuedPreview
+        root._queuedPreview = null
+        if (!next || preview.running) return
+        preview.key = next.key
+        preview.command = next.command
+        preview.running = true
+    }
+
     function _drop(id) {
         root.ringing = Alarm.ringWithout(root.ringing, Number(id))
     }
 
     function _ring(ids) {
+        root.stopPreview()
         root.ringing = Alarm.ringWith(root.ringing, ids, root.nowMs)
         root.soundBroken = false
         root.soundFailures = 0
@@ -221,6 +257,17 @@ Item {
             }
             if (!quickFailure) root.soundFailures = 0
             soundLoop.restart()
+        }
+    }
+
+    Process {
+        id: preview
+        property string key: ""
+        onExited: function(exitCode) {
+            var key = preview.key
+            if (root._queuedPreview) Qt.callLater(root._startQueuedPreview)
+            else if (root.previewKey === key) root.previewKey = ""
+            root.previewEnded(key, exitCode !== root.unplayableExit)
         }
     }
 
