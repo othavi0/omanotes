@@ -4,9 +4,9 @@ import Quickshell.Io
 import qs.Commons
 import "data" as Data
 import "data/Alarm.js" as Alarm
+import "data/Sound.js" as Sound
 import "ui/Alarms.js" as Alarms
 import "ui/Icons.js" as Icons
-import "ui/Settings.js" as Settings
 
 // The alarm service: the one clock, ring, sound and notification in the
 // shell, and the only writer of the alarms table (ADR-0015). Widgets and the
@@ -30,8 +30,8 @@ Item {
     // custom file that is gone plays the default inside the player script,
     // so an alarm never rings silent because a file moved.
     readonly property var settings: store.settings
-    readonly property string soundFile: Settings.soundPath(root.settings)
-    readonly property string fallbackSoundFile: Settings.pathFor(Settings.DEFAULT_SOUND, null)
+    readonly property string soundFile: Sound.soundPath(root.settings)
+    readonly property string fallbackSoundFile: Sound.pathFor(Sound.DEFAULT_SOUND, null)
     // The sound Settings is testing, "" when none.
     property string previewKey: ""
 
@@ -63,7 +63,8 @@ Item {
 
     signal alarmAdded(int id, var caller)
     signal writeFailed(string kind, var record, string message, var caller)
-    signal previewEnded(string key, bool playable)
+    // `caller` is whoever asked for the preview, so only that page answers.
+    signal previewEnded(string key, bool playable, var caller)
 
     function tick(nowMs) {
         root.nowMs = nowMs
@@ -126,14 +127,15 @@ Item {
     // Plays `file` once at `volume`, or stops it when `key` is already
     // playing. "" or why it was refused: a ring owns the speaker. It never
     // touches the ring's latch, so a bad test file cannot silence a ring.
-    function togglePreview(key, file, volume) {
+    function togglePreview(key, file, volume, caller) {
         if (root.ringing) return "An alarm is ringing"
         if (root.previewKey === key) {
             root.stopPreview()
             return ""
         }
         root.previewKey = key
-        root._queuedPreview = { key: key, command: ["bash", "-c", root.soundScript, "omanotes-preview", String(file), String(volume)] }
+        root._queuedPreview = { key: key, caller: caller || null,
+            command: ["bash", "-c", root.soundScript, "omanotes-preview", String(file), String(volume)] }
         if (preview.running) preview.running = false
         else root._startQueuedPreview()
         return ""
@@ -151,6 +153,7 @@ Item {
         root._queuedPreview = null
         if (!next || preview.running) return
         preview.key = next.key
+        preview.caller = next.caller
         preview.command = next.command
         preview.running = true
     }
@@ -276,11 +279,13 @@ Item {
     Process {
         id: preview
         property string key: ""
+        property var caller: null
         onExited: function(exitCode) {
             var key = preview.key
+            var caller = preview.caller
             if (root._queuedPreview) Qt.callLater(root._startQueuedPreview)
             else if (root.previewKey === key) root.previewKey = ""
-            root.previewEnded(key, exitCode !== root.unplayableExit)
+            root.previewEnded(key, exitCode !== root.unplayableExit, caller)
         }
     }
 

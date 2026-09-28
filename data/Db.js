@@ -373,8 +373,10 @@ function mergeAlarms(rows, pending) {
 // The settings record, { soundOn, sound, soundFile, volume, snoozeMinutes,
 // ringMinutes, historyDays, checkUpdates }, one spec per key. It drives the
 // read, the write and the fallbacks. `column` stays inside this file. The
-// sound catalog lives in ui/Settings.js and is not checked here, so a new
-// sound needs no migration.
+// sound catalog lives in data/Sound.js and is not checked here, so a new
+// sound needs no migration. The sound fallback repeats Sound.DEFAULT_SOUND,
+// which this file cannot import under Node; test/sound.test.mjs holds them
+// equal.
 var SETTINGS = {
   soundOn: { column: "sound_on", kind: "bool", fallback: true },
   sound: { column: "sound", kind: "text", fallback: "alarm-clock-elapsed" },

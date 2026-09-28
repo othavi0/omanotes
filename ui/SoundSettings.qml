@@ -5,8 +5,8 @@ import QtQuick.Layouts
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "../data/Sound.js" as Sound
 import "Icons.js" as Icons
-import "Settings.js" as Settings
 import "Tone.js" as Tone
 
 // The Alarm sound page: the switch, the sound, the volume and a test. Every
@@ -31,7 +31,7 @@ ColumnLayout {
 
     function play(key) {
         if (!root.service) return
-        var error = root.service.togglePreview(key, Settings.pathFor(key, root.settings), Math.round(volume.liveValue))
+        var error = root.service.togglePreview(key, Sound.pathFor(key, root.settings), Math.round(volume.liveValue), root)
         if (error !== "" && root.toast) root.toast.show(error)
     }
 
@@ -53,15 +53,17 @@ ColumnLayout {
         stdout: StdioCollector { id: picked; waitForEnd: true }
         onExited: function(exitCode) {
             var path = String(picked.text || "").trim().split("\n")[0]
-            if (exitCode === 0 && path !== "") root.save({ sound: Settings.CUSTOM, soundFile: path })
+            if (exitCode === 0 && path !== "") root.save({ sound: Sound.CUSTOM, soundFile: path })
             else if (exitCode !== 1 && root.toast) root.toast.show("No file chooser", true)
         }
     }
 
     Connections {
         target: root.service
-        function onPreviewEnded(key, playable) {
-            if (!playable && root.toast) root.toast.show("Can't play " + Settings.soundName(root.settings))
+        // The service serves every monitor's panel: only the page whose
+        // Test it was answers, with the sound it tested.
+        function onPreviewEnded(key, playable, caller) {
+            if (!playable && caller === root && root.toast) root.toast.show("Can't play " + Sound.nameOf(key, root.settings))
         }
     }
 
@@ -181,7 +183,7 @@ ColumnLayout {
             spacing: 0
 
             Repeater {
-                model: Settings.SOUNDS
+                model: Sound.SOUNDS
                 delegate: ColumnLayout {
                     id: entry
                     required property var modelData
@@ -212,14 +214,14 @@ ColumnLayout {
             }
             SoundRow {
                 objectName: "sound:custom"
-                picked: root.settings.sound === Settings.CUSTOM && root.hasCustomFile
-                name: root.hasCustomFile ? Settings.soundName({ sound: Settings.CUSTOM, soundFile: root.settings.soundFile }) : "Custom file…"
+                picked: root.settings.sound === Sound.CUSTOM && root.hasCustomFile
+                name: root.hasCustomFile ? Sound.nameOf(Sound.CUSTOM, root.settings) : "Custom file…"
                 detail: root.hasCustomFile ? "" : "mp3, ogg, wav"
-                onChosen: root.hasCustomFile ? root.save({ sound: Settings.CUSTOM }) : root.chooseFile()
+                onChosen: root.hasCustomFile ? root.save({ sound: Sound.CUSTOM }) : root.chooseFile()
 
                 PlayButton {
                     visible: root.hasCustomFile
-                    key: Settings.CUSTOM
+                    key: Sound.CUSTOM
                     name: "custom file"
                 }
                 ActionButton {

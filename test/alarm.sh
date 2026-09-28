@@ -179,6 +179,16 @@ ShellRoot {
     function editorMinutes(): string { return sr.editor().snoozeText + "/" + sr.editor().ringText }
     function previewState(): string { return svc.item.previewKey + "|" + sr.previewEnds }
     function chips(): string { return sr.chips() }
+    function testSound(n: int, key: string): string {
+      sr.find(monitors.instances[n - 1].widget.panelItem, "SoundSettings")[0].play(key)
+      return svc.item.previewKey
+    }
+    function settingsToasts(): string {
+      return [0, 1, 2].map(function(i) { return sr.find(monitors.instances[i].widget.panelItem, "SettingsTab")[0].toast.text }).join("|")
+    }
+    function clearSettingsToasts(): void {
+      for (var i = 0; i < 3; ++i) sr.find(monitors.instances[i].widget.panelItem, "SettingsTab")[0].toast.text = ""
+    }
     function updaters(): string {
       return [0, 1, 2].map(function(i) {
         var updater = monitors.instances[i].widget.panelItem.updater
@@ -693,6 +703,16 @@ state_has "without latching the ring's sound as broken" '"soundBroken":false'
 contains "so the next ring still plays" "$(ring_at 94 11 40)" '"ringing":[94],"cards":3,"soundBroken":false'
 sound_is "with its player" "$(( s0 + 5 ))" "$(( e0 + 4 ))"
 stop_ring "Stop ends the last ring"
+
+sql "UPDATE settings SET sound = 'bell', sound_file = '$cfg_dir/gone.oga'"
+for n in 1 2 3; do
+  for _ in $(seq 50); do [[ "$(ipc widgetSettings "$n")" == *'"sound":"bell"'* ]] && break; sleep 0.2; done
+done
+ipc clearSettingsToasts
+replies "Test on the custom row of widget 1's Settings plays the custom file while Bell is picked" "$(ipc testSound 1 custom)" "custom"
+toasts=""
+for _ in $(seq 50); do toasts="$(ipc settingsToasts)"; [[ "$toasts" != "||" ]] && break; sleep 0.2; done
+replies "only widget 1 says it can't play, naming the file it tested" "$toasts" "Can't play gone.oga||"
 
 sql "UPDATE settings SET snooze_minutes = 12, ring_minutes = 3"
 widget_has=""

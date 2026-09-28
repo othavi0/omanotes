@@ -6,6 +6,7 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 import "../data/Db.js" as Db
+import "../data/Sound.js" as Sound
 import "Icons.js" as Icons
 import "Settings.js" as Settings
 import "Tone.js" as Tone
@@ -29,6 +30,7 @@ FocusScope {
     readonly property var settings: root.db ? root.db.settings : ({})
     readonly property int sectionIndex: Math.max(0, root.sectionIds.indexOf(root.section))
     readonly property var info: ({
+        sound: Sound.soundName(root.settings),
         bytes: root.db ? root.db.dbBytes : 0,
         version: root.updater && root.updater.local ? root.updater.local.version : "",
         hasUpdate: root.updater ? root.updater.showDot : false
@@ -36,10 +38,10 @@ FocusScope {
     readonly property var sectionIds: Settings.SECTIONS.map(function(s) { return s.id })
     readonly property var sectionIcons: ({ sound: Icons.volume, alarms: Icons.alarm, updates: Icons.update, history: Icons.history, data: Icons.database })
 
+    // A refused or failed write reaches the toast through the Db's failed
+    // signal, like every other write of the panel.
     function save(patch) {
-        if (!root.db) return
-        var error = root.db.setSettings(patch)
-        if (error !== "" && root.toast) root.toast.show("Error: " + error, true)
+        if (root.db) root.db.setSettings(patch)
     }
 
     function pickSection(id) {
@@ -69,9 +71,7 @@ FocusScope {
     ArmedConfirm { id: confirm }
 
     function backup() {
-        if (!root.db) return
-        var error = root.db.backup()
-        if (error !== "" && root.toast) root.toast.show("Error: " + error, true)
+        if (root.db) root.db.backup()
     }
 
     Connections {

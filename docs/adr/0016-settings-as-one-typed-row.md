@@ -15,7 +15,7 @@ The Settings tab changes state that lives in different places: the alarm sound a
 - Two panels writing different keys never undo each other; the same key takes the last click, which is what the user did last.
 - The service reads the row and never writes it. The ring takes its sound, its volume and the Sound switch from it, and a new alarm takes its snooze and ring lengths from the row of the Db that writes it, so a changed default reaches the next draft before the reload.
 - Every Settings control is a click or a release: a Segment, a Stepper, a sound row, a slider. There is no text to leave, so each saves at once and ADR-0007 does not apply. There is no Save or Discard.
-- The sound catalog lives in `ui/Settings.js`, not in a `CHECK`, so adding a sound needs no migration. A key the catalog does not know plays the default.
+- The sound catalog lives in `data/Sound.js`, not in a `CHECK`, so adding a sound needs no migration. A key the catalog does not know plays the default. `SETTINGS` repeats the default key as the sound's fallback, since `Db.js` cannot import under Node, and `test/sound.test.mjs` holds the two equal.
 - The `DEFAULT`s repeat the fallbacks of `SETTINGS` (volume 100, snooze 9, ring 5). A shipped migration never changes (ADR-0011), so `SETTINGS` is the living source.
 - A shorter Keep prunes history in the same transaction as the setting. Entries also age while nothing is written, so opening the panel prunes when the oldest entry, carried by the counts read, is past the cutoff. An open with nothing to prune writes nothing and fires no watcher.
 - Each `ItemsDb` runs one more read per reload, and the `AlarmsDb` one more too.
