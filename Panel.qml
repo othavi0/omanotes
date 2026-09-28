@@ -111,9 +111,12 @@ Panel {
                     foreground: root.barForeground
                 }
 
+                // The defaults come from the Db that writes them, so a
+                // changed default reaches the next draft before the reload.
                 Ui.AlarmsTab {
                     id: alarmsTab
                     service: root.service
+                    defaults: root.db ? root.db.settings : null
                     toast: toast
                     foreground: root.barForeground
                 }

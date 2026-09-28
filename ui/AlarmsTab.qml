@@ -17,6 +17,7 @@ FocusScope {
     id: root
 
     property QtObject service: null
+    property var defaults: null                 // the settings a new alarm starts from
     property var toast: null
     property color foreground: Color.foreground
 
@@ -261,6 +262,7 @@ FocusScope {
             draft: root.draftNew
             deleteArmed: root.deleteArmed
             nowMs: root.nowMs
+            defaults: root.defaults
             foreground: root.foreground
             onNewRequested: root.startNew()
             onDeleteClicked: root.armDelete()

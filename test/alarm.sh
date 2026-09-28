@@ -175,6 +175,8 @@ ShellRoot {
     function preview(key: string, file: string, volume: int): string {
       return "[" + svc.item.togglePreview(key, file, volume) + "]" + svc.item.previewKey
     }
+    function widgetSettings(n: int): string { return JSON.stringify(monitors.instances[n - 1].widget.panelItem.db.settings) }
+    function editorMinutes(): string { return sr.editor().snoozeText + "/" + sr.editor().ringText }
     function previewState(): string { return svc.item.previewKey + "|" + sr.previewEnds }
     function chips(): string { return sr.chips() }
     function tooltip(n: int): string { return sr.chip(n).tooltipText }
@@ -675,6 +677,18 @@ state_has "without latching the ring's sound as broken" '"soundBroken":false'
 contains "so the next ring still plays" "$(ring_at 94 11 40)" '"ringing":[94],"cards":3,"soundBroken":false'
 sound_is "with its player" "$(( s0 + 5 ))" "$(( e0 + 4 ))"
 stop_ring "Stop ends the last ring"
+
+sql "UPDATE settings SET snooze_minutes = 12, ring_minutes = 3"
+widget_has=""
+for _ in $(seq 50); do widget_has="$(ipc widgetSettings 1)"; [[ "$widget_has" == *'"snoozeMinutes":12,"ringMinutes":3'* ]] && break; sleep 0.2; done
+contains "the widget reads new-alarm defaults set outside" "$widget_has" '"snoozeMinutes":12,"ringMinutes":3'
+replies "the panel of widget 1 opens on the Alarms tab for the defaults" "$(ipc openAlarms)" "ok"
+ipc pickAlarm 1 > /dev/null
+replies "an alarm that exists keeps its own snooze and ring" "$(ipc editorMinutes)" "9/5"
+ipc startNew > /dev/null
+replies "a new alarm opens with the defaults of the settings row" "$(ipc editorMinutes)" "12/3"
+ipc discard > /dev/null
+ipc closePanel 1
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
