@@ -11,7 +11,7 @@ var RETRY_OFFLINE_MS = 3600 * 1000
 
 // Refusals apply names before it touches anything. Update stays off until
 // the user fixes the folder.
-var BLOCKERS = ["dirty", "offMain", "diverged", "notGit", "noOrigin"]
+var BLOCKERS = ["dirty", "offMain", "diverged", "untracked", "notGit", "noOrigin"]
 
 // `key value` lines: only the first space splits. Repeated `commit` lines
 // are gathered in order.

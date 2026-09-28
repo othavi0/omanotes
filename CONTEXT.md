@@ -177,7 +177,7 @@ Asking origin/main whether it has commits the plugin folder lacks. The service c
 _Avoid_: poll, sync
 
 **Update**:
-Pulling those commits into the plugin folder, fast-forward only, and reloading the shell. It refuses a folder with local changes, on another branch or with commits of its own.
+Pulling those commits into the plugin folder, fast-forward only, once the new version validates in a copy outside it. The shell reloads the plugin when the folder changes. It refuses a folder with local changes, on another branch, with commits of its own or with untracked files the pull would overwrite.
 _Avoid_: upgrade, install
 
 **Scratchpad**:

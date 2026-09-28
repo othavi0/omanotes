@@ -93,16 +93,21 @@ function soundName(settings) {
   return (catalogEntry(key) || catalogEntry(DEFAULT_SOUND)).name
 }
 
+// The state file keeps whole hashes; the page shows seven characters.
+function shortHash(hash) {
+  return String(hash || "").slice(0, 7)
+}
+
 // "1.1.0 · main · 4e06360", the Version row.
 function versionText(local) {
   if (!local) return ""
-  return [local.version, local.git ? local.branch : "not a git checkout", local.head].filter(function(p) { return p !== "" }).join(" · ")
+  return [local.version, local.git ? local.branch : "not a git checkout", shortHash(local.head)].filter(function(p) { return p !== "" }).join(" · ")
 }
 
 // "1.1.0 · 4e06360", the header while Settings is open.
 function versionShort(local) {
   if (!local) return ""
-  return [local.version, local.head].filter(function(p) { return p !== "" }).join(" · ")
+  return [local.version, shortHash(local.head)].filter(function(p) { return p !== "" }).join(" · ")
 }
 
 function commitsText(n) {
@@ -123,6 +128,7 @@ var REFUSALS = {
   dirty: "The plugin folder has local changes, so pulling could lose them. Nothing was changed.",
   offMain: "The plugin folder is not on main. Nothing was changed.",
   diverged: "The plugin folder has commits that origin/main lacks. Nothing was changed.",
+  untracked: "The plugin folder has untracked files that the update would overwrite. Nothing was changed.",
   notGit: "The plugin folder is not a git checkout of its own.",
   noOrigin: "The plugin folder has no origin to pull from."
 }
@@ -137,18 +143,19 @@ function updateHeadline(view, local) {
   case "available": return commitsText(view.behind) + " on origin/main"
   case "blocked": return REFUSALS[view.error] || "Nothing was changed."
   case "offline": return "Could not reach origin. Check the connection and try again."
-  case "updating": return "Updating to " + view.to + "…"
-  case "updated": return "Updated to " + view.to + ". The plugin reloaded."
+  case "updating": return "Updating to " + shortHash(view.to) + "…"
+  case "updated": return "Updated to " + shortHash(view.to) + ". The plugin reloaded."
   }
-  if (view.error === "invalid") return "The new version did not validate, so the plugin stayed at " + (local ? local.head : "its version") + "."
+  if (view.error === "invalid") return "The new version did not validate, so the plugin stayed at " + (local ? shortHash(local.head) : "its version") + "."
   if (view.error === "stopped") return "The update stopped before it finished."
   return "The update failed" + (view.detail ? ": " + view.detail : ".")
 }
 
-// The steps of an update in progress, each done, now or todo.
+// The steps of an update in progress, each done, now or todo. The plugin
+// reloads right after the pull, and the panel closes with it.
 function updateSteps(view) {
-  var steps = [{ key: "fetch", label: "Fetching origin/main" }, { key: "pull", label: "Pulling " + commitsText(view.behind).replace(" new", "") },
-    { key: "reload", label: "Reloading the plugin" }]
+  var steps = [{ key: "fetch", label: "Fetching origin/main" }, { key: "validate", label: "Validating the new version" },
+    { key: "pull", label: "Pulling " + commitsText(view.behind).replace(" new", "") }]
   var at = steps.map(function(s) { return s.key }).indexOf(view.step)
   return steps.map(function(s, i) { return { label: s.label, state: i < at ? "done" : i === at ? "now" : "todo" } })
 }

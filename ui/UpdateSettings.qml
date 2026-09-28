@@ -80,7 +80,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     spacing: Style.spacing.md
                     Text {
-                        text: commit.modelData.hash
+                        text: Settings.shortHash(commit.modelData.hash)
                         color: Color.accent
                         font.family: Style.font.family
                         font.pixelSize: Style.font.bodySmall

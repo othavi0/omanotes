@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Drives data/update.sh against a throwaway origin and clone, with stubs for
-# the validator, the shell and the notification, and a throwaway
-# XDG_STATE_HOME. Asserts the state file each mode leaves, that apply refuses
-# everything that could lose work before touching the tree, the rollback on a
-# failed validation, the lock, and an update that rewrites the script itself.
-# Needs git and flock, not qs.
+# the validator, the shell and the notification, a git that reports how it
+# was started, and a throwaway XDG_STATE_HOME. Asserts the state file each
+# mode leaves, that apply refuses everything that could lose work and
+# validates before it touches the folder, that `status` calls running at the
+# same time never break a merge, the lock, and an update that rewrites the
+# script itself. Needs git and flock, not qs.
 
 set -euo pipefail
 worktree="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,10 +18,21 @@ mkdir "$tmp/bin"
 for stub in omarchy-shell omarchy-notification-send; do
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/%s.log"\n' "$tmp" "$stub" > "$tmp/bin/$stub"
 done
-printf '#!/usr/bin/env bash\n[[ -e "%s/validate-fails" ]] && { echo "manifest.json: bad entry point" >&2; exit 1; }\nexit 0\n' "$tmp" \
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s/validated.log"\n[[ -e "%s/validate-fails" ]] && { echo "manifest.json: bad entry point" >&2; exit 1; }\nexit 0\n' "$tmp" "$tmp" \
   > "$tmp/bin/omarchy-plugin-validate"
-chmod +x "$tmp/bin/"*
-export PATH="$tmp/bin:$PATH"
+# Every git the script starts: whether it inherited the lock's fd 9, and the
+# ssh command a fetch runs with.
+real_git="$(command -v git)"
+mkdir "$tmp/gitbin"
+cat > "$tmp/gitbin/git" <<SH
+#!/usr/bin/env bash
+[[ -e /proc/\$\$/fd/9 ]] && printf '%s\n' "\$*" >> "$tmp/git-fd9.log"
+[[ " \$* " == *" fetch "* ]] && printf '%s\n' "\${GIT_SSH_COMMAND:-}" >> "$tmp/git-ssh.log"
+exec "$real_git" "\$@"
+SH
+chmod +x "$tmp/bin/"* "$tmp/gitbin/git"
+plain_path="$tmp/bin:$PATH"
+export PATH="$tmp/gitbin:$plain_path"
 state="$tmp/state/omanotes/update"
 
 checks=0
@@ -36,13 +48,17 @@ replies() {
 record() { grep -v '^at ' "$state" | tr '\n' '|'; }
 field() { sed -n "s/^$1 //p" "$state" | head -n 1; }
 run() { bash "$1/data/update.sh" "$2" "$1"; }
-head_of() { git -C "$1" rev-parse --short HEAD; }
+head_of() { git -C "$1" rev-parse HEAD; }
+# Every path of the work tree outside .git with its mtime and size: a write
+# anywhere the shell's plugin watcher looks changes it.
+listing() { find "$1" -path "$1/.git" -prune -o -printf '%P %T@ %s\n' | sort; }
 
 git init --quiet --bare -b main "$tmp/origin.git"
 git clone --quiet "$tmp/origin.git" "$tmp/dev" 2> /dev/null
 mkdir "$tmp/dev/data"
 cp "$worktree/data/update.sh" "$tmp/dev/data/update.sh"
 printf '{\n  "id": "othavi0.omanotes",\n  "version": "1.0.0"\n}\n' > "$tmp/dev/manifest.json"
+for i in $(seq 200); do echo "$i" > "$tmp/dev/file-$i.txt"; done
 echo "first" > "$tmp/dev/notes.txt"
 git -C "$tmp/dev" add -A
 git -C "$tmp/dev" commit --quiet -m "feat: first"
@@ -56,55 +72,106 @@ publish() {
   git -C "$tmp/dev" push --quiet origin main
 }
 
-replies "status on a clean clone names the version, the branch, the head and no local changes" \
+replies "status on a clean clone names the version, the branch, the whole head and no local changes" \
   "$(run "$plugin" status | tr '\n' '|')" "git 1|version 1.0.0|branch main|head $first|dirty 0|"
 replies "a check with nothing new records it up to date" "$(run "$plugin" check; record)" \
-  "phase checked|head $first|branch main|behind 0|error |detail |step |from |to |"
+  "phase checked|head $first|branch main|behind 0|error |detail |step |from |to $first|"
+replies "a fetch runs ssh in batch mode, since nobody can answer a prompt" "$(tail -n 1 "$tmp/git-ssh.log")" "ssh -oBatchMode=yes"
 
 publish "fix: busca ignora acento no corpo" "second"
 publish $'feat: "aspas" e\ttab no assunto' "third"
-second="$(git -C "$tmp/dev" rev-parse --short HEAD~1)"
-third="$(git -C "$tmp/dev" rev-parse --short HEAD)"
+second="$(git -C "$tmp/dev" rev-parse HEAD~1)"
+third="$(git -C "$tmp/dev" rev-parse HEAD)"
 run "$plugin" check
-replies "a check counts two new commits on origin/main" "$(field behind)|$(field error)" "2|"
-replies "and lists them newest first, subjects kept whole" "$(grep '^commit ' "$state" | tr '\n' '|')" \
+replies "a check counts two new commits on origin/main" "$(field behind)|$(field error)|$(field to)" "2||$third"
+replies "and lists them newest first, whole hashes, subjects kept whole" "$(grep '^commit ' "$state" | tr '\n' '|')" \
   "commit $third feat: \"aspas\" e"$'\t'"tab no assunto|commit $second fix: busca ignora acento no corpo|"
 replies "a check fetches only into .git, so the plugin folder is untouched" "$(head_of "$plugin")|$(cat "$plugin/notes.txt")" "$first|first"
+
+git -C "$plugin" remote set-url origin "$tmp/gone.git"
+run "$plugin" check
+replies "a check that cannot reach origin says offline, with git's reason" "$(field error)|$(field detail | grep -c "gone.git" || true)" "offline|1"
+replies "and keeps what the last fetch already knew" "$(field behind)|$(grep -c '^commit ' "$state")|$(field to)" "2|2|$third"
+git -C "$plugin" remote set-url origin "$tmp/origin.git"
 
 echo "local edit" >> "$plugin/notes.txt"
 run "$plugin" check
 replies "a check on a folder with local changes says so" "$(field behind)|$(field error)" "2|dirty"
 replies "status shows the local changes" "$(run "$plugin" status | grep '^dirty')" "dirty 1"
-run "$plugin" apply || true
-replies "apply refuses a folder with local changes and records why" "$(field phase)|$(field error)" "failed|dirty"
+code=0
+run "$plugin" apply || code=$?
+replies "apply refuses a folder with local changes, records why and exits 0 once recorded" "$(field phase)|$(field error)|$code" "failed|dirty|0"
 replies "and touches neither the head nor the changed file" "$(head_of "$plugin")|$(tail -n 1 "$plugin/notes.txt")" "$first|local edit"
-replies "nothing reloaded and nothing was announced" "$(cat "$tmp/omarchy-shell.log" 2> /dev/null | wc -l)|$(cat "$tmp/omarchy-notification-send.log" 2> /dev/null | wc -l)" "0|0"
+replies "nothing was announced" "$(cat "$tmp/omarchy-notification-send.log" 2> /dev/null | wc -l)" "0"
 git -C "$plugin" checkout --quiet -- notes.txt
 
-run "$plugin" apply
-replies "apply on a clean folder fast-forwards to origin/main" "$(head_of "$plugin")" "$third"
-replies "and records the update from the old head to the new one" \
-  "$(field phase)|$(field from)|$(field to)|$(field head)|$(field behind)|$(field error)|$(field step)" "updated|$first|$third|$third|2||"
-replies "the shell is asked to reload once" "$(cat "$tmp/omarchy-shell.log")" "shell rescanPlugins"
-replies "and one notification names the change" "$(cat "$tmp/omarchy-notification-send.log")" "Omanotes updated $first → $third · 2 commits"
-replies "a check right after finds nothing new" "$(run "$plugin" check; field behind)|$(field error)" "0|"
+echo "mine" > "$tmp/dev/new.txt"
+git -C "$tmp/dev" add new.txt
+git -C "$tmp/dev" commit --quiet -m "feat: new.txt"
+git -C "$tmp/dev" push --quiet origin main
+echo "untracked, not tracked yet" > "$plugin/new.txt"
+run "$plugin" check
+replies "a check names an untracked file that origin/main would overwrite" "$(field behind)|$(field error)" "3|untracked"
+run "$plugin" apply || true
+replies "apply refuses it before touching anything" "$(field phase)|$(field error)|$(head_of "$plugin")|$(cat "$plugin/new.txt")" \
+  "failed|untracked|$first|untracked, not tracked yet"
+rm "$plugin/new.txt"
+git -C "$tmp/dev" rm --quiet new.txt
+git -C "$tmp/dev" commit --quiet -m "chore: sem new.txt"
+git -C "$tmp/dev" push --quiet origin main
+third="$(head_of "$tmp/dev")"
 
-publish "feat: entrada quebrada" "fourth"
+touch "$plugin/.git/index.lock"
+run "$plugin" apply || true
+rm "$plugin/.git/index.lock"
+replies "a merge that git refuses is recorded as such, with git's reason, and the head stays" \
+  "$(field phase)|$(field error)|$(field detail | grep -c "index.lock" || true)|$(head_of "$plugin")" "failed|mergeFailed|1|$first"
+
 touch "$tmp/validate-fails"
+before="$(listing "$plugin")"
 run "$plugin" apply || true
 rm "$tmp/validate-fails"
-replies "an update that does not validate is rolled back to the old head" "$(head_of "$plugin")|$(tail -n 1 "$plugin/notes.txt")" "$third|third"
-replies "and recorded as invalid, with the validator's reason" "$(field phase)|$(field error)|$(field detail)" "failed|invalid|manifest.json: bad entry point"
+replies "an update that does not validate is recorded as invalid, with the validator's reason" \
+  "$(field phase)|$(field error)|$(field detail)" "failed|invalid|manifest.json: bad entry point"
+replies "and leaves the head where it was" "$(head_of "$plugin")" "$first"
+replies "and writes nothing in the plugin folder, whose watcher would reload the shell" \
+  "$(diff <(printf '%s\n' "$before") <(listing "$plugin") | grep -c '^[<>]' || true) paths changed" "0 paths changed"
+replies "the validator ran on a copy outside the plugin folder" "$(tail -n 1 "$tmp/validated.log" | grep -c "^$plugin" || true)" "0"
 
-git -C "$plugin" remote set-url origin "$tmp/gone.git"
+run "$plugin" apply || true
+replies "apply on a clean folder fast-forwards to origin/main" "$(head_of "$plugin")" "$third"
+replies "and records the update from the old head to the new one" \
+  "$(field phase)|$(field from)|$(field to)|$(field head)|$(field behind)|$(field error)|$(field step)" "updated|$first|$third|$third|4||"
+replies "the script never asks the shell to reload: its plugin watcher does" "$(cat "$tmp/omarchy-shell.log" 2> /dev/null | wc -l)" "0"
+replies "and one notification names the change" "$(cat "$tmp/omarchy-notification-send.log")" \
+  "Omanotes updated $(git -C "$plugin" rev-parse --short "$first") → $(git -C "$plugin" rev-parse --short "$third") · 4 commits"
 run "$plugin" check
-replies "an origin that cannot be reached reads as offline" "$(field error)" "offline"
-replies "with git's reason" "$(field detail | grep -c "gone.git" || true)" "1"
+replies "a check right after keeps the update as the news" "$(field phase)|$(field to)|$(field behind)|$(field error)" "updated|$third|4|"
+replies "no git the script started held the lock" "$(cat "$tmp/git-fd9.log" 2> /dev/null | wc -l)" "0"
+
+# `status` from several panels at once while apply merges: none of them may
+# take index.lock from under the merge. The real git, so the loops run at
+# full speed.
+rounds=0
+for round in 1 2 3 4 5 6 7 8; do
+  publish "feat: rodada $round" "round $round"
+  touch "$tmp/go"
+  for _ in 1 2 3 4; do ( while [[ -e "$tmp/go" ]]; do PATH="$plain_path" run "$plugin" status > /dev/null; done ) & done
+  sleep 0.2
+  PATH="$plain_path" run "$plugin" apply || true
+  rm "$tmp/go"
+  wait
+  [[ "$(field phase)" == updated && "$(head_of "$plugin")" == "$(head_of "$tmp/dev")" ]] && rounds=$((rounds + 1))
+done
+replies "eight applies with four status loops running each end updated" "$rounds" "8"
+third="$(head_of "$plugin")"
+
 git -C "$plugin" remote remove origin
 run "$plugin" check
 replies "a clone without origin says so" "$(field error)" "noOrigin"
 git -C "$plugin" remote add origin "$tmp/origin.git"
 
+publish "feat: quarto" "fourth"
 git -C "$plugin" checkout --quiet -b feat/x
 run "$plugin" check
 replies "a check on another branch still counts what main has" "$(field branch)|$(field behind)|$(field error)" "feat/x|1|offMain"
@@ -142,25 +209,23 @@ publish "feat: quinto" "fifth"
 ( run "$plugin" check ) & second_check=$!
 wait "$first_check" && wait "$second_check" && pass "two checks at once both finish" || fail "two checks at once both finish"
 replies "and agree" "$(field behind)" "2"
-before="$(cat "$state")"
 exec 8> "$tmp/state/omanotes/update.lock"
 flock 8
-code=0
-run "$plugin" apply 2> /dev/null || code=$?
+run "$plugin" apply 8>&- & waiting=$!
+sleep 1
+replies "an apply waits while another holds the lock, and pulls nothing yet" "$(kill -0 "$waiting" 2> /dev/null && echo waiting)|$(head_of "$plugin")" "waiting|$third"
 exec 8>&-
-replies "an apply while another holds the lock exits as locked" "$code" "3"
-replies "and writes nothing" "$(cat "$state")" "$before"
-replies "nor pulls" "$(head_of "$plugin")" "$third"
+code=0
+wait "$waiting" || code=$?
+replies "then takes its turn and ends updated" "$code|$(field phase)|$(head_of "$plugin")" "0|updated|$(head_of "$tmp/dev")"
 
 sed -i '2i # The whole script is read first, so this line moves every line below it.' "$tmp/dev/data/update.sh"
 git -C "$tmp/dev" commit --quiet -am "chore: o script de update muda a si mesmo"
 git -C "$tmp/dev" push --quiet origin main
 newest="$(head_of "$tmp/dev")"
-: > "$tmp/omarchy-shell.log"
-run "$plugin" apply
+run "$plugin" apply || true
 replies "an update that rewrites the update script itself still ends updated" "$(field phase)|$(field to)|$(head_of "$plugin")" "updated|$newest|$newest"
 replies "with the new script in place" "$(grep -c "The whole script is read first" "$plugin/data/update.sh")" "1"
-replies "after one reload" "$(wc -l < "$tmp/omarchy-shell.log")" "1"
 
 echo "update: $checks checks, $failures failed"
 exit $(( failures > 0 ))

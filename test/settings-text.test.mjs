@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const S = loadQmlLib(new URL("../ui/Settings.js", import.meta.url), [
-  "SOUND_DIR", "DEFAULT_SOUND", "CUSTOM", "SOUNDS", "pathFor", "soundPath", "soundName", "SECTIONS", "sectionMeta", "KEEP_CHOICES", "keepText", "sizeText", "pathText", "versionText", "versionShort",
+  "SOUND_DIR", "DEFAULT_SOUND", "CUSTOM", "SOUNDS", "pathFor", "soundPath", "soundName", "SECTIONS", "sectionMeta", "KEEP_CHOICES", "keepText", "sizeText", "pathText", "versionText", "versionShort", "shortHash",
   "checkedAgoText", "updateHeadline", "updateSteps"
 ])
 
@@ -81,8 +81,25 @@ test("the Updates headline names what happened and what the user can do", () => 
 })
 
 test("an update in progress marks the steps done, now and todo", () => {
-  assert.deepEqual(S.updateSteps({ step: "pull", behind: 3 }).map((s) => s.label + ":" + s.state),
-    ["Fetching origin/main:done", "Pulling 3 commits:now", "Reloading the plugin:todo"])
+  assert.deepEqual(S.updateSteps({ step: "validate", behind: 3 }).map((s) => s.label + ":" + s.state),
+    ["Fetching origin/main:done", "Validating the new version:now", "Pulling 3 commits:todo"])
+})
+
+test("the state file's whole hashes read as seven characters", () => {
+  const full = "4e06360b8a2c9d1e0f3a4b5c6d7e8f9a0b1c2d3e"
+  const local = { ...LOCAL, head: full }
+  assert.equal(S.shortHash(full), "4e06360")
+  assert.equal(S.versionText(local), "1.1.0 · main · 4e06360")
+  assert.equal(S.versionShort(local), "1.1.0 · 4e06360")
+  const view = (phase, fields) => ({ phase, behind: 0, commits: [], error: "", detail: "", step: "", to: "", ...fields })
+  assert.equal(S.updateHeadline(view("updating", { to: "c41e9a2f00d1" }), local), "Updating to c41e9a2…")
+  assert.equal(S.updateHeadline(view("updated", { to: "c41e9a2f00d1" }), local), "Updated to c41e9a2. The plugin reloaded.")
+  assert.equal(S.updateHeadline(view("failed", { error: "invalid" }), local), "The new version did not validate, so the plugin stayed at 4e06360.")
+})
+
+test("an untracked file that the update would overwrite blocks it", () => {
+  assert.equal(S.updateHeadline({ phase: "blocked", error: "untracked" }, LOCAL),
+    "The plugin folder has untracked files that the update would overwrite. Nothing was changed.")
 })
 
 test("checkedAgoText counts minutes, hours and days", () => {

@@ -40,6 +40,8 @@ test("view: one phase for each record the script leaves", () => {
   assert.equal(phase({ behind: 0, error: "dirty" }), "upToDate", "local changes with nothing new block nothing")
   assert.equal(phase({ behind: 1, error: "offMain", branch: "feat/x" }), "blocked")
   assert.equal(phase({ behind: 1, error: "diverged" }), "blocked")
+  assert.equal(phase({ behind: 1, error: "untracked" }), "blocked")
+  assert.equal(phase({ phase: "failed", error: "mergeFailed" }), "failed")
   assert.equal(phase({ error: "offline" }), "offline")
   assert.equal(phase({ error: "noOrigin" }), "blocked")
   assert.equal(phase({ phase: "failed", error: "dirty" }), "blocked")
