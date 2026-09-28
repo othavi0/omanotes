@@ -48,7 +48,7 @@ SH
 cat > "$cfg_dir/bin/pw-play" <<SH
 #!/usr/bin/env bash
 if [[ -e "$cfg_dir/sound-fails" ]]; then echo "fail \$\$" >> "$cfg_dir/sound.log"; exit 1; fi
-echo "start \$\$" >> "$cfg_dir/sound.log"
+echo "start \$\$ \$*" >> "$cfg_dir/sound.log"
 trap 'echo "end \$\$" >> "$cfg_dir/sound.log"; exit 0' TERM
 sleep 30 &
 wait \$!
@@ -62,6 +62,7 @@ chmod +x "$cfg_dir/bin/"*
 : > "$cfg_dir/sound.log"
 : > "$cfg_dir/notify.log"
 
+sqlite3 -cmd ".timeout 5000" "$db" "UPDATE settings SET sound = 'custom', sound_file = '$sound_file'"
 sqlite3 -cmd ".timeout 5000" "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES
   (1, 7, 30, 'Wake up', 127, 1, $yesterday),
   (2, 6, 0, 'Pills', 0, 1, $yesterday),
@@ -115,7 +116,7 @@ ShellRoot {
   Loader {
     id: svc
     Component.onCompleted: setSource("file://" + Quickshell.env("OMANOTES_WORKTREE") + "/Service.qml",
-      { clockRunning: false, screens: [1, 2, 3], ringWindow: stubRing, soundFile: Quickshell.env("SOUND") })
+      { clockRunning: false, screens: [1, 2, 3], ringWindow: stubRing })
   }
 
   function find(obj, typeName, out) {
@@ -164,6 +165,7 @@ ShellRoot {
     function ping(): string { return svc.item && monitors.instances.length === 3 && monitors.instances[2].widget ? "ok" : "loading" }
     function tick(ms: string): string { svc.item.tick(Number(ms)); return sr.state() }
     function state(): string { return sr.state() }
+    function settings(): string { return JSON.stringify(svc.item.settings) }
     function chips(): string { return sr.chips() }
     function tooltip(n: int): string { return sr.chip(n).tooltipText }
     function pressChip(n: int, button: string): string {
@@ -235,7 +237,7 @@ ShellRoot {
 QML
 
 touch "$cfg_dir/hold-reads"
-PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$worktree" SOUND="$sound_file" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
+PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$worktree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
 trap 'kill "$qs_pid" 2> /dev/null || true; wait "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
 
@@ -339,6 +341,7 @@ t0730="$(ms "$day 07:30")"
 replies "at 07:30 the daily alarm rings on every screen and the two one-shots from 06:00 are missed" \
   "$(ipc tick "$t0730")" '{"loaded":true,"alarms":4,'"$ringing_wake"
 sound_is "one player runs for three screens" 1 0
+contains "the player plays the custom file of the settings row at full volume" "$(grep '^start' "$cfg_dir/sound.log" | tail -1)" "--volume 1.00 -- $sound_file"
 replies "every chip reads the bell and the title, painted active" "$(ipc chips)" "{bell} Wake up*|{bell} Wake up*|{bell} Wake up*"
 replies "the chip's tooltip names the ring, for a vertical bar that shows the bell alone" "$(ipc tooltip 2)" "Omanotes: Wake up is ringing · click to stop"
 replies "one notification lists both missed alarms" "$(wc -l < "$cfg_dir/notify.log")" "1"
@@ -580,6 +583,55 @@ replies "a reload after an outside write keeps the list where it was scrolled" "
 ipc toggleRow "$(sql "SELECT MAX(id) FROM alarms")" > /dev/null
 replies "and so does a switch flipped in the list" "$(ipc alarmsScroll 1)" "300"
 ipc closePanel 1
+
+settings_has() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(ipc settings)"
+    [[ "$got" == *"$want"* ]] && { pass "$what"; return; }
+    sleep 0.2
+  done
+  fail "$what: want '$want' in '$got'"
+}
+last_start() { grep '^start' "$cfg_dir/sound.log" | tail -1; }
+ring_at() {
+  local id="$1" hour="$2" minute="$3"
+  sql "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES ($id, $hour, $minute, 'Sound $id', 0, 1, $yesterday)"
+  for _ in $(seq 50); do [[ "$(ipc state)" == *'"alarms":'"$(sql "SELECT COUNT(*) FROM alarms")"* ]] && break; sleep 0.2; done
+  ipc tick "$(ms "$day $hour:$minute")"
+}
+stop_ring() { ipc click 1 "Stop" > /dev/null; state_has "$1" '"ringing":[],"cards":0'; }
+starts() { sound_lines start; }
+ends() { sound_lines end; }
+
+sql "UPDATE settings SET volume = 50"
+settings_has "the service reads a volume set outside" '"volume":50'
+s0="$(starts)"; e0="$(ends)"
+contains "an alarm rings after the volume changed" "$(ring_at 90 11 0)" '"ringing":[90],"cards":3'
+sound_is "and starts one player" "$(( s0 + 1 ))" "$e0"
+contains "at the new volume, written without a locale comma" "$(last_start)" "--volume 0.50 -- $sound_file"
+stop_ring "Stop ends that ring"
+sound_is "and its player" "$(( s0 + 1 ))" "$(( e0 + 1 ))"
+
+sql "UPDATE settings SET sound_on = 0"
+settings_has "the service reads the sound switched off" '"soundOn":false'
+contains "with the sound off an alarm still rings on every screen" "$(ring_at 91 11 10)" '"ringing":[91],"cards":3'
+sleep 0.5
+sound_is "and starts no player" "$(( s0 + 1 ))" "$(( e0 + 1 ))"
+sql "UPDATE settings SET sound_on = 1"
+sound_is "switching the sound on mid-ring starts the player" "$(( s0 + 2 ))" "$(( e0 + 1 ))"
+sql "UPDATE settings SET sound_on = 0"
+sound_is "and switching it off again stops it" "$(( s0 + 2 ))" "$(( e0 + 2 ))"
+state_has "while the ring goes on, with the sound not latched as broken" '"ringing":[91],"cards":3,"soundBroken":false'
+stop_ring "Stop ends the silent ring"
+
+sql "UPDATE settings SET sound_on = 1, sound_file = '$cfg_dir/gone.oga'"
+settings_has "the service reads a custom file that is gone" "gone.oga"
+contains "an alarm rings with the custom file gone" "$(ring_at 92 11 20)" '"ringing":[92],"cards":3'
+sound_is "and plays" "$(( s0 + 3 ))" "$(( e0 + 2 ))"
+contains "the default sound instead" "$(last_start)" "-- /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
+state_has "with the sound not latched as broken" '"ringing":[92],"cards":3,"soundBroken":false'
+stop_ring "Stop ends that ring too"
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true

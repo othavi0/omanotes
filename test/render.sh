@@ -84,7 +84,7 @@ ShellRoot {
   Loader {
     id: svc
     Component.onCompleted: setSource("file://" + Quickshell.env("OMANOTES_WORKTREE") + "/Service.qml",
-      { clockRunning: false, screens: [], ringWindow: noWindow, soundFile: "/nonexistent/alarm.oga" })
+      { clockRunning: false, screens: [], ringWindow: noWindow })
   }
   Connections {
     target: svc.item
