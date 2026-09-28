@@ -21,6 +21,17 @@ Notes, todos and alarms in one panel on the Omarchy bar. Everything is stored in
 omarchy plugin add https://github.com/othavi0/omanotes.git --enable
 ```
 
+## Update
+
+From 1.1.0 on, **Update** in the Settings tab updates the plugin and restarts the shell. On an older version, run:
+
+```sh
+omarchy plugin update othavi0.omanotes --yes
+omarchy restart shell
+```
+
+The restart is needed because the shell's own reload keeps the code it already compiled.
+
 ## Remove
 
 ```sh
