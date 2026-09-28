@@ -16,15 +16,29 @@ ColumnLayout {
 
     property QtObject updater: null
     property var settings: ({})
-    property bool ringing: false
+    property var toast: null
     property color foreground: Color.foreground
 
     signal save(var patch)
 
-    readonly property var view: root.updater ? root.updater.view : ({ phase: "none", commits: [], behind: 0 })
+    readonly property var view: root.updater ? root.updater.view : ({ phase: "loading", commits: [], behind: 0 })
+    readonly property bool blocked: !!root.updater && root.updater.blocked
     readonly property var local: root.updater ? root.updater.local : null
     readonly property bool good: root.view.phase === "upToDate" || root.view.phase === "updated"
     readonly property bool bad: root.view.phase === "blocked" || root.view.phase === "offline" || root.view.phase === "failed"
+
+    // Only the page whose click it was says what went wrong: the service's
+    // Updater serves every monitor's panel.
+    Connections {
+        target: root.updater
+        function onFailed(message, caller) { if (caller === root && root.toast) root.toast.show(message, true) }
+    }
+
+    function update() {
+        if (!root.updater) return
+        var error = root.updater.apply(root)
+        if (error !== "" && root.toast) root.toast.show(error)
+    }
 
     spacing: Style.spacing.lg
 
@@ -96,8 +110,8 @@ ColumnLayout {
                 }
             }
             Text {
-                visible: (root.view.phase === "available" || root.view.phase === "blocked") && root.view.commits.length > 4
-                text: "and " + (root.view.commits.length - 4) + " more"
+                visible: (root.view.phase === "available" || root.view.phase === "blocked") && root.view.behind > 4
+                text: "and " + (root.view.behind - 4) + " more"
                 color: Util.alpha(root.foreground, Tone.muted)
                 font.family: Style.font.family
                 font.pixelSize: Style.font.bodySmall
@@ -117,13 +131,13 @@ ColumnLayout {
 
             RowLayout {
                 Layout.fillWidth: true
-                visible: root.view.phase !== "none" && root.view.phase !== "updating"
+                visible: root.view.phase !== "none" && root.view.phase !== "loading" && root.view.phase !== "updating"
                 spacing: Style.spacing.sm
 
                 Text {
                     Layout.fillWidth: true
                     text: root.view.phase === "available"
-                        ? (root.ringing ? "An alarm is ringing. Update after it stops." : "Pulls with --ff-only and reloads the plugin. Notes stay.")
+                        ? (root.blocked ? "An alarm is ringing. Update after it stops." : "Validates, pulls with --ff-only and reloads the plugin. Notes stay.")
                         : root.view.phase === "checking" ? "" : Settings.checkedAgoText(root.view.at, root.updater ? root.updater.nowMs : 0)
                     wrapMode: Text.WordWrap
                     color: Util.alpha(root.foreground, Tone.secondary)
@@ -144,17 +158,17 @@ ColumnLayout {
                     iconText: Icons.refresh
                     text: root.view.phase === "offline" ? "Try again" : root.view.phase === "unchecked" ? "Check for updates" : "Check again"
                     foreground: root.view.canCheck ? root.foreground : Util.alpha(root.foreground, Tone.muted)
-                    onClicked: if (root.updater) root.updater.check()
+                    onClicked: if (root.updater) root.updater.check(root)
                 }
                 ActionButton {
                     visible: root.view.phase === "available"
                     bordered: true
-                    selected: !root.ringing
+                    selected: !root.blocked
                     iconText: Icons.download
                     text: "Update"
-                    tooltipText: root.ringing ? "An alarm is ringing" : ""
-                    foreground: root.ringing ? Util.alpha(root.foreground, Tone.muted) : root.foreground
-                    onClicked: if (root.updater && !root.ringing) root.updater.apply()
+                    tooltipText: root.blocked ? "An alarm is ringing" : ""
+                    foreground: root.blocked ? Util.alpha(root.foreground, Tone.muted) : root.foreground
+                    onClicked: root.update()
                 }
             }
         }

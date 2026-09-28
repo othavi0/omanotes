@@ -97,6 +97,23 @@ test("the state file's whole hashes read as seven characters", () => {
   assert.equal(S.updateHeadline(view("failed", { error: "invalid" }), local), "The new version did not validate, so the plugin stayed at 4e06360.")
 })
 
+test("offline, invalid and a refused merge carry the tool's own reason", () => {
+  const view = (phase, fields) => ({ phase, behind: 0, commits: [], error: "", detail: "", step: "", to: "", ...fields })
+  assert.equal(S.updateHeadline(view("offline", { error: "offline", detail: "fatal: repository '/x/gone.git' does not exist" }), LOCAL),
+    "Could not reach origin: fatal: repository '/x/gone.git' does not exist")
+  assert.equal(S.updateHeadline(view("offline", { error: "offline" }), LOCAL), "Could not reach origin. Check the connection and try again.")
+  assert.equal(S.updateHeadline(view("failed", { error: "invalid", detail: "omarchy-plugin-validate: missing manifest.json" }), LOCAL),
+    "The new version did not validate, so the plugin stayed at 4e06360: omarchy-plugin-validate: missing manifest.json")
+  assert.equal(S.updateHeadline(view("failed", { error: "mergeFailed", detail: "fatal: Unable to create '.git/index.lock': File exists." }), LOCAL),
+    "git refused the pull, so the plugin stayed at 4e06360: fatal: Unable to create '.git/index.lock': File exists.")
+})
+
+test("a copy that is no checkout is told how to get one, and a page still reading says so", () => {
+  assert.equal(S.updateHeadline({ phase: "none" }, null),
+    "This copy is not a git checkout, so it cannot update itself. Install it with omarchy plugin add to get updates.")
+  assert.equal(S.updateHeadline({ phase: "loading" }, null), "Reading the plugin folder…")
+})
+
 test("an untracked file that the update would overwrite blocks it", () => {
   assert.equal(S.updateHeadline({ phase: "blocked", error: "untracked" }, LOCAL),
     "The plugin folder has untracked files that the update would overwrite. Nothing was changed.")

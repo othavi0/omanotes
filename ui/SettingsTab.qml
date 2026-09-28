@@ -253,7 +253,7 @@ FocusScope {
                 UpdateSettings {
                     updater: root.updater
                     settings: root.settings
-                    ringing: !!root.service && root.service.ringing !== null
+                    toast: root.toast
                     foreground: root.foreground
                     onSave: function(patch) { root.save(patch) }
                 }

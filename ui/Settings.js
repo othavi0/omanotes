@@ -136,17 +136,20 @@ var REFUSALS = {
 // The line the Updates section leads with, for view.phase.
 function updateHeadline(view, local) {
   switch (view.phase) {
-  case "none": return "This copy is not a git checkout. Update it with omarchy plugin update."
+  case "loading": return "Reading the plugin folder…"
+  case "none": return "This copy is not a git checkout, so it cannot update itself. Install it with omarchy plugin add to get updates."
   case "unchecked": return "Not checked yet"
   case "checking": return "Checking origin/main…"
   case "upToDate": return "You have the latest version."
   case "available": return commitsText(view.behind) + " on origin/main"
   case "blocked": return REFUSALS[view.error] || "Nothing was changed."
-  case "offline": return "Could not reach origin. Check the connection and try again."
+  case "offline": return view.detail ? "Could not reach origin: " + view.detail : "Could not reach origin. Check the connection and try again."
   case "updating": return "Updating to " + shortHash(view.to) + "…"
   case "updated": return "Updated to " + shortHash(view.to) + ". The plugin reloaded."
   }
-  if (view.error === "invalid") return "The new version did not validate, so the plugin stayed at " + (local ? shortHash(local.head) : "its version") + "."
+  var stayed = "so the plugin stayed at " + (local ? shortHash(local.head) : "its version")
+  if (view.error === "invalid") return "The new version did not validate, " + stayed + (view.detail ? ": " + view.detail : ".")
+  if (view.error === "mergeFailed") return "git refused the pull, " + stayed + (view.detail ? ": " + view.detail : ".")
   if (view.error === "stopped") return "The update stopped before it finished."
   return "The update failed" + (view.detail ? ": " + view.detail : ".")
 }

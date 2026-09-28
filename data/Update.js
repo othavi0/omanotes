@@ -59,20 +59,17 @@ function parseState(text) {
   }
 }
 
-// A check counts only against the HEAD it was made on: after any pull, ours
-// or `omarchy plugin update`, an old "3 new commits" is gone.
-function hasUpdate(local, state) {
-  return !!local && !!state && state.phase === "checked" && state.behind > 0 && state.head === local.head
-    && BLOCKERS.indexOf(state.error) < 0 && state.error !== "offline"
-}
-
-// The one thing the section draws. `running` is this Updater's own check.
-// phase: none | unchecked | checking | upToDate | available | blocked |
-// offline | updating | updated | failed.
-function view(local, state, running, nowMs) {
+// The one thing the section draws, and the gear's dot when it is
+// "available". `local` is null until `status` answers. `running` is this
+// Updater's own check, `requested` an apply asked for whose record has not
+// shown up yet. A check counts only against the HEAD it was made on: after
+// any pull, ours or `omarchy plugin update`, an old "3 new commits" is gone.
+// phase: loading | none | unchecked | checking | upToDate | available |
+// blocked | offline | updating | updated | failed.
+function view(local, state, running, requested, nowMs) {
   var v = { phase: "unchecked", behind: 0, commits: [], error: "", detail: "", step: "", to: "", at: 0, canCheck: false, canUpdate: false }
   if (!local || !local.git) {
-    v.phase = "none"
+    v.phase = local ? "none" : "loading"
     return v
   }
   if (state) {
@@ -84,7 +81,10 @@ function view(local, state, running, nowMs) {
     v.to = state.to
     v.at = state.at
   }
-  if (running) v.phase = "checking"
+  if (requested) {
+    v.phase = "updating"
+    v.step = ""
+  } else if (running) v.phase = "checking"
   else if (!state) v.phase = "unchecked"
   else if (state.phase === "updating") {
     if (nowMs - state.at > STALE_UPDATING_MS) {
@@ -114,15 +114,22 @@ function dueForCheck(local, state, nowMs) {
   return age >= DAY_MS || (state.error === "offline" && age >= RETRY_OFFLINE_MS)
 }
 
+// What the unit takes from the shell's environment, when set: the user
+// manager has its own PATH and may lack the rest, and the validator, the
+// notification and an ssh fetch need them.
+var UNIT_ENV = ["PATH", "XDG_STATE_HOME", "OMARCHY_PATH", "DBUS_SESSION_BUS_ADDRESS", "WAYLAND_DISPLAY", "SSH_AUTH_SOCK"]
+
 // argv that runs apply outside the shell's process tree, so the reload the
 // merge sets off does not kill it. A test passes an empty launcher and runs
-// the script directly. `env` is copied into the unit, whose manager has its
-// own PATH.
-function applyCommand(launcher, unit, env, scriptPath, pluginDir) {
+// the script directly. `envOf(key)` reads the shell's environment.
+function applyCommand(launcher, unit, envOf, scriptPath, pluginDir) {
   var cmd = launcher.slice()
   if (cmd.length > 0) {
     cmd.push("--unit=" + unit)
-    for (var key in env) if (env[key]) cmd.push("--setenv=" + key + "=" + env[key])
+    for (var i = 0; i < UNIT_ENV.length; ++i) {
+      var value = envOf(UNIT_ENV[i])
+      if (value) cmd.push("--setenv=" + UNIT_ENV[i] + "=" + value)
+    }
   }
   return cmd.concat(["bash", scriptPath, "apply", pluginDir])
 }
