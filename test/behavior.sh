@@ -517,7 +517,7 @@ ShellRoot {
     return ids
   }
 
-  Data.Db {
+  Data.ItemsDb {
     id: testDb
     Component.onCompleted: testDb.init()
   }
@@ -613,7 +613,7 @@ logged "New opens a menu with Note and Todo, opens no draft by itself and has no
 logged "Todo in the menu opens a todo draft with its title focused and closes the menu" "NEW-TODO-DRAFT true todo draft menu=false$"
 logged "Note in the menu commits the open draft and opens an empty note draft" "NEW-NOTE-DRAFT true note \[\] draft menu=false$"
 expect "the todo draft opened from the menu is saved as a todo" "SELECT type FROM items WHERE title = 'menu todo'" "todo"
-logged "a click outside the open menu closes it" "MENU-AFTER-OUTSIDE-CLICK false 1$"
+logged "a click outside the open menu closes it" "MENU-AFTER-OUTSIDE-CLICK false 2$"
 logged "Enter in a draft body inserts a new line" "ENTER-IN-DRAFT-BODY true draft$"
 logged "Esc on a draft with a body and no title closes the panel and keeps the draft, with the warning" \
   "UNTITLED-DRAFT-AFTER-ESC false true \[orphan body\] .* toast=New item needs a title$"
@@ -703,7 +703,7 @@ ShellRoot {
     Qt.exit(0)
   }
 
-  Data.Db {
+  Data.ItemsDb {
     id: countDb
     Component.onCompleted: countDb.init()
     onCountsUpdated: { sr.countsSeen = true; Qt.callLater(sr.report) }
@@ -935,7 +935,7 @@ ShellRoot {
     return null
   }
 
-  Data.Db {
+  Data.ItemsDb {
     id: testDb
     Component.onCompleted: testDb.init()
   }
@@ -1234,7 +1234,7 @@ ShellRoot {
   function findType(item, prefix) { return sr.findWhere(item, function(it) { return String(it).indexOf(prefix) === 0 }) }
   function findByText(item, text) { return sr.findWhere(item, function(it) { return it.text === text }) }
 
-  Data.Db {
+  Data.ItemsDb {
     id: testDb
     Component.onCompleted: testDb.init()
   }
@@ -1304,7 +1304,7 @@ import Quickshell
 import "data" as Data
 
 ShellRoot {
-  Data.Db {
+  Data.ItemsDb {
     id: restartDb
     Component.onCompleted: restartDb.init()
     onItemsUpdated: {

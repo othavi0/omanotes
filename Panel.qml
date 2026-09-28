@@ -20,6 +20,9 @@ Panel {
     readonly property var barIdentity: hostWidget || root
     // The bar widget's Db, set by its injectPanel().
     property QtObject db: null
+    // The alarm service, set by the same injectPanel(); null in a shell
+    // without it, where the Alarms tab shows an empty state.
+    property QtObject service: null
 
     // Reopening the panel reloads as a safety net on top of the watcher.
     // The tabs are focus scopes: the reset picks the field inside the tab
@@ -28,19 +31,24 @@ Panel {
         if (!root.opened) {
             header.closeMenu()
             itemsTab.commitIfDirty()
+            alarmsTab.commitIfDirty()
             return
         }
         root.db.load()
         if (root.activeTab === Tabs.items) itemsTab.resetFocus()
         else root.activeTab = Tabs.items
     }
+    // Indexed here, not through shownTab: inside this handler that binding
+    // still points at the tab shown before the change.
     onActiveTabChanged: {
         itemsTab.commitIfDirty()
-        if (root.activeTab === Tabs.items) itemsTab.resetFocus()
-        else historyTab.resetFocus()
+        alarmsTab.commitIfDirty()
+        root.tabAt(root.activeTab).resetFocus()
     }
 
     property int activeTab: Tabs.items
+    readonly property var shownTab: root.tabAt(root.activeTab)
+    function tabAt(index) { return [itemsTab, alarmsTab, historyTab][index] }
 
     // The popup card. The kit Panel is only the state machine (open/close/
     // toggle IPC); without a popup window nothing is ever drawn, so the bar
@@ -57,7 +65,7 @@ Panel {
         open: root.opened
         contentWidth: panel.fittedContentWidth(Style.space(760))
         contentHeight: panel.fittedContentHeight(Style.space(520))
-        focusTarget: root.activeTab === Tabs.items ? itemsTab : historyTab
+        focusTarget: root.shownTab
 
         ColumnLayout {
             anchors.fill: parent
@@ -76,10 +84,16 @@ Panel {
                 id: header
                 Layout.fillWidth: true
                 db: root.db
+                service: root.service
                 activeTab: root.activeTab
                 foreground: root.barForeground
                 onTabPicked: function(index) { root.activeTab = index }
                 onNewRequested: function(type) {
+                    if (type === "alarm") {
+                        root.activeTab = Tabs.alarms
+                        alarmsTab.startNew()
+                        return
+                    }
                     root.activeTab = Tabs.items
                     itemsTab.startNew(type)
                 }
@@ -93,6 +107,13 @@ Panel {
                 Ui.ItemsTab {
                     id: itemsTab
                     db: root.db
+                    toast: toast
+                    foreground: root.barForeground
+                }
+
+                Ui.AlarmsTab {
+                    id: alarmsTab
+                    service: root.service
                     toast: toast
                     foreground: root.barForeground
                 }

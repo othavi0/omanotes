@@ -14,11 +14,15 @@ Column {
     property string glyph: root.filtered ? "" : Icons.note
     property string title: root.filtered ? "No matches" : "Nothing here yet"
     property string message: root.filtered ? "" : "Keep a note or track a todo."
+    // One bordered "+ <actionText>" button, for a list with its own way to
+    // add a row, such as the Alarms tab.
+    property string actionText: ""
     property color foreground: Color.foreground
 
     signal newNote()
     signal newTodo()
     signal clearSearch()
+    signal actionClicked()
 
     spacing: Style.spacing.xxl
 
@@ -83,6 +87,20 @@ Column {
             text: "Clear search and filter"
             foreground: root.foreground
             onClicked: root.clearSearch()
+        }
+    }
+
+    Loader {
+        active: root.actionText !== ""
+        visible: active
+        anchors.horizontalCenter: parent.horizontalCenter
+        sourceComponent: ActionButton {
+            bordered: true
+            selected: true
+            iconText: Icons.plus
+            text: root.actionText
+            foreground: root.foreground
+            onClicked: root.actionClicked()
         }
     }
 }

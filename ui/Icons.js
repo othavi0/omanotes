@@ -19,3 +19,7 @@ var copy = g(0xF018F)        // md-content_copy
 var swap = g(0xF04E1)        // md-swap_horizontal
 var all = g(0xF0279)         // md-format_list_bulleted
 var chevronDown = g(0xF0140) // md-chevron_down
+var alarm = g(0xF0020)       // md-alarm
+var bell = g(0xF009E)        // md-bell_ring, the chip while ringing
+var snooze = g(0xF068E)      // md-alarm_snooze
+var stop = g(0xF04DB)        // md-stop

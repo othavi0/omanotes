@@ -4,5 +4,5 @@ The sqlite3 CLI takes SQL as a plain string, so there are no bound parameters (A
 
 ## Consequences
 
-- A view or `Db.qml` that concatenates SQL itself breaks this rule. Add a builder to `Db.js` instead.
+- A view or one of the `data/*Db.qml` files that concatenates SQL itself breaks this rule. Add a builder to `Db.js` instead.
 - Ids are interpolated as text. `sqlId()` throws on anything but a whole number, so an invalid id fails before any statement is built.

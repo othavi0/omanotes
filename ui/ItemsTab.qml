@@ -11,7 +11,7 @@ import "Tone.js" as Tone
 FocusScope {
     id: root
 
-    property QtObject db: null              // Panel's Data.Db instance
+    property QtObject db: null              // Panel's Data.ItemsDb instance
     property var toast: null                // ui/Toast instance (Panel-owned)
     property color foreground: Color.foreground
 

@@ -3,20 +3,25 @@
 // Alarm scheduling, adapted from Chime (MIT, see NOTICE). Pure functions over
 // plain alarm records; the caller owns the clock, the sound and the storage.
 //
-// An alarm is { id, hour, minute, days, enabled, snoozedUntil, lastFiredAt,
-// armedAt, autoSnoozes }. Instants are epoch ms, 0 meaning none. days holds
-// Date.getDay() indices (0 is Sunday); an empty list rings once. The record is
-// a wall-clock time plus the instants already consumed, never a countdown, so
-// the same functions answer "is it due?" after a restart or a night asleep.
+// An alarm is { id, hour, minute, label, days, enabled, snoozeMinutes,
+// ringMinutes, snoozedUntil, lastFiredAt, armedAt, autoSnoozes }. Instants are
+// epoch ms, 0 meaning none. days holds Date.getDay() indices (0 is Sunday); an
+// empty list rings once. The record is a wall-clock time plus the instants
+// already consumed, never a countdown, so the same functions answer "is it
+// due?" after a restart or a night asleep.
 
 // An occurrence this recent still rings; older ones are reported as missed
 // instead of going off hours late.
 var GRACE_MS = 10 * 60 * 1000
 var MAX_AUTO_SNOOZES = 3
 var DEFAULT_SNOOZE_MINUTES = 9
-var DEFAULT_RING_SECONDS = 300
+var DEFAULT_RING_MINUTES = 5
 var MIN_SNOOZE_MINUTES = 1
 var MAX_SNOOZE_MINUTES = 180
+var MIN_RING_MINUTES = 1
+var MAX_RING_MINUTES = 60
+var MAX_ALARMS = 50
+var MAX_LABEL = 40
 var MINUTE_MS = 60 * 1000
 // Offset 7 reaches today's weekday once its time has passed; Chime keeps one
 // more day of margin.
@@ -39,6 +44,13 @@ function normalizeDays(days) {
 
 function isRepeating(alarm) {
   return !!alarm && normalizeDays(alarm.days).length > 0
+}
+
+// Whether a reload shows that a ringing alarm was taken away outside: the
+// row is gone, or a repeating alarm was switched off. A one-shot is switched
+// off by its own ring, so `enabled` says nothing about it.
+function lostOutside(alarm) {
+  return !alarm || (!alarm.enabled && isRepeating(alarm))
 }
 
 function instant(value) {
@@ -126,10 +138,113 @@ function tick(alarms, nowMs) {
   }, { patches: [], ring: [], missed: [] })
 }
 
-function snoozeMinutes(minutes) {
+function clampMinutes(minutes, min, max, fallback) {
   var n = Number(minutes)
-  if (minutes === undefined || minutes === null || minutes === "" || !isFinite(n)) return DEFAULT_SNOOZE_MINUTES
-  return Math.max(MIN_SNOOZE_MINUTES, Math.min(MAX_SNOOZE_MINUTES, Math.round(n)))
+  if (minutes === undefined || minutes === null || minutes === "" || !isFinite(n)) return fallback
+  return Math.max(min, Math.min(max, Math.round(n)))
+}
+
+function snoozeMinutes(minutes) {
+  return clampMinutes(minutes, MIN_SNOOZE_MINUTES, MAX_SNOOZE_MINUTES, DEFAULT_SNOOZE_MINUTES)
+}
+
+function ringMinutes(minutes) {
+  return clampMinutes(minutes, MIN_RING_MINUTES, MAX_RING_MINUTES, DEFAULT_RING_MINUTES)
+}
+
+// "07:30", "0730" or "7:30" -> { hour, minute }, or null.
+function parseTime(text) {
+  var m = /^(\d{1,2}):?(\d{2})$/.exec(String(text === null || text === undefined ? "" : text).trim())
+  if (!m) return null
+  var hour = Number(m[1])
+  var minute = Number(m[2])
+  if (hour > 23 || minute > 59) return null
+  return { hour: hour, minute: minute }
+}
+
+// Editor input { time, label, days, snoozeMinutes, ringMinutes } -> the
+// fields of an alarm, or null when the time does not parse. Minutes are
+// clamped, and the label is trimmed, its control characters turned into
+// spaces, and capped at MAX_LABEL.
+function parseFields(input) {
+  var time = parseTime(input ? input.time : "")
+  if (!time) return null
+  var label = String(input.label === undefined || input.label === null ? "" : input.label)
+    .replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, MAX_LABEL)
+  return {
+    hour: time.hour,
+    minute: time.minute,
+    label: label,
+    days: normalizeDays(input.days),
+    snoozeMinutes: snoozeMinutes(input.snoozeMinutes),
+    ringMinutes: ringMinutes(input.ringMinutes)
+  }
+}
+
+function newAlarm(fields, nowMs) {
+  return {
+    hour: fields.hour, minute: fields.minute, label: fields.label, days: fields.days, enabled: true,
+    snoozeMinutes: fields.snoozeMinutes, ringMinutes: fields.ringMinutes,
+    snoozedUntil: 0, lastFiredAt: 0, armedAt: nowMs, autoSnoozes: 0
+  }
+}
+
+// What an edit writes. A change of hour, minute or days re-arms the alarm
+// (Chime's updateAlarm): armed now, no snooze, switched on, count reset. A
+// label or minutes change leaves all of that alone.
+function editPatch(alarm, fields, nowMs) {
+  var patch = {
+    hour: fields.hour, minute: fields.minute, label: fields.label, days: normalizeDays(fields.days),
+    snoozeMinutes: fields.snoozeMinutes, ringMinutes: fields.ringMinutes
+  }
+  var rearm = patch.hour !== Number(alarm.hour) || patch.minute !== Number(alarm.minute)
+    || patch.days.join(",") !== normalizeDays(alarm.days).join(",")
+  if (rearm) {
+    patch.armedAt = nowMs
+    patch.snoozedUntil = 0
+    patch.enabled = true
+    patch.autoSnoozes = 0
+  }
+  return patch
+}
+
+// What the row switch writes. On: armed now, no snooze, count reset. Off:
+// no snooze either, which also cancels the snooze of a disabled one-shot.
+function enablePatch(alarm, on, nowMs) {
+  return on ? { enabled: true, armedAt: nowMs, snoozedUntil: 0, autoSnoozes: 0 } : { enabled: false, snoozedUntil: 0 }
+}
+
+// What the row switch shows: enabled, or snoozed into the future.
+function isOn(alarm, nowMs) {
+  return !!alarm && (!!alarm.enabled || instant(alarm.snoozedUntil) > nowMs)
+}
+
+function withPatch(alarm, patch) {
+  var out = {}
+  for (var k in alarm) out[k] = alarm[k]
+  for (var p in patch) out[p] = patch[p]
+  return out
+}
+
+// Ring-state transitions. The card is { startedAt, events: [{ id, startedAt }] }
+// or null. An id already on the card is ignored, a new event starts at
+// nowMs, and the card keeps the startedAt of its first event.
+function ringWith(ring, ids, nowMs) {
+  var events = ring ? ring.events.slice() : []
+  for (var i = 0; i < ids.length; i++) {
+    var known = events.some(function(e) { return e.id === ids[i] })
+    if (!known) events.push({ id: ids[i], startedAt: nowMs })
+  }
+  if (events.length === 0) return null
+  return { startedAt: ring ? ring.startedAt : nowMs, events: events }
+}
+
+function ringWithout(ring, id) {
+  if (!ring) return null
+  var events = ring.events.filter(function(e) { return e.id !== id })
+  if (events.length === ring.events.length) return ring
+  if (events.length === 0) return null
+  return { startedAt: ring.startedAt, events: events }
 }
 
 // A manual snooze is the person answering, so it restarts the automatic count.
@@ -142,14 +257,14 @@ function snoozePatch(alarm, minutes, automatic, nowMs) {
 
 // Splits ring events ({ id, startedAt }) into those still ringing and the ids
 // of expired alarms that earn an automatic snooze.
-function expire(events, alarmsById, nowMs, ringSeconds) {
-  var limit = (Number(ringSeconds) > 0 ? Number(ringSeconds) : DEFAULT_RING_SECONDS) * 1000
+function expire(events, alarmsById, nowMs) {
   return (events || []).reduce(function(acc, event) {
+    var alarm = alarmsById ? alarmsById[event.id] : null
+    var limit = alarm ? ringMinutes(alarm.ringMinutes) * MINUTE_MS : 0
     if (nowMs - instant(event.startedAt) < limit) {
       acc.keep.push(event)
       return acc
     }
-    var alarm = alarmsById ? alarmsById[event.id] : null
     if (alarm && (Number(alarm.autoSnoozes) || 0) < MAX_AUTO_SNOOZES) acc.snooze.push(event.id)
     return acc
   }, { keep: [], snooze: [] })

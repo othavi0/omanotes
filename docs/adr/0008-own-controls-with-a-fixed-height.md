@@ -5,6 +5,7 @@ The kit's `Button` sizes itself to its content plus padding and border, so a but
 ## Consequences
 
 - Every button and single-line field in the panel goes through these wrappers. The editor body is a plain `TextArea` that fills the remaining height and draws the kit's control fill and border, so it matches the title `Field`. `test/render.sh` fails if any control in its scenes is taller or shorter than `Style.spacing.controlHeight`.
+- `ui/TimeField.qml` is the one single-line control outside the wrappers: the alarm editor's time entry, with 44 px digits as the prototype draws it. Like the editor body, it draws the kit's control fill and border itself and takes the height its digits need. `test/render.sh` checks it apart, by name, and the rule above stays for every other control.
 - `Field` sets `verticalPadding: 0`, the kit's documented way to a short field, so the kit still adds the border width to the padding.
 - The wrappers and the rest of the panel take colours from the kit: `Style` for fill, border, hover and selection, `PanelSeparator` for rules and `PanelSectionHeader` for the History column labels.
 - Column labels are headers, not secondary text. They keep the bold `Qt.darker(foreground, 1.4)` of `PanelSectionHeader`, like the section headers of the shell's own panels (audio, bluetooth, network). On a light theme that draws them darker than the row text: on `catppuccin-latte`, `#4c4f69` becomes `#36384b`. The panel accepts that to match the rest of the shell.

@@ -1,6 +1,6 @@
 # Omanotes
 
-A mouse-driven panel on the Omarchy bar that keeps short notes and todos in one list, with a log of every change.
+A mouse-driven panel on the Omarchy bar that keeps short notes and todos in one list, with a log of every change, and rings alarms.
 
 ## Language
 
@@ -61,7 +61,7 @@ Changing an item's type while keeping its status.
 _Avoid_: change type, switch
 
 **History**:
-The log of changes to items, one entry per action, kept after the item itself is deleted.
+The log of changes to items, one entry per action, kept after the item itself is deleted. Alarms are not logged.
 _Avoid_: activity, audit log, read-only log
 
 **Action**:
@@ -94,10 +94,48 @@ _Avoid_: cancel, revert
 The first click on a destructive button: Delete on an item, the trash on a history entry, or Clear history. A second click on the same button within two seconds confirms it. Selecting another row, switching tabs or closing the panel cancels it.
 _Avoid_: confirm dialog, prime
 
+### Alarms
+
+**Alarm**:
+A time of day with a label, the days it repeats, a snooze length and a ring length. Alarms have their own tab and their own table, apart from items.
+_Avoid_: reminder, timer, event
+
+**Repeat**:
+The weekdays an alarm rings on, picked Monday first. An alarm with no repeat days rings once and switches itself off after it rings.
+_Avoid_: schedule, recurrence, weekly
+
+**Once**:
+An alarm with no repeat days.
+_Avoid_: one-shot, single, one-time
+
+**On**, **Off**:
+The switch of an alarm. An alarm is on when it is enabled or snoozed into the future. Switching it on arms it now, so an occurrence that passed while it was off does not ring.
+_Avoid_: enabled, disabled, active (in user-facing text)
+
+**Ring**:
+What happens when an alarm is due: a card under the bar on every screen and a sound, for the alarm's ring length. The panel stays closed and the card takes no keyboard focus.
+_Avoid_: fire, trigger, go off, notify
+
+**Snooze**:
+Putting a ringing alarm off for its snooze length. A ring that nobody answers snoozes itself up to three times.
+_Avoid_: postpone, defer, delay
+
+**Stop**:
+Ending a ring without a snooze. The Stop button on the card and a click on the bar chip both stop it.
+_Avoid_: dismiss, cancel, silence
+
+**Missed**:
+An alarm found more than ten minutes past its time, after the computer slept or the shell was down. It does not ring. One notification lists every missed alarm, and each is consumed as if it had rung.
+_Avoid_: late, overdue, skipped
+
+**Service**:
+The one copy of Omanotes that the shell runs apart from the bar widgets. It keeps the clock, the ring, the sound and every alarm write, so several monitors never mean several rings.
+_Avoid_: daemon, backend, controller
+
 ### Panel
 
 **Panel**:
-The popout opened from the bar icon, with the Items tab and the History tab.
+The popout opened from the bar icon, with the Items, Alarms and History tabs.
 _Avoid_: popup, dropdown, window
 
 **Order**:
