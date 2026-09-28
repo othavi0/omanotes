@@ -203,6 +203,7 @@ ShellRoot {
       return "ok"
     }
     function checkUpdates(): void { svc.item.updater.check() }
+    function alarmsDbSetSettings(): string { return typeof sr.find(svc.item, "AlarmsDb")[0].setSettings }
     function updaterView(): string { return svc.item.updater.view.phase + "|blocked:" + svc.item.updater.blocked }
     function applyUpdate(): string { return "[" + svc.item.updater.apply() + "]" + svc.item.updater.view.phase }
     function tooltip(n: int): string { return sr.chip(n).tooltipText }
@@ -704,6 +705,7 @@ contains "so the next ring still plays" "$(ring_at 94 11 40)" '"ringing":[94],"c
 sound_is "with its player" "$(( s0 + 5 ))" "$(( e0 + 4 ))"
 stop_ring "Stop ends the last ring"
 
+replies "the service's Db reads the settings row and has no way to write it" "$(ipc alarmsDbSetSettings)" "undefined"
 sql "UPDATE settings SET sound = 'bell', sound_file = '$cfg_dir/gone.oga'"
 for n in 1 2 3; do
   for _ in $(seq 50); do [[ "$(ipc widgetSettings "$n")" == *'"sound":"bell"'* ]] && break; sleep 0.2; done

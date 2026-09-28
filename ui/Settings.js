@@ -12,6 +12,19 @@ var SECTIONS = [
   { id: "data", label: "Data" }
 ]
 
+// The steppers' captions, with the range `spec` (Db.SETTINGS) accepts.
+function rangeText(entry) {
+  return entry ? " " + entry.min + " to " + entry.max + " min." : ""
+}
+
+function snoozeCaption(spec) {
+  return "Length of Snooze on the ring card." + rangeText(spec ? spec.snoozeMinutes : null)
+}
+
+function ringCaption(spec) {
+  return "Rings this long, then snoozes by itself." + rangeText(spec ? spec.ringMinutes : null)
+}
+
 var KEEP_CHOICES = [
   { value: 0, label: "Forever" },
   { value: 90, label: "90 days" },

@@ -164,6 +164,10 @@ DbCore {
     onReloadDue: root.load()
     onWriteRefused: function(kind, args, message) { root._failWrite(kind, args, message, false) }
     onWriteEnded: function(kind, args, exitCode, output, errors, fromScript) {
+        if (kind === "settings") {
+            root._settingsWriteEnded(args, exitCode, errors)
+            return
+        }
         if (exitCode !== 0) {
             root._failWrite(kind, args, Db.errorText(errors, exitCode), fromScript)
             root.reloadSoon()
@@ -293,12 +297,44 @@ DbCore {
         return ""
     }
 
+    // The settings row is written here only, so the service's Db, which
+    // reads the same row, cannot write it (ADR-0016). "" once queued, or why
+    // it was refused. The patch is laid over the row at once, so a control
+    // never snaps back while the write and the reload run. A failed write
+    // drops its keys and the control shows the file again.
+    function setSettings(patch) {
+        var seq = root._settingsSeq + 1
+        var error = root._write("settings", function() { return Db.setSettingsSql(patch) }, { seq: seq })
+        if (error !== "") return error
+        root._settingsSeq = seq
+        for (var key in patch) root._settingsPatch[key] = { value: patch[key], seq: seq }
+        root._showSettings()
+        return ""
+    }
+
+    function _settingsWriteEnded(args, exitCode, errors) {
+        root._settingsDoneSeq = args.seq
+        if (exitCode !== 0) {
+            root.fail("Setting not saved: " + Db.errorText(errors, exitCode))
+            for (var key in root._settingsPatch) {
+                if (root._settingsPatch[key].seq === args.seq) delete root._settingsPatch[key]
+            }
+            root._showSettings()
+        }
+        root.reloadSoon()
+    }
+
+    // True when keeping `days` of history would remove an entry now.
+    function wouldPruneHistory(days) {
+        return Db.prunes(days, root.oldestHistory, Db.now())
+    }
+
     // Entries age while nothing is written, so opening the panel applies the
     // Keep choice. It writes only when an entry is past the cutoff, so an
     // open on a pruned history fires no watcher and reloads no Db.
     function pruneHistoryIfDue() {
         var days = root.settings.historyDays
-        if (!Db.prunes(days, root.oldestHistory, Db.now())) return ""
+        if (!root.wouldPruneHistory(days)) return ""
         return root._write("pruneHistory", function() { return Db.pruneHistorySql(days) }, null)
     }
 }

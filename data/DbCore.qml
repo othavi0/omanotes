@@ -17,8 +17,10 @@ QtObject {
     property bool ready: false                 // init() completed
 
     // The settings row, every Db reading it through the watcher (ADR-0016).
-    // Fallbacks until the first read lands.
+    // Fallbacks until the first read lands. Only ItemsDb writes it.
     property var settings: Db.parseSettings("").settings
+    // What each setting takes, for the controls that edit it.
+    readonly property var settingsSpec: Db.SETTINGS
     property bool settingsLoaded: false
     property real dbBytes: 0
 
@@ -90,7 +92,6 @@ QtObject {
             root._writeFromScript = false
             Qt.callLater(root._runNextWrite)
             if (kind === "init" || kind === "migrate") root._startupEnded(kind, exitCode)
-            else if (kind === "settings") root._settingsWriteEnded(args, exitCode)
             else root.writeEnded(kind, args, exitCode, writeStdout.text, writeStderr.text, fromScript)
         }
     }
@@ -128,19 +129,9 @@ QtObject {
         root.reloadDue()
     }
 
-    // "" once queued, or why it was refused. The patch is laid over the row
-    // at once, so a control never snaps back while the write and the reload
-    // run. A failed write drops its keys and the control shows the file again.
-    function setSettings(patch) {
-        var seq = root._settingsSeq + 1
-        var error = root._write("settings", function() { return Db.setSettingsSql(patch) }, { seq: seq })
-        if (error !== "") return error
-        root._settingsSeq = seq
-        for (var key in patch) root._settingsPatch[key] = { value: patch[key], seq: seq }
-        root._showSettings()
-        return ""
-    }
-
+    // The overlay of settings writes still on their way: ItemsDb lays each
+    // patch over the row at once, and a read drops a key's overlay once it
+    // started after that write ended.
     property var _settingsRow: null
     property var _settingsPatch: ({})
     property int _settingsSeq: 0
@@ -152,18 +143,6 @@ QtObject {
         var values = {}
         for (var key in root._settingsPatch) values[key] = root._settingsPatch[key].value
         root.settings = Db.mergeSettings(root._settingsRow ? root._settingsRow.settings : Db.parseSettings("").settings, values)
-    }
-
-    function _settingsWriteEnded(args, exitCode) {
-        root._settingsDoneSeq = args.seq
-        if (exitCode !== 0) {
-            root.fail("Setting not saved: " + Db.errorText(writeStderr.text, exitCode))
-            for (var key in root._settingsPatch) {
-                if (root._settingsPatch[key].seq === args.seq) delete root._settingsPatch[key]
-            }
-            root._showSettings()
-        }
-        root.reloadSoon()
     }
 
     function _listSettings() {

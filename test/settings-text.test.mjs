@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const S = loadQmlLib(new URL("../ui/Settings.js", import.meta.url), [
-  "SECTIONS", "sectionMeta", "KEEP_CHOICES", "keepText", "sizeText", "pathText", "versionText", "versionShort", "shortHash",
+  "SECTIONS", "snoozeCaption", "ringCaption", "sectionMeta", "KEEP_CHOICES", "keepText", "sizeText", "pathText", "versionText", "versionShort", "shortHash",
   "checkedAgoText", "updateHeadline", "updateSteps"
 ])
 
@@ -17,6 +17,12 @@ test("each section row names what its page holds, and the sound row reads off wh
   assert.equal(S.sectionMeta("sound", settings({ sound: "bell" }), { sound: "Bell" }), "Bell")
   assert.equal(S.sectionMeta("sound", settings({ sound: "bell", soundOn: false }), { sound: "Bell" }), "off")
   assert.equal(S.sectionMeta("alarms", settings({ snoozeMinutes: 12, ringMinutes: 3 })), "12 / 3 min")
+})
+
+test("the stepper captions name the range the settings row takes", () => {
+  const Db = loadQmlLib(new URL("../data/Db.js", import.meta.url), ["SETTINGS"])
+  assert.equal(S.snoozeCaption(Db.SETTINGS), "Length of Snooze on the ring card. 1 to 180 min.")
+  assert.equal(S.ringCaption(Db.SETTINGS), "Rings this long, then snoozes by itself. 1 to 60 min.")
 })
 
 test("the Keep choice reads forever or a number of days", () => {

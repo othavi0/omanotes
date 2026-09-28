@@ -415,8 +415,8 @@ function settingValue(key, value) {
 function setSettingsSql(patch) {
   var keys = Object.keys(patch || {})
   if (keys.length === 0) throw new Error("empty setting patch")
-  var columns = keys.map(function(k) { return SETTINGS[k] ? SETTINGS[k].column : k })
   var values = keys.map(function(k) { return settingValue(k, patch[k]) })
+  var columns = keys.map(function(k) { return SETTINGS[k].column })
   var prune = patch.historyDays > 0 ? [pruneHistorySql(patch.historyDays)] : []
   return transaction([
     "INSERT INTO settings (id, " + columns.join(", ") + ") VALUES (1, " + values.join(", ") + ")"
@@ -551,7 +551,7 @@ var MIGRATIONS = [
       + " volume INTEGER NOT NULL DEFAULT 100 CHECK (volume BETWEEN 0 AND 100),"
       + " snooze_minutes INTEGER NOT NULL DEFAULT 9 CHECK (snooze_minutes BETWEEN 1 AND 180),"
       + " ring_minutes INTEGER NOT NULL DEFAULT 5 CHECK (ring_minutes BETWEEN 1 AND 60),"
-      + " history_days INTEGER NOT NULL DEFAULT 0 CHECK (history_days >= 0),"
+      + " history_days INTEGER NOT NULL DEFAULT 0 CHECK (history_days IN (0, 30, 90)),"
       + " check_updates INTEGER NOT NULL DEFAULT 1 CHECK (check_updates IN (0, 1)))",
     "INSERT INTO settings (id) VALUES (1)"
   ]

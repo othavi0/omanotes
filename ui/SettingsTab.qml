@@ -5,7 +5,6 @@ import QtQuick.Layouts
 import Quickshell
 import qs.Commons
 import qs.Ui
-import "../data/Db.js" as Db
 import "../data/Sound.js" as Sound
 import "Icons.js" as Icons
 import "Settings.js" as Settings
@@ -28,6 +27,9 @@ FocusScope {
 
     property string section: Settings.SECTIONS[0].id
     readonly property var settings: root.db ? root.db.settings : ({})
+    // The ranges the Db accepts, so the steppers and their captions never
+    // repeat them.
+    readonly property var spec: root.db ? root.db.settingsSpec : null
     readonly property int sectionIndex: Math.max(0, root.sectionIds.indexOf(root.section))
     readonly property var info: ({
         sound: Sound.soundName(root.settings),
@@ -60,7 +62,7 @@ FocusScope {
     // button (Arm in CONTEXT.md); one that removes nothing saves at once.
     function pickKeep(days) {
         if (!root.db) return
-        if (Db.prunes(days, root.db.oldestHistory, Db.now()) && !confirm.press("keep:" + days)) {
+        if (root.db.wouldPruneHistory(days) && !confirm.press("keep:" + days)) {
             if (root.toast) root.toast.show("Removes entries older than " + days + " days. Click again to confirm.")
             return
         }
@@ -212,13 +214,13 @@ FocusScope {
                     SettingRow {
                         Layout.fillWidth: true
                         label: "Snooze"
-                        caption: "Length of Snooze on the ring card. 1 to 180 min."
+                        caption: Settings.snoozeCaption(root.spec)
                         foreground: root.foreground
                         Stepper {
                             objectName: "snooze"
                             value: root.settings.snoozeMinutes || 0
-                            minimum: 1
-                            maximum: 180
+                            minimum: root.spec ? root.spec.snoozeMinutes.min : 0
+                            maximum: root.spec ? root.spec.snoozeMinutes.max : 0
                             unit: "min"
                             foreground: root.foreground
                             onStepped: function(v) { root.save({ snoozeMinutes: v }) }
@@ -227,13 +229,13 @@ FocusScope {
                     SettingRow {
                         Layout.fillWidth: true
                         label: "Ring for"
-                        caption: "Rings this long, then snoozes by itself. 1 to 60 min."
+                        caption: Settings.ringCaption(root.spec)
                         foreground: root.foreground
                         Stepper {
                             objectName: "ring"
                             value: root.settings.ringMinutes || 0
-                            minimum: 1
-                            maximum: 60
+                            minimum: root.spec ? root.spec.ringMinutes.min : 0
+                            maximum: root.spec ? root.spec.ringMinutes.max : 0
                             unit: "min"
                             foreground: root.foreground
                             onStepped: function(v) { root.save({ ringMinutes: v }) }
