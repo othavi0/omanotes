@@ -48,7 +48,7 @@ SH
 cat > "$cfg_dir/bin/pw-play" <<SH
 #!/usr/bin/env bash
 if [[ -e "$cfg_dir/sound-fails" ]]; then echo "fail \$\$" >> "$cfg_dir/sound.log"; exit 1; fi
-echo "start \$\$" >> "$cfg_dir/sound.log"
+echo "start \$\$ \$*" >> "$cfg_dir/sound.log"
 trap 'echo "end \$\$" >> "$cfg_dir/sound.log"; exit 0' TERM
 sleep 30 &
 wait \$!
@@ -62,6 +62,7 @@ chmod +x "$cfg_dir/bin/"*
 : > "$cfg_dir/sound.log"
 : > "$cfg_dir/notify.log"
 
+sqlite3 -cmd ".timeout 5000" "$db" "UPDATE settings SET sound = 'custom', sound_file = '$sound_file'"
 sqlite3 -cmd ".timeout 5000" "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES
   (1, 7, 30, 'Wake up', 127, 1, $yesterday),
   (2, 6, 0, 'Pills', 0, 1, $yesterday),
@@ -79,6 +80,12 @@ import "ui/Tabs.js" as Tabs
 ShellRoot {
   id: sr
   property var cards: []
+  property string previewEnds: ""
+
+  Connections {
+    target: svc.item
+    function onPreviewEnded(key, playable) { sr.previewEnds += key + ":" + playable + ";" }
+  }
 
   Variants {
     id: monitors
@@ -115,7 +122,7 @@ ShellRoot {
   Loader {
     id: svc
     Component.onCompleted: setSource("file://" + Quickshell.env("OMANOTES_WORKTREE") + "/Service.qml",
-      { clockRunning: false, screens: [1, 2, 3], ringWindow: stubRing, soundFile: Quickshell.env("SOUND") })
+      { clockRunning: false, screens: [1, 2, 3], ringWindow: stubRing })
   }
 
   function find(obj, typeName, out) {
@@ -164,7 +171,41 @@ ShellRoot {
     function ping(): string { return svc.item && monitors.instances.length === 3 && monitors.instances[2].widget ? "ok" : "loading" }
     function tick(ms: string): string { svc.item.tick(Number(ms)); return sr.state() }
     function state(): string { return sr.state() }
+    function settings(): string { return JSON.stringify(svc.item.settings) }
+    function preview(key: string, file: string, volume: int): string {
+      return "[" + svc.item.togglePreview(key, file, volume) + "]" + svc.item.previewKey
+    }
+    function widgetSettings(n: int): string { return JSON.stringify(monitors.instances[n - 1].widget.panelItem.db.settings) }
+    function editorMinutes(): string { return sr.editor().snoozeText + "/" + sr.editor().ringText }
+    function previewState(): string { return svc.item.previewKey + "|" + sr.previewEnds }
     function chips(): string { return sr.chips() }
+    function testSound(n: int, key: string): string {
+      sr.find(monitors.instances[n - 1].widget.panelItem, "SoundSettings")[0].play(key)
+      return svc.item.previewKey
+    }
+    function settingsToasts(): string {
+      return [0, 1, 2].map(function(i) { return sr.find(monitors.instances[i].widget.panelItem, "SettingsTab")[0].toast.text }).join("|")
+    }
+    function clearSettingsToasts(): void {
+      for (var i = 0; i < 3; ++i) sr.find(monitors.instances[i].widget.panelItem, "SettingsTab")[0].toast.text = ""
+    }
+    function updaters(): string {
+      return [0, 1, 2].map(function(i) {
+        var updater = monitors.instances[i].widget.panelItem.updater
+        return updater && updater === svc.item.updater ? "service" : String(updater)
+      }).join("|")
+    }
+    function useClone(dir: string): string {
+      var updater = svc.item.updater
+      updater.pluginDir = dir
+      updater.launcher = []
+      updater.refresh()
+      return "ok"
+    }
+    function checkUpdates(): void { svc.item.updater.check() }
+    function alarmsDbSetSettings(): string { return typeof sr.find(svc.item, "AlarmsDb")[0].setSettings }
+    function updaterView(): string { return svc.item.updater.view.phase + "|blocked:" + svc.item.updater.blocked }
+    function applyUpdate(): string { return "[" + svc.item.updater.apply() + "]" + svc.item.updater.view.phase }
     function tooltip(n: int): string { return sr.chip(n).tooltipText }
     function pressChip(n: int, button: string): string {
       sr.chip(n).triggerPress(button === "right" ? Qt.RightButton : Qt.LeftButton)
@@ -235,7 +276,7 @@ ShellRoot {
 QML
 
 touch "$cfg_dir/hold-reads"
-PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$worktree" SOUND="$sound_file" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
+PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$worktree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
 trap 'kill "$qs_pid" 2> /dev/null || true; wait "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
 
@@ -339,6 +380,7 @@ t0730="$(ms "$day 07:30")"
 replies "at 07:30 the daily alarm rings on every screen and the two one-shots from 06:00 are missed" \
   "$(ipc tick "$t0730")" '{"loaded":true,"alarms":4,'"$ringing_wake"
 sound_is "one player runs for three screens" 1 0
+contains "the player plays the custom file of the settings row at full volume" "$(grep '^start' "$cfg_dir/sound.log" | tail -1)" "--volume 1.00 -- $sound_file"
 replies "every chip reads the bell and the title, painted active" "$(ipc chips)" "{bell} Wake up*|{bell} Wake up*|{bell} Wake up*"
 replies "the chip's tooltip names the ring, for a vertical bar that shows the bell alone" "$(ipc tooltip 2)" "Omanotes: Wake up is ringing · click to stop"
 replies "one notification lists both missed alarms" "$(wc -l < "$cfg_dir/notify.log")" "1"
@@ -580,6 +622,153 @@ replies "a reload after an outside write keeps the list where it was scrolled" "
 ipc toggleRow "$(sql "SELECT MAX(id) FROM alarms")" > /dev/null
 replies "and so does a switch flipped in the list" "$(ipc alarmsScroll 1)" "300"
 ipc closePanel 1
+
+settings_has() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(ipc settings)"
+    [[ "$got" == *"$want"* ]] && { pass "$what"; return; }
+    sleep 0.2
+  done
+  fail "$what: want '$want' in '$got'"
+}
+last_start() { grep '^start' "$cfg_dir/sound.log" | tail -1; }
+ring_at() {
+  local id="$1" hour="$2" minute="$3"
+  sql "INSERT INTO alarms (id, hour, minute, label, days, enabled, armed_at_ms) VALUES ($id, $hour, $minute, 'Sound $id', 0, 1, $yesterday)"
+  for _ in $(seq 50); do [[ "$(ipc state)" == *'"alarms":'"$(sql "SELECT COUNT(*) FROM alarms")"* ]] && break; sleep 0.2; done
+  ipc tick "$(ms "$day $hour:$minute")"
+}
+stop_ring() { ipc click 1 "Stop" > /dev/null; state_has "$1" '"ringing":[],"cards":0'; }
+starts() { sound_lines start; }
+ends() { sound_lines end; }
+
+sql "UPDATE settings SET volume = 50"
+settings_has "the service reads a volume set outside" '"volume":50'
+s0="$(starts)"; e0="$(ends)"
+contains "an alarm rings after the volume changed" "$(ring_at 90 11 0)" '"ringing":[90],"cards":3'
+sound_is "and starts one player" "$(( s0 + 1 ))" "$e0"
+contains "at the new volume, written without a locale comma" "$(last_start)" "--volume 0.50 -- $sound_file"
+stop_ring "Stop ends that ring"
+sound_is "and its player" "$(( s0 + 1 ))" "$(( e0 + 1 ))"
+
+sql "UPDATE settings SET sound_on = 0"
+settings_has "the service reads the sound switched off" '"soundOn":false'
+contains "with the sound off an alarm still rings on every screen" "$(ring_at 91 11 10)" '"ringing":[91],"cards":3'
+sleep 0.5
+sound_is "and starts no player" "$(( s0 + 1 ))" "$(( e0 + 1 ))"
+sql "UPDATE settings SET sound_on = 1"
+sound_is "switching the sound on mid-ring starts the player" "$(( s0 + 2 ))" "$(( e0 + 1 ))"
+sql "UPDATE settings SET sound_on = 0"
+sound_is "and switching it off again stops it" "$(( s0 + 2 ))" "$(( e0 + 2 ))"
+state_has "while the ring goes on, with the sound not latched as broken" '"ringing":[91],"cards":3,"soundBroken":false'
+stop_ring "Stop ends the silent ring"
+
+sql "UPDATE settings SET sound_on = 1, sound_file = '$cfg_dir/gone.oga'"
+settings_has "the service reads a custom file that is gone" "gone.oga"
+contains "an alarm rings with the custom file gone" "$(ring_at 92 11 20)" '"ringing":[92],"cards":3'
+sound_is "and plays" "$(( s0 + 3 ))" "$(( e0 + 2 ))"
+contains "the default sound instead" "$(last_start)" "-- /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
+state_has "with the sound not latched as broken" '"ringing":[92],"cards":3,"soundBroken":false'
+stop_ring "Stop ends that ring too"
+
+preview_is() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(ipc previewState)"
+    [[ "$got" == "$want" ]] && { pass "$what"; return; }
+    sleep 0.2
+  done
+  fail "$what: want '$want', got '$got'"
+}
+s0="$(starts)"; e0="$(ends)"
+replies "Test plays a sound once at the volume it is given" "$(ipc preview bell "$sound_file" 30)" "[]bell"
+sound_is "with one player" "$(( s0 + 1 ))" "$e0"
+contains "at that volume" "$(last_start)" "--volume 0.30 -- $sound_file"
+replies "the same sound again stops it" "$(ipc preview bell "$sound_file" 30)" "[]"
+sound_is "and ends its player" "$(( s0 + 1 ))" "$(( e0 + 1 ))"
+preview_is "which reports the end of a playable sound" "|bell:true;"
+ipc preview bell "$sound_file" 30 > /dev/null
+replies "another sound while one plays switches to it" "$(ipc preview chime "$sound_file" 60)" "[]chime"
+sound_is "ending the first player and starting a second" "$(( s0 + 3 ))" "$(( e0 + 2 ))"
+contains "at the second volume" "$(last_start)" "--volume 0.60 -- $sound_file"
+preview_is "and the key stays on the second sound" "chime|bell:true;bell:true;"
+contains "an alarm that rings during a preview" "$(ring_at 93 11 30)" '"ringing":[93],"cards":3'
+sound_is "stops the preview and starts the ring" "$(( s0 + 4 ))" "$(( e0 + 3 ))"
+preview_is "leaving no preview" "|bell:true;bell:true;chime:true;"
+replies "a preview asked for while an alarm rings is refused" "$(ipc preview bell "$sound_file" 30)" "[An alarm is ringing]"
+stop_ring "Stop ends the ring that took over"
+replies "a preview of a file that is gone starts" "$(ipc preview custom "$cfg_dir/gone.oga" 50)" "[]custom"
+preview_is "and ends as unplayable" "|bell:true;bell:true;chime:true;custom:false;"
+state_has "without latching the ring's sound as broken" '"soundBroken":false'
+contains "so the next ring still plays" "$(ring_at 94 11 40)" '"ringing":[94],"cards":3,"soundBroken":false'
+sound_is "with its player" "$(( s0 + 5 ))" "$(( e0 + 4 ))"
+stop_ring "Stop ends the last ring"
+
+replies "the service's Db reads the settings row and has no way to write it" "$(ipc alarmsDbSetSettings)" "undefined"
+sql "UPDATE settings SET sound = 'bell', sound_file = '$cfg_dir/gone.oga'"
+for n in 1 2 3; do
+  for _ in $(seq 50); do [[ "$(ipc widgetSettings "$n")" == *'"sound":"bell"'* ]] && break; sleep 0.2; done
+done
+ipc clearSettingsToasts
+replies "Test on the custom row of widget 1's Settings plays the custom file while Bell is picked" "$(ipc testSound 1 custom)" "custom"
+toasts=""
+for _ in $(seq 50); do toasts="$(ipc settingsToasts)"; [[ "$toasts" != "||" ]] && break; sleep 0.2; done
+replies "only widget 1 says it can't play, naming the file it tested" "$toasts" "Can't play gone.oga||"
+
+sql "UPDATE settings SET snooze_minutes = 12, ring_minutes = 3"
+widget_has=""
+for _ in $(seq 50); do widget_has="$(ipc widgetSettings 1)"; [[ "$widget_has" == *'"snoozeMinutes":12,"ringMinutes":3'* ]] && break; sleep 0.2; done
+contains "the widget reads new-alarm defaults set outside" "$widget_has" '"snoozeMinutes":12,"ringMinutes":3'
+replies "the panel of widget 1 opens on the Alarms tab for the defaults" "$(ipc openAlarms)" "ok"
+ipc pickAlarm 1 > /dev/null
+replies "an alarm that exists keeps its own snooze and ring" "$(ipc editorMinutes)" "9/5"
+ipc startNew > /dev/null
+replies "a new alarm opens with the defaults of the settings row" "$(ipc editorMinutes)" "12/3"
+ipc discard > /dev/null
+ipc closePanel 1
+
+# The service's one Updater, against a clone one commit behind its origin.
+# The ring the update's reload would drop blocks it.
+(
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
+    GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
+  git init --quiet --bare -b main "$cfg_dir/origin.git"
+  git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/dev" 2> /dev/null
+  printf '{\n  "version": "1.1.0"\n}\n' > "$cfg_dir/dev/manifest.json"
+  git -C "$cfg_dir/dev" add -A && git -C "$cfg_dir/dev" commit --quiet -m "feat: first"
+  git -C "$cfg_dir/dev" push --quiet origin main
+  git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/clone"
+  git -C "$cfg_dir/dev" commit --quiet --allow-empty -m "feat: second"
+  git -C "$cfg_dir/dev" push --quiet origin main
+)
+printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/omarchy-plugin-validate"
+printf '#!/usr/bin/env bash\necho restart >> "%s/restart.log"\n' "$cfg_dir" > "$cfg_dir/bin/omarchy-restart-shell"
+chmod +x "$cfg_dir/bin/omarchy-plugin-validate" "$cfg_dir/bin/omarchy-restart-shell"
+updater_is() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(ipc updaterView)"
+    [[ "$got" == "$want" ]] && { pass "$what"; return; }
+    sleep 0.2
+  done
+  fail "$what: want '$want', got '$got'"
+}
+replies "every panel uses the service's one Updater" "$(ipc updaters)" "service|service|service"
+ipc useClone "$cfg_dir/clone" > /dev/null
+updater_is "the service's Updater reads the clone" "unchecked|blocked:false"
+ipc checkUpdates
+updater_is "and finds its new commit" "available|blocked:false"
+clone_head="$(git -C "$cfg_dir/clone" rev-parse HEAD)"
+contains "an alarm rings" "$(ring_at 95 11 50)" '"ringing":[95],"cards":3'
+replies "which blocks the update" "$(ipc updaterView)" "available|blocked:true"
+replies "so apply refuses, whoever calls it" "$(ipc applyUpdate)" "[An alarm is ringing]available"
+replies "and the clone did not move" "$(git -C "$cfg_dir/clone" rev-parse HEAD)" "$clone_head"
+stop_ring "Stop ends that ring"
+replies "then apply runs" "$(ipc applyUpdate)" "[]updating"
+updater_is "and ends updated" "updated|blocked:false"
+replies "with the clone at origin/main" "$(git -C "$cfg_dir/clone" rev-parse HEAD)" "$(git -C "$cfg_dir/dev" rev-parse HEAD)"
+replies "and the shell restarted once, through the stub" "$(cat "$cfg_dir/restart.log" 2> /dev/null)" "restart"
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true

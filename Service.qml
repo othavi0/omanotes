@@ -4,6 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import "data" as Data
 import "data/Alarm.js" as Alarm
+import "data/Sound.js" as Sound
 import "ui/Alarms.js" as Alarms
 import "ui/Icons.js" as Icons
 
@@ -24,7 +25,17 @@ Item {
     property bool clockRunning: true
     property var screens: Quickshell.screens
     property Component ringWindow: null
-    property string soundFile: "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
+
+    // The ring reads the settings row and never writes it (ADR-0016). A
+    // custom file that is gone plays the default inside the player script,
+    // so an alarm never rings silent because a file moved.
+    readonly property var settings: store.settings
+    readonly property string soundFile: Sound.soundPath(root.settings)
+    readonly property string fallbackSoundFile: Sound.pathFor(Sound.DEFAULT_SOUND, null)
+    // The sound Settings is testing, "" when none.
+    property string previewKey: ""
+
+    readonly property QtObject updater: updates
 
     readonly property var alarms: store.alarms
     readonly property bool loaded: store.alarmsLoaded
@@ -52,6 +63,8 @@ Item {
 
     signal alarmAdded(int id, var caller)
     signal writeFailed(string kind, var record, string message, var caller)
+    // `caller` is whoever asked for the preview, so only that page answers.
+    signal previewEnded(string key, bool playable, var caller)
 
     function tick(nowMs) {
         root.nowMs = nowMs
@@ -111,11 +124,46 @@ Item {
         return true
     }
 
+    // Plays `file` once at `volume`, or stops it when `key` is already
+    // playing. "" or why it was refused: a ring owns the speaker. It never
+    // touches the ring's latch, so a bad test file cannot silence a ring.
+    function togglePreview(key, file, volume, caller) {
+        if (root.ringing) return "An alarm is ringing"
+        if (root.previewKey === key) {
+            root.stopPreview()
+            return ""
+        }
+        root.previewKey = key
+        root._queuedPreview = { key: key, caller: caller || null,
+            command: ["bash", "-c", root.soundScript, "omanotes-preview", String(file), String(volume)] }
+        if (preview.running) preview.running = false
+        else root._startQueuedPreview()
+        return ""
+    }
+
+    function stopPreview() {
+        root._queuedPreview = null
+        root.previewKey = ""
+        if (preview.running) preview.running = false
+    }
+
+    property var _queuedPreview: null
+    function _startQueuedPreview() {
+        var next = root._queuedPreview
+        root._queuedPreview = null
+        if (!next || preview.running) return
+        preview.key = next.key
+        preview.caller = next.caller
+        preview.command = next.command
+        preview.running = true
+    }
+
     function _drop(id) {
         root.ringing = Alarm.ringWithout(root.ringing, Number(id))
     }
 
     function _ring(ids) {
+        root.stopPreview()
         root.ringing = Alarm.ringWith(root.ringing, ids, root.nowMs)
         root.soundBroken = false
         root.soundFailures = 0
@@ -148,6 +196,15 @@ Item {
 
     onRingingChanged: {
         if (root.ringing !== null) return
+        root._stopSound()
+    }
+
+    onSettingsChanged: {
+        if (root.settings.soundOn) root._ensureSound()
+        else root._stopSound()
+    }
+
+    function _stopSound() {
         soundLoop.stop()
         if (sound.running) sound.running = false
     }
@@ -160,6 +217,17 @@ Item {
         onAlarmWriteFailed: function(kind, record, message, caller) { root.writeFailed(kind, record, message, caller) }
     }
 
+    // The shell's one Updater: every panel uses it, and it makes the only
+    // automatic check, so several monitors never mean several fetches. A
+    // test drives the clock and never fetches. The reload and the restart an
+    // update sets off would drop a ring, so a ring blocks it.
+    Data.Updater {
+        id: updates
+        daily: root.clockRunning && root.settings.checkUpdates
+        checkUpdates: root.settings.checkUpdates
+        blocked: root.ringing !== null
+    }
+
     SystemClock {
         id: clock
         enabled: root.clockRunning
@@ -168,13 +236,17 @@ Item {
         onDateChanged: root.tick(clock.date.getTime())
     }
 
-    // Chime's player chain (MIT, see NOTICE).
+    // Chime's player chain (MIT, see NOTICE). $2 is the volume, 0 to 100,
+    // turned into each player's scale with integer maths under LC_ALL=C, so
+    // no locale puts a comma in pw-play's 0.50. $3 plays when $1 is gone.
     readonly property int unplayableExit: 3
-    readonly property string soundScript: 'f="$1"; [[ -f "$f" && -r "$f" ]] || { sleep 2; exit ' + unplayableExit + '; }; '
-        + 'if command -v pw-play >/dev/null 2>&1; then exec pw-play -- "$f"; fi; '
-        + 'if command -v paplay >/dev/null 2>&1; then exec paplay -- "$f"; fi; '
-        + 'if command -v mpv >/dev/null 2>&1; then exec mpv --no-video --no-terminal --really-quiet -- "$f"; fi; '
-        + 'if command -v ffplay >/dev/null 2>&1; then exec ffplay -nodisp -autoexit -loglevel quiet "$f"; fi; '
+    readonly property string soundScript: 'export LC_ALL=C; f="$1"; v="${2:-100}"; '
+        + '[[ -f "$f" && -r "$f" ]] || f="${3:-}"; '
+        + '[[ -n "$f" && -f "$f" && -r "$f" ]] || { sleep 2; exit ' + unplayableExit + '; }; '
+        + 'if command -v pw-play >/dev/null 2>&1; then exec pw-play --volume "$((v / 100)).$(printf %02d $((v % 100)))" -- "$f"; fi; '
+        + 'if command -v paplay >/dev/null 2>&1; then exec paplay --volume "$((v * 65536 / 100))" -- "$f"; fi; '
+        + 'if command -v mpv >/dev/null 2>&1; then exec mpv --no-video --no-terminal --really-quiet --volume="$v" -- "$f"; fi; '
+        + 'if command -v ffplay >/dev/null 2>&1; then exec ffplay -nodisp -autoexit -loglevel quiet -volume "$v" "$f"; fi; '
         + 'sleep 2; exit ' + unplayableExit
     readonly property int quickFailureMs: 1500
     readonly property int maxQuickFailures: 3
@@ -182,16 +254,17 @@ Item {
     property int soundFailures: 0
 
     function _ensureSound() {
-        if (!root.ringing || root.soundBroken || sound.running) return
+        if (!root.ringing || !root.settings.soundOn || root.soundBroken || sound.running) return
         root.soundStartedAt = Date.now()
-        sound.command = ["bash", "-c", root.soundScript, "omanotes-ring", root.soundFile]
+        sound.command = ["bash", "-c", root.soundScript, "omanotes-ring", root.soundFile,
+            String(root.settings.volume), root.fallbackSoundFile]
         sound.running = true
     }
 
     Process {
         id: sound
         onExited: function(exitCode) {
-            if (!root.ringing) return
+            if (!root.ringing || !root.settings.soundOn) return
             var quickFailure = exitCode !== 0 && Date.now() - root.soundStartedAt < root.quickFailureMs
             if (exitCode === root.unplayableExit || (quickFailure && ++root.soundFailures >= root.maxQuickFailures)) {
                 root.soundBroken = true
@@ -200,6 +273,19 @@ Item {
             }
             if (!quickFailure) root.soundFailures = 0
             soundLoop.restart()
+        }
+    }
+
+    Process {
+        id: preview
+        property string key: ""
+        property var caller: null
+        onExited: function(exitCode) {
+            var key = preview.key
+            var caller = preview.caller
+            if (root._queuedPreview) Qt.callLater(root._startQueuedPreview)
+            else if (root.previewKey === key) root.previewKey = ""
+            root.previewEnded(key, exitCode !== root.unplayableExit, caller)
         }
     }
 

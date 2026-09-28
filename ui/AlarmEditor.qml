@@ -21,6 +21,9 @@ ColumnLayout {
     property bool deleteArmed: false
     property double nowMs: 0
     property color foreground: Color.foreground
+    // The settings a draft takes its snooze and ring from. A draft keeps what
+    // it opened with, and a saved alarm keeps its own columns.
+    property var defaults: null
 
     property int editingId: -1
     property alias timeText: timeField.text
@@ -53,8 +56,8 @@ ColumnLayout {
         timeField.text = a ? Alarms.timeText(a.hour, a.minute) : ""
         labelField.text = a ? String(a.label || "") : ""
         root.days = a ? a.days.slice() : []
-        snoozeField.text = String(a ? a.snoozeMinutes : Alarm.DEFAULT_SNOOZE_MINUTES)
-        ringField.text = String(a ? a.ringMinutes : Alarm.DEFAULT_RING_MINUTES)
+        snoozeField.text = String(a ? a.snoozeMinutes : Alarm.snoozeMinutes(root.defaults ? root.defaults.snoozeMinutes : null))
+        ringField.text = String(a ? a.ringMinutes : Alarm.ringMinutes(root.defaults ? root.defaults.ringMinutes : null))
         root._base = root._current
     }
     function openDraft() { root.openAlarm(null) }

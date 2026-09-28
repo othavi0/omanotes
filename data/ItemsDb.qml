@@ -17,6 +17,7 @@ DbCore {
     property int totalNotes: 0                 // all notes, unfiltered
     property int totalTodos: 0                 // all todos, unfiltered
     property int totalHistory: 0               // all history, past historyList()'s limit
+    property real oldestHistory: 0             // seconds of the oldest entry, 0 with none
 
     // Last list() filter, remembered so load() can re-fetch the same subset
     // after a change.
@@ -44,6 +45,7 @@ DbCore {
     signal itemDeleted(int id)
     signal historyRowDeleted(int id)
     signal historyCleared()
+    signal backedUp(string name)
     // Follows failed for a write, with what the write carried, so the editor
     // can take back the text of its own add or update.
     signal writeFailed(string kind, var args, string message)
@@ -79,6 +81,7 @@ DbCore {
             root.totalNotes = c.notes
             root.totalTodos = c.todos
             root.totalHistory = c.history
+            root.oldestHistory = c.oldestHistory
             root.countsUpdated()
         }
     }
@@ -161,6 +164,10 @@ DbCore {
     onReloadDue: root.load()
     onWriteRefused: function(kind, args, message) { root._failWrite(kind, args, message, false) }
     onWriteEnded: function(kind, args, exitCode, output, errors, fromScript) {
+        if (kind === "settings") {
+            root._settingsWriteEnded(args, exitCode, errors)
+            return
+        }
         if (exitCode !== 0) {
             root._failWrite(kind, args, Db.errorText(errors, exitCode), fromScript)
             root.reloadSoon()
@@ -179,6 +186,7 @@ DbCore {
             else if (kind === "deleteItem") root.itemDeleted(args.id)
             else if (kind === "deleteHistory") root.historyRowDeleted(args.id)
             else if (kind === "clearHistory") root.historyCleared()
+            else if (kind === "backup") root.backedUp(args.name)
         }
         // The watcher sees this write too; both land on one timer, so the
         // write reloads once even if the watcher misses it.
@@ -278,5 +286,55 @@ DbCore {
 
     function clearHistory() {
         return root._write("clearHistory", Db.clearHistorySql, null)
+    }
+
+    // Copies the database to scratchpad-<today>.db beside it. It waits in the
+    // write queue, so it never copies a write halfway.
+    function backup() {
+        if (!root.ready) return root._refuse("not ready")
+        var day = Qt.formatDate(new Date(), "yyyy-MM-dd")
+        root._enqueue("backup", Db.backupCommand(root.dbPath, root.dataDir, day), { name: Db.backupName(day) })
+        return ""
+    }
+
+    // The settings row is written here only, so the service's Db, which
+    // reads the same row, cannot write it (ADR-0016). "" once queued, or why
+    // it was refused. The patch is laid over the row at once, so a control
+    // never snaps back while the write and the reload run. A failed write
+    // drops its keys and the control shows the file again.
+    function setSettings(patch) {
+        var seq = root._settingsSeq + 1
+        var error = root._write("settings", function() { return Db.setSettingsSql(patch) }, { seq: seq })
+        if (error !== "") return error
+        root._settingsSeq = seq
+        for (var key in patch) root._settingsPatch[key] = { value: patch[key], seq: seq }
+        root._showSettings()
+        return ""
+    }
+
+    function _settingsWriteEnded(args, exitCode, errors) {
+        root._settingsDoneSeq = args.seq
+        if (exitCode !== 0) {
+            root.fail("Setting not saved: " + Db.errorText(errors, exitCode))
+            for (var key in root._settingsPatch) {
+                if (root._settingsPatch[key].seq === args.seq) delete root._settingsPatch[key]
+            }
+            root._showSettings()
+        }
+        root.reloadSoon()
+    }
+
+    // True when keeping `days` of history would remove an entry now.
+    function wouldPruneHistory(days) {
+        return Db.prunes(days, root.oldestHistory, Db.now())
+    }
+
+    // Entries age while nothing is written, so opening the panel applies the
+    // Keep choice. It writes only when an entry is past the cutoff, so an
+    // open on a pruned history fires no watcher and reloads no Db.
+    function pruneHistoryIfDue() {
+        var days = root.settings.historyDays
+        if (!root.wouldPruneHistory(days)) return ""
+        return root._write("pruneHistory", function() { return Db.pruneHistorySql(days) }, null)
     }
 }

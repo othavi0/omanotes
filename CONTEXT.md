@@ -91,7 +91,7 @@ Throwing away the editor's changes. A discarded draft disappears.
 _Avoid_: cancel, revert
 
 **Arm**:
-The first click on a destructive button: Delete on an item, the trash on a history entry, or Clear history. A second click on the same button within two seconds confirms it. Selecting another row, switching tabs or closing the panel cancels it.
+The first click on a destructive button: Delete on an item, the trash on a history entry, Clear history, or a Keep that would remove entries. A second click on the same button within two seconds confirms it. Selecting another row, switching tabs or closing the panel cancels it.
 _Avoid_: confirm dialog, prime
 
 ### Alarms
@@ -135,7 +135,7 @@ _Avoid_: daemon, backend, controller
 ### Panel
 
 **Panel**:
-The popout opened from the bar icon, with the Items, Alarms and History tabs.
+The popout opened from the bar icon, with the Items, Alarms and History tabs and the gear for Settings.
 _Avoid_: popup, dropdown, window
 
 **Order**:
@@ -149,6 +149,40 @@ _Avoid_: tab, view
 **Search**:
 Restricting the list to items whose title or body contains the typed text, ignoring case and accents.
 _Avoid_: query (in user-facing text)
+
+### Settings
+
+**Settings**:
+The fourth tab, behind the gear: the alarm sound, the new-alarm defaults, updates, how long history is kept and the database. Every setting saves when it is clicked.
+_Avoid_: preferences, options, config
+
+**Defaults**:
+The snooze and ring lengths a new alarm starts with. An alarm that exists keeps its own.
+_Avoid_: presets, templates
+
+**Test**:
+Playing a sound once from Settings, at the volume shown. A ring stops it.
+_Avoid_: preview (in user-facing text), sample
+
+**Keep**:
+How long history entries stay: forever, 90 days or 30 days. Older entries are removed when the choice changes and when the panel opens.
+_Avoid_: retention (in user-facing text), expiry
+
+**Backup**:
+A copy of the database next to it, named with the day it was made. A second backup the same day replaces the first.
+_Avoid_: export, snapshot
+
+**Check**:
+Asking origin/main whether it has commits the plugin folder lacks. The service checks once a day when Check daily is on.
+_Avoid_: poll, sync
+
+**Update**:
+Pulling those commits into the plugin folder, fast-forward only, once the new version validates in a copy outside it, then a restart. It refuses a folder with local changes, on another branch, with commits of its own or with untracked files the pull would overwrite. Files git ignores do not count: an ignored file that origin/main starts to track is overwritten, as git does.
+_Avoid_: upgrade, install
+
+**Restart**:
+Stopping the Omarchy shell and starting a new one, the last step of an update. The shell reloads the plugin when the folder changes, but that reload keeps the code it already compiled, so only a restart loads the new version. When the restart fails, the user runs `omarchy restart shell`.
+_Avoid_: reload (for loading new code), relaunch
 
 **Scratchpad**:
 The legacy name of the database file and of the IPC target, kept so existing notes and scripts keep working.

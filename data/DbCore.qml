@@ -16,6 +16,14 @@ QtObject {
 
     property bool ready: false                 // init() completed
 
+    // The settings row, every Db reading it through the watcher (ADR-0016).
+    // Fallbacks until the first read lands. Only ItemsDb writes it.
+    property var settings: Db.parseSettings("").settings
+    // What each setting takes, for the controls that edit it.
+    readonly property var settingsSpec: Db.SETTINGS
+    property bool settingsLoaded: false
+    property real dbBytes: 0
+
     signal failed(string message)
     signal reloadDue()
     signal writeEnded(string kind, var args, int exitCode, string output, string errors, bool fromScript)
@@ -113,7 +121,63 @@ QtObject {
         root.ready = true
         // (Re)bind the watcher now that the file exists, then load.
         dbFile.reload()
+        root._reload()
+    }
+
+    function _reload() {
+        root._listSettings()
         root.reloadDue()
+    }
+
+    // The overlay of settings writes still on their way: ItemsDb lays each
+    // patch over the row at once, and a read drops a key's overlay once it
+    // started after that write ended.
+    property var _settingsRow: null
+    property var _settingsPatch: ({})
+    property int _settingsSeq: 0
+    property int _settingsDoneSeq: 0
+    property int _settingsReadSeq: 0      // _settingsDoneSeq when the running read started
+    property bool _settingsStale: false
+
+    function _showSettings() {
+        var values = {}
+        for (var key in root._settingsPatch) values[key] = root._settingsPatch[key].value
+        root.settings = Db.mergeSettings(root._settingsRow ? root._settingsRow.settings : Db.parseSettings("").settings, values)
+    }
+
+    function _listSettings() {
+        if (!root.ready) return
+        if (root.settingsProcess.running) { root._settingsStale = true; return }
+        root._settingsStale = false
+        root._settingsReadSeq = root._settingsDoneSeq
+        root.settingsProcess.command = Db.sqliteCommand(root.dbPath, Db.settingsSql(), true)
+        root.settingsProcess.running = true
+    }
+
+    property Process settingsProcess: Process {
+        stdout: StdioCollector {
+            id: settingsStdout
+            waitForEnd: true
+        }
+        stderr: StdioCollector {
+            id: settingsStderr
+            waitForEnd: true
+        }
+        onExited: function(exitCode) {
+            var read = root._parsed("settings", exitCode, settingsStdout, settingsStderr, Db.parseSettings)
+            if (root._settingsStale) {
+                Qt.callLater(root._listSettings)
+                return
+            }
+            if (read === null) return
+            root._settingsRow = read
+            for (var key in root._settingsPatch) {
+                if (root._settingsPatch[key].seq <= root._settingsReadSeq) delete root._settingsPatch[key]
+            }
+            root._showSettings()
+            root.dbBytes = read.bytes
+            root.settingsLoaded = true
+        }
     }
 
     // One sqlite3 process at a time; later writes wait their turn instead of
@@ -163,7 +227,7 @@ QtObject {
     property Timer reloadDebounce: Timer {
         interval: 80
         repeat: false
-        onTriggered: root.reloadDue()
+        onTriggered: root._reload()
     }
 
     property Timer initRetry: Timer {

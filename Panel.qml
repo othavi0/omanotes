@@ -2,8 +2,10 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import qs.Commons
 import qs.Ui
+import "data" as Data
 import "ui" as Ui
 import "ui/Tabs.js" as Tabs
 
@@ -35,6 +37,7 @@ Panel {
             return
         }
         root.db.load()
+        root.db.pruneHistoryIfDue()
         if (root.activeTab === Tabs.items) itemsTab.resetFocus()
         else root.activeTab = Tabs.items
     }
@@ -46,9 +49,21 @@ Panel {
         root.tabAt(root.activeTab).resetFocus()
     }
 
+    // For the gear's dot and the Updates page: the service's Updater, or
+    // one of the panel's own in a shell without the service. The panel's
+    // never checks by itself.
+    readonly property QtObject updater: root.service ? root.service.updater : ownUpdater.item
+    LazyLoader {
+        id: ownUpdater
+        active: root.service === null
+        Data.Updater {
+            checkUpdates: root.db ? root.db.settings.checkUpdates : true
+        }
+    }
+
     property int activeTab: Tabs.items
     readonly property var shownTab: root.tabAt(root.activeTab)
-    function tabAt(index) { return [itemsTab, alarmsTab, historyTab][index] }
+    function tabAt(index) { return [itemsTab, alarmsTab, historyTab, settingsTab][index] }
 
     // The popup card. The kit Panel is only the state machine (open/close/
     // toggle IPC); without a popup window nothing is ever drawn, so the bar
@@ -85,6 +100,7 @@ Panel {
                 Layout.fillWidth: true
                 db: root.db
                 service: root.service
+                updater: root.updater
                 activeTab: root.activeTab
                 foreground: root.barForeground
                 onTabPicked: function(index) { root.activeTab = index }
@@ -111,9 +127,12 @@ Panel {
                     foreground: root.barForeground
                 }
 
+                // The defaults come from the Db that writes them, so a
+                // changed default reaches the next draft before the reload.
                 Ui.AlarmsTab {
                     id: alarmsTab
                     service: root.service
+                    defaults: root.db ? root.db.settings : null
                     toast: toast
                     foreground: root.barForeground
                 }
@@ -122,6 +141,16 @@ Panel {
                     id: historyTab
                     db: root.db
                     toast: toast
+                    foreground: root.barForeground
+                }
+
+                Ui.SettingsTab {
+                    id: settingsTab
+                    db: root.db
+                    service: root.service
+                    updater: root.updater
+                    toast: toast
+                    bar: root.bar
                     foreground: root.barForeground
                 }
             }

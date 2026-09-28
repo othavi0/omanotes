@@ -1340,5 +1340,270 @@ logged "and it stays there after the reload, with the dropped row selected and i
 logged "a status change in a scrolled list keeps the list where it was" "SCROLLED-TOGGLE kept$"
 logged "a new search starts the list from the top" "SCROLLED-SEARCH rows=40 top=true$"
 
+# A seventh run drives the Settings tab of the real Panel, without the
+# service, as panel.sh does: every setting saves through the widget's Db.
+recent_history="$(sqlite3 "$db" "SELECT COUNT(*) FROM history")"
+# The Updates page runs the real script against a clone 22 commits behind
+# its origin, with a stub validator and notification, and launchers that
+# fail to start or start nothing.
+(
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
+    GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
+  git init --quiet --bare -b main "$cfg_dir/origin.git"
+  git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/dev" 2> /dev/null
+  printf '{\n  "version": "1.1.0"\n}\n' > "$cfg_dir/dev/manifest.json"
+  git -C "$cfg_dir/dev" add -A && git -C "$cfg_dir/dev" commit --quiet -m "feat: first"
+  git -C "$cfg_dir/dev" push --quiet origin main
+  git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/clone"
+  for n in $(seq 22); do git -C "$cfg_dir/dev" commit --quiet --allow-empty -m "feat: commit $n"; done
+  git -C "$cfg_dir/dev" push --quiet origin main
+)
+mkdir -p "$cfg_dir/bin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/omarchy-plugin-validate"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/omarchy-notification-send"
+printf '#!/usr/bin/env bash\necho restart >> "%s/restart.log"\n' "$cfg_dir" > "$cfg_dir/bin/omarchy-restart-shell"
+printf '#!/usr/bin/env bash\necho "Failed to connect to bus: No medium found" >&2\nexit 1\n' > "$cfg_dir/bin/launch-fails"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/launch-lost"
+chmod +x "$cfg_dir/bin/"*
+sqlite3 "$db" "INSERT INTO history (type, title, action, ts) VALUES
+  ('note', 'Aged 40', 'added', $(date +%s) - 40 * 86400), ('note', 'Aged 100', 'added', $(date +%s) - 100 * 86400)"
+cat > "$cfg_dir/shell.qml" <<'QML'
+import QtQuick
+import QtTest
+import Quickshell
+import "data" as Data
+import "data/Update.js" as Update
+import "ui/Icons.js" as Icons
+
+ShellRoot {
+  id: sr
+  property int stepIndex: 0
+  property bool started: false
+  property var panel: null
+  property var header: null
+  property var settingsTab: null
+  readonly property string clone: Quickshell.env("CFG_DIR") + "/clone"
+  property var toast: null
+  readonly property var db: testDb
+
+  function findWhere(item, match) {
+    if (!item) return null
+    if (match(item)) return item
+    for (var i = 0; i < item.children.length; ++i) {
+      var hit = sr.findWhere(item.children[i], match)
+      if (hit) return hit
+    }
+    return null
+  }
+  function named(item, name) { return sr.findWhere(item, function(it) { return it.objectName === name }) }
+  function findByText(item, text) { return sr.findWhere(item, function(it) { return it.visible && it.text === text }) }
+  function buttonWithIcon(item, icon) {
+    return sr.findWhere(item, function(it) { return it.visible && it.iconText === icon && it.clicked !== undefined })
+  }
+  function click(item) { keys.mouseClick(item, item.width / 2, item.height / 2, Qt.LeftButton, Qt.NoModifier, -1) }
+  function clickAt(item, fraction) { keys.mouseClick(item, item.width * fraction, item.height / 2, Qt.LeftButton, Qt.NoModifier, -1) }
+  function gear() {
+    var segment = sr.findWhere(header, function(it) { return String(it).indexOf("Segment") === 0 })
+    return segment.children.filter(function(c) { return c.modelData !== undefined })[3]
+  }
+  function metas() {
+    return ["sound", "alarms"].map(function(id) {
+      var row = sr.named(settingsTab, "section:" + id)
+      var cells = row.children[1].children
+      return cells[cells.length - 1].text
+    }).join("|")
+  }
+  function keepChip(text) { return sr.findByText(sr.named(settingsTab, "keep"), text) }
+  function keep(label) {
+    var armed = ["Forever", "90 days", "30 days", "Confirm"].filter(function(t) { return t === "Confirm" && !!sr.keepChip(t) })
+    console.log(label + " days=" + db.settings.historyDays + " armed=" + (armed.length > 0) + " history=" + db.totalHistory
+      + " toast=[" + toast.text + "]")
+  }
+  function updates(label) {
+    var u = settingsTab.updater
+    var headline = sr.named(settingsTab, "updateHeadline")
+    var more = sr.findWhere(settingsTab, function(it) { return it.visible && typeof it.text === "string" && /^and \d+ more$/.test(it.text) })
+    console.log("UPDATES-" + label + " phase=" + u.view.phase + " running=" + u.checkProcess.running + " headline=[" + (headline ? headline.text : "")
+      + "] more=[" + (more ? more.text : "") + "] update=" + (sr.findByText(settingsTab, "Update") ? "shown" : "hidden")
+      + " toast=[" + toast.text + "]")
+  }
+  function state(label) {
+    var s = db.settings
+    console.log(label + " tab=" + panel.activeTab + " section=" + settingsTab.section + " sound=" + s.sound + " on=" + s.soundOn
+      + " volume=" + s.volume + " snooze=" + s.snoozeMinutes + " ring=" + s.ringMinutes + " meta=[" + sr.metas() + "] toast=[" + toast.text + "]")
+  }
+
+  readonly property var steps: [
+    function() { sr.click(sr.gear()) },
+    function() { sr.state("GEAR") },
+    function() { sr.click(sr.named(settingsTab, "sound:bell")) },
+    function() { sr.state("BELL") },
+    function() { sr.click(sr.buttonWithIcon(sr.named(settingsTab, "sound:service-login"), Icons.play)) },
+    function() { sr.state("PLAY-WITHOUT-SERVICE") },
+    function() { sr.clickAt(sr.findWhere(settingsTab, function(it) { return String(it).indexOf("PanelSlider") === 0 }), 0.4) },
+    function() { sr.state("VOLUME") },
+    function() { sr.click(sr.findByText(settingsTab, "Off")) },
+    function() { sr.state("OFF") },
+    function() { sr.click(sr.named(settingsTab, "section:alarms")) },
+    function() { var plus = sr.buttonWithIcon(sr.named(settingsTab, "snooze"), Icons.plus); sr.click(plus); sr.click(plus) },
+    function() { sr.click(sr.buttonWithIcon(sr.named(settingsTab, "ring"), Icons.minus)) },
+    function() { sr.state("STEPPERS") },
+    function() { sr.click(sr.named(settingsTab, "section:history")); sr.keep("KEEP-START") },
+    function() { toast.text = ""; sr.click(sr.keepChip("30 days")) },
+    function() { sr.keep("KEEP-ARMED") },
+    function() { sr.click(sr.named(settingsTab, "section:alarms")); sr.click(sr.named(settingsTab, "section:history")); sr.keep("KEEP-AFTER-SECTION") },
+    function() { sr.click(sr.keepChip("30 days")) },
+    function() { sr.click(sr.keepChip("Confirm")) },
+    function() { sr.keep("KEEP-30") },
+    function() { toast.text = ""; sr.click(sr.keepChip("90 days")) },
+    function() { sr.keep("KEEP-90") },
+    function() { sr.click(sr.named(settingsTab, "section:data")); toast.text = ""; sr.click(sr.findByText(settingsTab, "Back up now")) },
+    function() {
+      var caption = sr.findWhere(settingsTab, function(it) { return it.visible && typeof it.text === "string" && it.text.indexOf("scratchpad.db · ") >= 0 })
+      console.log("BACKUP toast=[" + toast.text + "] database=[" + (caption ? caption.text : "none") + "]")
+    },
+    function() {
+      settingsTab.updater.pluginDir = sr.clone
+      settingsTab.updater.launcher = [Quickshell.env("CFG_DIR") + "/bin/launch-fails"]
+      sr.click(sr.named(settingsTab, "section:updates"))
+    },
+    function() { sr.click(sr.findByText(settingsTab, "Check for updates")) },
+    function() { sr.updates("AVAILABLE") },
+    function() { sr.watchDot = true; settingsTab.updater.check() },
+    function() { sr.watchDot = false },
+    function() { toast.text = ""; sr.click(sr.findByText(settingsTab, "Update")) },
+    function() { sr.updates("START-FAILED") },
+    function() {
+      settingsTab.updater.launcher = [Quickshell.env("CFG_DIR") + "/bin/launch-lost"]
+      settingsTab.updater.startTimeoutMs = 2000
+      toast.text = ""
+      sr.click(sr.findByText(settingsTab, "Update"))
+      sr.updates("REQUESTED")
+      Quickshell.execDetached(["bash", settingsTab.updater.scriptPath, "check", sr.clone])
+    },
+    function() {},
+    function() { sr.updates("FOREIGN") },
+    function() {},
+    function() {},
+    function() { sr.updates("LOST") },
+    function() { Quickshell.execDetached(["git", "-C", sr.clone, "remote", "set-url", "origin", sr.clone + "-gone.git"]) },
+    function() { settingsTab.updater.check() },
+    function() { sr.updates("OFFLINE") },
+    function() {
+      Quickshell.execDetached(["git", "-C", sr.clone, "remote", "set-url", "origin", Quickshell.env("CFG_DIR") + "/origin.git"])
+      settingsTab.updater.daily = true
+      settingsTab.updater.tick(settingsTab.updater.state.at + Update.RETRY_OFFLINE_MS - 60000)
+      sr.updates("RETRY-EARLY")
+    },
+    function() { settingsTab.updater.tick(settingsTab.updater.state.at + Update.RETRY_OFFLINE_MS); sr.updates("RETRY-DUE"); settingsTab.updater.daily = false },
+    function() { sr.updates("RETRIED") },
+    function() { settingsTab.updater.launcher = []; toast.text = ""; sr.click(sr.findByText(settingsTab, "Update")) },
+    function() {},
+    function() { sr.updates("UPDATED") },
+    function() { sr.click(sr.named(settingsTab, "section:alarms")); Quickshell.execDetached(["chmod", "444", db.dbPath]) },
+    function() { toast.text = ""; sr.click(sr.buttonWithIcon(sr.named(settingsTab, "ring"), Icons.plus)); sr.state("WRITE-SENT") },
+    function() { sr.state("WRITE-FAILED") },
+    function() { Quickshell.execDetached(["chmod", "644", db.dbPath]) },
+    function() { keys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1) },
+    function() { console.log("ESC-IN-SETTINGS open=" + panel.opened) },
+    function() {
+      Quickshell.execDetached(["sqlite3", db.dbPath, "INSERT INTO history (type, title, action, ts) VALUES "
+        + "('note', 'Aged 95', 'added', CAST(strftime('%s', 'now') AS INTEGER) - 95 * 86400)"])
+    },
+    function() { console.log("AGED-WHILE-CLOSED history=" + db.totalHistory) },
+    function() { panel.open() },
+    function() { console.log("REOPEN tab=" + panel.activeTab); Qt.exit(0) }
+  ]
+
+  Data.ItemsDb {
+    id: testDb
+    Component.onCompleted: testDb.init()
+  }
+  Loader {
+    source: Qt.resolvedUrl("Panel.qml")
+    onLoaded: {
+      item.db = testDb
+      sr.panel = item
+      var content = null
+      for (var i = 0; i < item.data.length; ++i)
+        if (String(item.data[i]).indexOf("KeyboardPanel") === 0) content = item.data[i].contentItem
+      sr.header = sr.findWhere(content, function(it) { return String(it).indexOf("PanelHeader") === 0 })
+      sr.settingsTab = sr.findWhere(content, function(it) { return String(it).indexOf("SettingsTab") === 0 })
+      sr.toast = sr.findWhere(content, function(it) { return String(it).indexOf("Toast") === 0 })
+      item.open()
+    }
+  }
+  // The gear's dot once the check is seen running, after the bindings on it
+  // settle.
+  property bool watchDot: false
+  Connections {
+    target: sr.watchDot ? sr.settingsTab.updater.checkProcess : null
+    function onRunningChanged() {
+      if (!sr.settingsTab.updater.checkProcess.running) return
+      Qt.callLater(function() {
+        console.log("DOT-WHILE-CHECKING phase=" + sr.settingsTab.updater.view.phase + " dot=" + !!sr.gear().modelData.dot)
+      })
+    }
+  }
+  Connections {
+    target: testDb
+    function onSettingsLoadedChanged() { if (!sr.started && testDb.settingsLoaded) { sr.started = true; stepTimer.start() } }
+  }
+  Timer {
+    id: stepTimer
+    interval: 600
+    repeat: true
+    onTriggered: if (sr.stepIndex < sr.steps.length) sr.steps[sr.stepIndex++]()
+  }
+  TestEvent { id: keys }
+}
+QML
+log_file="$cfg_dir/qs-settings.log"
+PATH="$cfg_dir/bin:$PATH" CFG_DIR="$cfg_dir" run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
+logged "the gear opens Settings on the Alarm sound page, which reads the defaults" \
+  "GEAR tab=3 section=sound sound=alarm-clock-elapsed on=true volume=100 snooze=9 ring=5 meta=\[Alarm clock\|9 / 5 min\]"
+logged "a click on a sound row picks it, and its row in the list names it" "BELL .* sound=bell .* meta=\[Bell\|9 / 5 min\]"
+logged "without the service a play button plays nothing and says nothing" "PLAY-WITHOUT-SERVICE .* toast=\[\]$"
+logged "a click on the volume track sets the volume there" "VOLUME .* volume=40 "
+logged "Off switches the sound off, and the list says off" "OFF .* on=false .* meta=\[off\|9 / 5 min\]"
+logged "each stepper click saves one step" "STEPPERS tab=3 section=alarms .* snooze=11 ring=4 meta=\[off\|11 / 4 min\]"
+logged "a write shows at once" "WRITE-SENT .* ring=5 "
+logged "a write that fails goes back to the file and says why" \
+  "WRITE-FAILED .* ring=4 .* toast=\[Error: Setting not saved: .*readonly database.*\]$"
+logged "Esc in Settings closes the panel" "ESC-IN-SETTINGS open=false$"
+logged "the panel reopens on Items" "REOPEN tab=0$"
+logged "History starts on Forever" "KEEP-START days=0 armed=false"
+logged "the first click on a Keep that removes entries only arms it and says what it removes" \
+  "KEEP-ARMED days=0 armed=true history=$(( recent_history + 2 )) toast=\[Removes entries older than 30 days. Click again to confirm.\]$"
+logged "switching sections cancels it" "KEEP-AFTER-SECTION days=0 armed=false"
+logged "the second click keeps 30 days and removes the older entries at once" "KEEP-30 days=30 armed=false history=$recent_history "
+logged "a longer Keep that removes nothing saves on the first click" "KEEP-90 days=90 armed=false history=$recent_history toast=\[\]$"
+logged "Back up now copies the database and names the copy" "BACKUP toast=\[Saved scratchpad-$(date +%F).db\] "
+logged "the Data page shows where the database is and its size" "BACKUP .* database=\[$db · [0-9]+ KB\]$"
+logged "a check finds the 22 new commits and lists four, then how many more" \
+  "UPDATES-AVAILABLE phase=available running=false headline=\[22 new commits on origin/main\] more=\[and 18 more\] update=shown"
+logged "the gear keeps its dot while a check runs" "DOT-WHILE-CHECKING phase=checking dot=true$"
+logged "an update that systemd-run cannot start says why and offers Update again" \
+  "UPDATES-START-FAILED phase=available .* update=shown toast=\[Could not start the update: Failed to connect to bus: No medium found\]$"
+logged "an update asked for shows as updating at once, with Update gone" "UPDATES-REQUESTED phase=updating .* update=hidden toast=\[\]$"
+logged "a record the update did not write, a check's in the same second, leaves it asked for" "UPDATES-FOREIGN phase=updating .* toast=\[\]$"
+logged "an update that never writes its record is called lost and offers Update again" \
+  "UPDATES-LOST phase=available .* update=shown toast=\[The update did not start.\]$"
+logged "a check that cannot reach origin says offline with git's reason" "UPDATES-OFFLINE phase=offline running=false headline=\[Could not reach origin: fatal: "
+logged "the daily check leaves an offline record alone until an hour has passed" "UPDATES-RETRY-EARLY phase=offline running=false "
+logged "and checks again at the hour" "UPDATES-RETRY-DUE phase=[a-zA-Z]+ running=true "
+logged "which finds the new commits again" "UPDATES-RETRIED phase=available "
+logged "Update pulls the clone and says so" "UPDATES-UPDATED phase=updated .* headline=\[Updated to $(git -C "$cfg_dir/dev" rev-parse --short HEAD). The shell restarted.\]"
+if [[ "$(cat "$cfg_dir/restart.log" 2> /dev/null)" == restart ]]; then pass "and restarts the shell once, through the stub"; else fail "and restarts the shell once, through the stub"; fi
+if [[ "$(git -C "$cfg_dir/clone" rev-parse HEAD)" == "$(git -C "$cfg_dir/dev" rev-parse HEAD)" ]]; then pass "the clone is at origin/main"; else fail "the clone is at origin/main"; fi
+expect "the copy holds the items of the database" "SELECT COUNT(*) FROM items" \
+  "$(sqlite3 "$data_home/omarchy/scratchpad-$(date +%F).db" "SELECT COUNT(*) FROM items" 2>&1)"
+logged "an entry past the Keep can age in while the panel is closed" "AGED-WHILE-CLOSED history=$(( recent_history + 1 ))$"
+expect "opening the panel removes it, and no other entry" \
+  "SELECT (SELECT COUNT(*) FROM history WHERE title LIKE 'Aged %') || '|' || (SELECT COUNT(*) FROM history) || '|' || (SELECT history_days FROM settings)" \
+  "0|$recent_history|90"
+expect "the settings row holds every change and nothing of the failed write" \
+  "SELECT sound || '|' || sound_on || '|' || volume || '|' || snooze_minutes || '|' || ring_minutes FROM settings" "bell|0|40|11|4"
+
 echo "behavior: $checks checks, $failures failed"
 exit $(( failures > 0 ))
