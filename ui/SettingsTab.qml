@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import qs.Commons
 import qs.Ui
 import "../data/Db.js" as Db
@@ -27,7 +28,7 @@ FocusScope {
     readonly property var settings: root.db ? root.db.settings : ({})
     readonly property int sectionIndex: Math.max(0, root.sectionIds.indexOf(root.section))
     readonly property var sectionIds: Settings.SECTIONS.map(function(s) { return s.id })
-    readonly property var sectionIcons: ({ sound: Icons.volume, alarms: Icons.alarm, history: Icons.history })
+    readonly property var sectionIcons: ({ sound: Icons.volume, alarms: Icons.alarm, history: Icons.history, data: Icons.database })
 
     function save(patch) {
         if (!root.db) return
@@ -59,6 +60,17 @@ FocusScope {
     }
 
     ArmedConfirm { id: confirm }
+
+    function backup() {
+        if (!root.db) return
+        var error = root.db.backup()
+        if (error !== "" && root.toast) root.toast.show("Error: " + error, true)
+    }
+
+    Connections {
+        target: root.db
+        function onBackedUp(name) { if (root.toast) root.toast.show("Saved " + name) }
+    }
 
     // Holds focus for the tab, so KeyboardPanel's focusTarget lands inside
     // it and Esc reaches Panel.qml.
@@ -125,7 +137,7 @@ FocusScope {
                         font.pixelSize: Style.font.body
                     }
                     Text {
-                        text: Settings.sectionMeta(sectionRow.modelData.id, root.settings)
+                        text: Settings.sectionMeta(sectionRow.modelData.id, root.settings, { bytes: root.db ? root.db.dbBytes : 0 })
                         color: Util.alpha(root.foreground, Tone.secondary)
                         font.family: Style.font.family
                         font.pixelSize: Style.font.caption
@@ -241,6 +253,38 @@ FocusScope {
                             value: String(root.settings.historyDays)
                             foreground: root.foreground
                             onPicked: function(v) { root.pickKeep(Number(v)) }
+                        }
+                    }
+                    Item { Layout.fillHeight: true }
+                }
+
+                ColumnLayout {
+                    spacing: Style.spacing.lg
+
+                    SettingRow {
+                        Layout.fillWidth: true
+                        label: "Database"
+                        caption: root.db ? Settings.pathText(root.db.dbPath, Quickshell.env("HOME")) + " · " + Settings.sizeText(root.db.dbBytes) : ""
+                        foreground: root.foreground
+                    }
+                    SettingRow {
+                        Layout.fillWidth: true
+                        label: "Backup"
+                        caption: "Copies the database next to it with today's date."
+                        foreground: root.foreground
+                        ActionButton {
+                            bordered: true
+                            iconText: Icons.save
+                            text: "Back up now"
+                            foreground: root.foreground
+                            onClicked: root.backup()
+                        }
+                        ActionButton {
+                            bordered: true
+                            iconText: Icons.folder
+                            text: "Open folder"
+                            foreground: root.foreground
+                            onClicked: if (root.db) Util.execArgv(["xdg-open", root.db.dataDir])
                         }
                     }
                     Item { Layout.fillHeight: true }

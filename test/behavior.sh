@@ -1424,6 +1424,11 @@ ShellRoot {
     function() { sr.keep("KEEP-30") },
     function() { toast.text = ""; sr.click(sr.keepChip("90 days")) },
     function() { sr.keep("KEEP-90") },
+    function() { sr.click(sr.named(settingsTab, "section:data")); toast.text = ""; sr.click(sr.findByText(settingsTab, "Back up now")) },
+    function() {
+      var caption = sr.findWhere(settingsTab, function(it) { return it.visible && typeof it.text === "string" && it.text.indexOf("scratchpad.db · ") >= 0 })
+      console.log("BACKUP toast=[" + toast.text + "] database=[" + (caption ? caption.text : "none") + "]")
+    },
     function() { sr.click(sr.named(settingsTab, "section:alarms")); Quickshell.execDetached(["chmod", "444", db.dbPath]) },
     function() { toast.text = ""; sr.click(sr.buttonWithIcon(sr.named(settingsTab, "ring"), Icons.plus)); sr.state("WRITE-SENT") },
     function() { sr.state("WRITE-FAILED") },
@@ -1490,6 +1495,10 @@ logged "the first click on a Keep that removes entries only arms it and says wha
 logged "switching sections cancels it" "KEEP-AFTER-SECTION days=0 armed=false"
 logged "the second click keeps 30 days and removes the older entries at once" "KEEP-30 days=30 armed=false history=$recent_history "
 logged "a longer Keep that removes nothing saves on the first click" "KEEP-90 days=90 armed=false history=$recent_history toast=\[\]$"
+logged "Back up now copies the database and names the copy" "BACKUP toast=\[Saved scratchpad-$(date +%F).db\] "
+logged "the Data page shows where the database is and its size" "BACKUP .* database=\[$db · [0-9]+ KB\]$"
+expect "the copy holds the items of the database" "SELECT COUNT(*) FROM items" \
+  "$(sqlite3 "$data_home/omarchy/scratchpad-$(date +%F).db" "SELECT COUNT(*) FROM items" 2>&1)"
 logged "an entry past the Keep can age in while the panel is closed" "AGED-WHILE-CLOSED history=$(( recent_history + 1 ))$"
 expect "opening the panel removes it, and no other entry" \
   "SELECT (SELECT COUNT(*) FROM history WHERE title LIKE 'Aged %') || '|' || (SELECT COUNT(*) FROM history) || '|' || (SELECT history_days FROM settings)" \

@@ -45,6 +45,7 @@ DbCore {
     signal itemDeleted(int id)
     signal historyRowDeleted(int id)
     signal historyCleared()
+    signal backedUp(string name)
     // Follows failed for a write, with what the write carried, so the editor
     // can take back the text of its own add or update.
     signal writeFailed(string kind, var args, string message)
@@ -181,6 +182,7 @@ DbCore {
             else if (kind === "deleteItem") root.itemDeleted(args.id)
             else if (kind === "deleteHistory") root.historyRowDeleted(args.id)
             else if (kind === "clearHistory") root.historyCleared()
+            else if (kind === "backup") root.backedUp(args.name)
         }
         // The watcher sees this write too; both land on one timer, so the
         // write reloads once even if the watcher misses it.
@@ -280,6 +282,15 @@ DbCore {
 
     function clearHistory() {
         return root._write("clearHistory", Db.clearHistorySql, null)
+    }
+
+    // Copies the database to scratchpad-<today>.db beside it. It waits in the
+    // write queue, so it never copies a write halfway.
+    function backup() {
+        if (!root.ready) return root._refuse("not ready")
+        var day = Qt.formatDate(new Date(), "yyyy-MM-dd")
+        root._enqueue("backup", Db.backupCommand(root.dbPath, root.dataDir, day), { name: Db.backupName(day) })
+        return ""
     }
 
     // Entries age while nothing is written, so opening the panel applies the

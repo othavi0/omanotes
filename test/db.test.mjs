@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { spawn as spawnAsync, spawnSync } from "node:child_process"
 import { once } from "node:events"
 import { setTimeout as sleep } from "node:timers/promises"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
@@ -16,7 +16,7 @@ const NAMES = [
   "parseVersion", "migrationRaced", "parseRows", "parseCounts", "parseId", "parseFound",
   "errorText", "moveSql", "movedRows", "sqlInt", "daysMask", "maskDays", "alarmsSql", "insertAlarmSql",
   "saveAlarmSql", "deleteAlarmSql", "parseAlarms", "mergeAlarms", "SETTINGS", "settingsSql", "setSettingsSql",
-  "parseSettings", "mergeSettings", "pruneHistorySql", "prunes"
+  "parseSettings", "mergeSettings", "pruneHistorySql", "prunes", "backupName", "backupCommand"
 ]
 const Db = loadQmlLib(DB_JS, NAMES)
 
@@ -1115,4 +1115,33 @@ test("prunes: only a Keep of some days with an entry older than them removes any
   assert.equal(Db.prunes(30, now - 29 * DAY, now), false)
   assert.equal(Db.prunes(0, now - 400 * DAY, now), false, "forever keeps everything")
   assert.equal(Db.prunes(30, 0, now), false, "an empty history has nothing to remove")
+})
+
+test("backupCommand copies the database next to it under today's date, and a second copy that day replaces the first", (t) => {
+  const db = seeded(t)
+  const dir = dirname(db.path)
+  const copy = join(dir, "scratchpad-2026-09-28.db")
+  assert.equal(Db.backupName("2026-09-28"), "scratchpad-2026-09-28.db")
+  let r = spawn(Db.backupCommand(db.path, dir, "2026-09-28"))
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(dbAt(copy).snapshot(), db.snapshot())
+  db.write(Db.addSql("note", "after the first copy", ""))
+  r = spawn(Db.backupCommand(db.path, dir, "2026-09-28"))
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(dbAt(copy).snapshot(), db.snapshot())
+  assert.deepEqual(readdirSync(dir).sort(), ["scratchpad-2026-09-28.db", "scratchpad.db"], "no temporary file is left")
+})
+
+test("a backup that fails leaves the earlier copy of the day as it was", (t) => {
+  const db = seeded(t)
+  const dir = dirname(db.path)
+  const copy = join(dir, "scratchpad-2026-09-28.db")
+  assert.equal(spawn(Db.backupCommand(db.path, dir, "2026-09-28")).status, 0)
+  const before = readFileSync(copy)
+  const broken = join(dir, "broken.db")
+  writeFileSync(broken, "not a database, but long enough to be read as one ".repeat(20))
+  const r = spawn(Db.backupCommand(broken, dir, "2026-09-28"))
+  assert.notEqual(r.status, 0)
+  assert.match(r.stderr, /not a database/)
+  assert.deepEqual(readFileSync(copy), before)
 })

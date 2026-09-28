@@ -28,3 +28,5 @@ var volume = g(0xF057E)      // md-volume_high
 var play = g(0xF040A)        // md-play
 var minus = g(0xF0374)       // md-minus
 var folder = g(0xF0DCF)      // md-folder_open_outline
+var database = g(0xF1632)    // md-database_outline
+var save = g(0xF0818)        // md-content_save_outline

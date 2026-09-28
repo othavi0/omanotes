@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const S = loadQmlLib(new URL("../ui/Settings.js", import.meta.url), [
-  "SOUND_DIR", "DEFAULT_SOUND", "CUSTOM", "SOUNDS", "pathFor", "soundPath", "soundName", "SECTIONS", "sectionMeta", "KEEP_CHOICES", "keepText"
+  "SOUND_DIR", "DEFAULT_SOUND", "CUSTOM", "SOUNDS", "pathFor", "soundPath", "soundName", "SECTIONS", "sectionMeta", "KEEP_CHOICES", "keepText", "sizeText", "pathText"
 ])
 
 const DIR = "/usr/share/sounds/freedesktop/stereo/"
@@ -46,4 +46,13 @@ test("the Keep choice reads forever or a number of days", () => {
   assert.deepEqual(S.KEEP_CHOICES.map((c) => c.label), ["Forever", "90 days", "30 days"])
   assert.equal(S.sectionMeta("history", settings({ historyDays: 0 })), "forever")
   assert.equal(S.sectionMeta("history", settings({ historyDays: 30 })), "30d")
+})
+
+test("the Data row reads the file size in the unit that fits, and the path from home", () => {
+  assert.equal(S.sizeText(900), "900 B")
+  assert.equal(S.sizeText(217088), "212 KB")
+  assert.equal(S.sizeText(5 * 1048576 + 300000), "5.3 MB")
+  assert.equal(S.sectionMeta("data", settings(), { bytes: 217088 }), "212 KB")
+  assert.equal(S.pathText("/home/me/.local/share/omarchy/scratchpad.db", "/home/me"), "~/.local/share/omarchy/scratchpad.db")
+  assert.equal(S.pathText("/data/omarchy/scratchpad.db", "/home/me"), "/data/omarchy/scratchpad.db")
 })

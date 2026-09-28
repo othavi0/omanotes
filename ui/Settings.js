@@ -42,7 +42,8 @@ function baseName(path) {
 var SECTIONS = [
   { id: "sound", label: "Alarm sound" },
   { id: "alarms", label: "Alarms" },
-  { id: "history", label: "History" }
+  { id: "history", label: "History" },
+  { id: "data", label: "Data" }
 ]
 
 var KEEP_CHOICES = [
@@ -56,13 +57,30 @@ function keepText(days) {
   return days > 0 ? days + "d" : "forever"
 }
 
+// "900 B", "212 KB", "5.3 MB".
+function sizeText(bytes) {
+  var b = Number(bytes) || 0
+  if (b < 1024) return b + " B"
+  if (b < 1024 * 1024) return Math.round(b / 1024) + " KB"
+  return (b / (1024 * 1024)).toFixed(1) + " MB"
+}
+
+// `path` with the home directory written as ~.
+function pathText(path, home) {
+  var p = String(path || "")
+  var h = String(home || "")
+  return h !== "" && (p === h || p.indexOf(h + "/") === 0) ? "~" + p.slice(h.length) : p
+}
+
 // What a section row shows on its right, from the same settings the page
-// edits: "Bell" or "off", "9 / 5 min".
-function sectionMeta(id, settings) {
+// edits: "Bell" or "off", "9 / 5 min". `info` carries what is not a
+// setting: { bytes }.
+function sectionMeta(id, settings, info) {
   if (!settings) return ""
   if (id === "sound") return settings.soundOn ? soundName(settings) : "off"
   if (id === "alarms") return settings.snoozeMinutes + " / " + settings.ringMinutes + " min"
   if (id === "history") return keepText(settings.historyDays)
+  if (id === "data") return sizeText(info ? info.bytes : 0)
   return ""
 }
 

@@ -603,6 +603,22 @@ function initCommand(dataDir, dbPath) {
     .concat(sqliteCommand(dbPath, "PRAGMA user_version", false))
 }
 
+// The backup of the day `dayText` ("2026-09-28"), next to the database.
+function backupName(dayText) {
+  return "scratchpad-" + dayText + ".db"
+}
+
+// argv for a backup: VACUUM INTO a temporary file, then a move over the
+// day's backup, so a VACUUM that fails leaves the earlier copy of the day.
+// VACUUM INTO writes another file, so the watcher does not fire, and it
+// cannot run inside a transaction, so it is its own argument.
+function backupCommand(dbPath, dataDir, dayText) {
+  var target = String(dataDir) + "/" + backupName(dayText)
+  var temporary = target + ".tmp"
+  return ["bash", "-c", 'rm -f -- "$3" && sqlite3 -init /dev/null "$1" ".timeout 5000" "$2" && mv -f -- "$3" "$4"',
+    "omanotes-backup", String(dbPath), "VACUUM INTO " + q(temporary), temporary, target]
+}
+
 function parseVersion(text) {
   var t = String(text || "").trim()
   if (!/^\d+$/.test(t)) throw new Error("unreadable sqlite3 output")
