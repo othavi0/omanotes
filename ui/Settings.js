@@ -114,7 +114,10 @@ function updateHeadline(view, local) {
   case "checking": return "Checking origin/main…"
   case "upToDate": return "You have the latest version."
   case "available": return commitsText(view.behind) + " on origin/main"
-  case "blocked": return REFUSALS[view.error] || "Nothing was changed."
+  case "blocked":
+    if (view.error === "untracked" && view.detail)
+      return "The plugin folder has untracked files that the update would overwrite, such as " + view.detail + ". Nothing was changed."
+    return REFUSALS[view.error] || "Nothing was changed."
   case "offline": return view.detail ? "Could not reach origin: " + view.detail : "Could not reach origin. Check the connection and try again."
   case "updating": return "Updating to " + shortHash(view.to) + "…"
   case "updated": return "Updated to " + shortHash(view.to) + ". The plugin reloaded."

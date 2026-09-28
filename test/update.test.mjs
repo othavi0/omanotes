@@ -26,6 +26,8 @@ test("parseState keeps a subject with spaces, quotes and a tab whole, in order",
   assert.equal(s.at, NOW - 60000, "seconds become ms")
   assert.equal(s.behind, 2)
   assert.deepEqual(s.commits, [{ hash: "c41e9a2", subject: "feat(alarm): aba \"Alarms\"\te som" }, { hash: "7b0d113", subject: "fix: busca" }])
+  assert.equal(s.request, "", "a check names no request")
+  assert.equal(U.parseState(stateText({ phase: "updating", request: "omanotes-update-7" })).request, "omanotes-update-7")
   assert.equal(U.parseState(""), null)
   assert.equal(U.parseState("garbage without a phase\n"), null)
 })
@@ -90,13 +92,22 @@ test("dueForCheck: never checked, a day old, or an offline hour old, and never w
   assert.equal(U.dueForCheck({ ...LOCAL, git: false }, null, NOW), false)
 })
 
-test("applyCommand runs the script in its own unit with the shell's environment, or directly with no launcher", () => {
+test("dueForCheck: a check that left no record waits an hour before the next, whatever the record says", () => {
+  const old = U.parseState(stateText({ at: (NOW - 2 * U.DAY_MS) / 1000 }))
+  assert.equal(U.dueForCheck(LOCAL, null, NOW, NOW - 60000), false)
+  assert.equal(U.dueForCheck(LOCAL, old, NOW, NOW - U.RETRY_OFFLINE_MS + 60000), false)
+  assert.equal(U.dueForCheck(LOCAL, old, NOW, NOW - U.RETRY_OFFLINE_MS), true)
+  assert.equal(U.dueForCheck(LOCAL, old, NOW, 0), true, "0 is no failed check")
+})
+
+test("applyCommand runs the script in its own unit with the shell's environment, or directly with no launcher, naming the request", () => {
   const env = { PATH: "/usr/bin:/opt/bin", XDG_STATE_HOME: "", OMARCHY_PATH: "/usr/share/omarchy", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus",
     WAYLAND_DISPLAY: "wayland-1", SSH_AUTH_SOCK: "/run/user/1000/ssh-agent.socket", HOME: "/home/me" }
   const lookup = (key) => env[key]
   assert.deepEqual(U.applyCommand(["systemd-run", "--user", "--collect", "--quiet"], "omanotes-update-7", lookup, "/p/data/update.sh", "/p"),
     ["systemd-run", "--user", "--collect", "--quiet", "--unit=omanotes-update-7", "--setenv=PATH=/usr/bin:/opt/bin",
       "--setenv=OMARCHY_PATH=/usr/share/omarchy", "--setenv=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus", "--setenv=WAYLAND_DISPLAY=wayland-1",
-      "--setenv=SSH_AUTH_SOCK=/run/user/1000/ssh-agent.socket", "bash", "/p/data/update.sh", "apply", "/p"])
-  assert.deepEqual(U.applyCommand([], "x", lookup, "/p/data/update.sh", "/p"), ["bash", "/p/data/update.sh", "apply", "/p"])
+      "--setenv=SSH_AUTH_SOCK=/run/user/1000/ssh-agent.socket", "bash", "/p/data/update.sh", "apply", "/p", "omanotes-update-7"])
+  assert.deepEqual(U.applyCommand([], "x", lookup, "/p/data/update.sh", "/p"), ["bash", "/p/data/update.sh", "apply", "/p", "x"],
+    "the unit's name is the request its records answer")
 })

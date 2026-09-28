@@ -20,9 +20,9 @@ QtObject {
     // True while the reload an update sets off would drop something: the
     // service binds it to the ring.
     property bool blocked: false
-    // Longer than a check holds the lock (a 20 s fetch), so an apply queued
-    // behind one is not called lost.
-    property int startTimeoutMs: 30000
+    // Longer than apply waits for the lock (60 s), so an apply queued behind
+    // a check is not called lost.
+    property int startTimeoutMs: 90000
     property double nowMs: Date.now()
 
     readonly property string stateDir: {
@@ -31,10 +31,14 @@ QtObject {
     }
     property var local: null
     property var state: null
-    // { at, caller } from apply() until the script's record shows up.
+    // { unit, caller } from apply() until a record of that apply shows up.
     property var requested: null
+    // When the last check ended without a record, 0 for none.
+    property double checkFailedAtMs: 0
     readonly property var view: Update.view(root.local, root.state, root.checkProcess.running, root.requested !== null, root.nowMs)
-    readonly property bool showDot: root.checkUpdates && root.view.phase === "available"
+    // From the record alone, so a check or an apply on its way does not hide
+    // the dot while it runs.
+    readonly property bool showDot: root.checkUpdates && Update.view(root.local, root.state, false, false, root.nowMs).phase === "available"
 
     // A check or an apply that ended without a record, for the caller's
     // toast.
@@ -59,8 +63,9 @@ QtObject {
     function apply(caller) {
         if (root.blocked) return "An alarm is ringing"
         if (!root.view.canUpdate) return "Nothing to update"
-        root.requested = { at: Date.now(), caller: caller || null }
-        root.applyProcess.command = Update.applyCommand(root.launcher, "omanotes-update-" + Date.now(),
+        var unit = "omanotes-update-" + Date.now()
+        root.requested = { unit: unit, caller: caller || null }
+        root.applyProcess.command = Update.applyCommand(root.launcher, unit,
             function(key) { return Quickshell.env(key) }, root.scriptPath, root.pluginDir)
         root.applyProcess.running = true
         root.startTimer.restart()
@@ -71,7 +76,7 @@ QtObject {
     // checked within a minute of it.
     function tick(nowMs) {
         root.nowMs = nowMs
-        if (root.daily && !root.checkProcess.running && Update.dueForCheck(root.local, root.state, nowMs)) root.check()
+        if (root.daily && !root.checkProcess.running && Update.dueForCheck(root.local, root.state, nowMs, root.checkFailedAtMs)) root.check()
     }
 
     function _fail(message, caller) {
@@ -98,6 +103,7 @@ QtObject {
         command: ["bash", root.scriptPath, "check", root.pluginDir]
         stderr: StdioCollector { id: checkErr; waitForEnd: true }
         onExited: function(exitCode) {
+            root.checkFailedAtMs = exitCode === 0 ? 0 : Date.now()
             if (exitCode !== 0) root._fail("Could not check: " + root._exitText(exitCode, checkErr.text), root._checkCaller)
             root._checkCaller = null
             root.refresh()
@@ -127,8 +133,8 @@ QtObject {
     }
 
     // The script replaces the file whole, so a missing or replaced file is
-    // also read again on the minute. A record made since apply() was asked
-    // for ends the request.
+    // also read again on the minute. Only a record of the apply asked for
+    // ends the request: a check can write one in the same second.
     property FileView stateFile: FileView {
         path: root.stateDir + "/update"
         watchChanges: true
@@ -136,7 +142,7 @@ QtObject {
         onFileChanged: root.refresh()
         onLoaded: {
             root.state = Update.parseState(root.stateFile.text())
-            if (root.requested !== null && root.state && root.state.at >= Math.floor(root.requested.at / 1000) * 1000) {
+            if (root.requested !== null && root.state && root.state.request === root.requested.unit) {
                 root.requested = null
                 root.startTimer.stop()
             }

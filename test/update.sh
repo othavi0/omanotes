@@ -18,8 +18,18 @@ mkdir "$tmp/bin"
 for stub in omarchy-shell omarchy-notification-send; do
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/%s.log"\n' "$tmp" "$stub" > "$tmp/bin/$stub"
 done
-printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s/validated.log"\n[[ -e "%s/validate-fails" ]] && { echo "manifest.json: bad entry point" >&2; exit 1; }\nexit 0\n' "$tmp" "$tmp" \
-  > "$tmp/bin/omarchy-plugin-validate"
+# The validator also notes the request of the record apply left before it
+# ran, and on demand fails, hangs until it is killed, or takes the state
+# folder's write permission away.
+cat > "$tmp/bin/omarchy-plugin-validate" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$1" >> "$tmp/validated.log"
+sed -n 's/^request //p' "\$XDG_STATE_HOME/omanotes/update" >> "$tmp/validate-request.log"
+[[ -e "$tmp/validate-fails" ]] && { echo "manifest.json: bad entry point" >&2; exit 1; }
+[[ -e "$tmp/validate-hangs" ]] && { touch "$tmp/validating"; sleep 30; }
+[[ -e "$tmp/validate-locks-state" ]] && chmod 555 "\$XDG_STATE_HOME/omanotes"
+exit 0
+SH
 # Every git the script starts: whether it inherited the lock's fd 9, and the
 # ssh command a fetch runs with.
 real_git="$(command -v git)"
@@ -47,7 +57,7 @@ replies() {
 # Every `key value` line of the state file but `at`, joined with |.
 record() { grep -v '^at ' "$state" | tr '\n' '|'; }
 field() { sed -n "s/^$1 //p" "$state" | head -n 1; }
-run() { bash "$1/data/update.sh" "$2" "$1"; }
+run() { bash "$1/data/update.sh" "$2" "$1" "${@:3}"; }
 head_of() { git -C "$1" rev-parse HEAD; }
 # Every path of the work tree outside .git with its mtime and size: a write
 # anywhere the shell's plugin watcher looks changes it.
@@ -75,7 +85,7 @@ publish() {
 replies "status on a clean clone names the version, the branch, the whole head and no local changes" \
   "$(run "$plugin" status | tr '\n' '|')" "git 1|version 1.0.0|branch main|head $first|dirty 0|"
 replies "a check with nothing new records it up to date" "$(run "$plugin" check; record)" \
-  "phase checked|head $first|branch main|behind 0|error |detail |step |from |to $first|"
+  "phase checked|head $first|branch main|behind 0|error |detail |step |from |to $first|request |"
 replies "a fetch runs ssh in batch mode, since nobody can answer a prompt" "$(tail -n 1 "$tmp/git-ssh.log")" "ssh -oBatchMode=yes"
 
 publish "fix: busca ignora acento no corpo" "second"
@@ -99,8 +109,9 @@ run "$plugin" check
 replies "a check on a folder with local changes says so" "$(field behind)|$(field error)" "2|dirty"
 replies "status shows the local changes" "$(run "$plugin" status | grep '^dirty')" "dirty 1"
 code=0
-run "$plugin" apply || code=$?
+run "$plugin" apply req-dirty || code=$?
 replies "apply refuses a folder with local changes, records why and exits 0 once recorded" "$(field phase)|$(field error)|$code" "failed|dirty|0"
+replies "and its record names the request that asked for it" "$(field request)" "req-dirty"
 replies "and touches neither the head nor the changed file" "$(head_of "$plugin")|$(tail -n 1 "$plugin/notes.txt")" "$first|local edit"
 replies "nothing was announced" "$(cat "$tmp/omarchy-notification-send.log" 2> /dev/null | wc -l)" "0"
 git -C "$plugin" checkout --quiet -- notes.txt
@@ -111,13 +122,30 @@ git -C "$tmp/dev" commit --quiet -m "feat: new.txt"
 git -C "$tmp/dev" push --quiet origin main
 echo "untracked, not tracked yet" > "$plugin/new.txt"
 run "$plugin" check
-replies "a check names an untracked file that origin/main would overwrite" "$(field behind)|$(field error)" "3|untracked"
+replies "a check names an untracked file that origin/main would overwrite" "$(field behind)|$(field error)|$(field detail)" "3|untracked|new.txt"
 run "$plugin" apply || true
 replies "apply refuses it before touching anything" "$(field phase)|$(field error)|$(head_of "$plugin")|$(cat "$plugin/new.txt")" \
   "failed|untracked|$first|untracked, not tracked yet"
 rm "$plugin/new.txt"
 git -C "$tmp/dev" rm --quiet new.txt
-git -C "$tmp/dev" commit --quiet -m "chore: sem new.txt"
+mkdir "$tmp/dev/sub"
+echo "theirs" > "$tmp/dev/sub/a.txt"
+echo "theirs" > "$tmp/dev/deep"
+git -C "$tmp/dev" add sub deep
+git -C "$tmp/dev" commit --quiet -m "feat: sub/a.txt e deep"
+git -C "$tmp/dev" push --quiet origin main
+echo "mine" > "$plugin/sub"
+run "$plugin" check
+replies "an untracked file where origin/main adds a folder blocks the update and is named" "$(field error)|$(field detail)" "untracked|sub"
+rm "$plugin/sub"
+mkdir "$plugin/deep"
+echo "mine" > "$plugin/deep/mine.txt"
+run "$plugin" apply || true
+replies "an untracked file inside a folder where origin/main adds a file is refused and named" \
+  "$(field phase)|$(field error)|$(field detail)|$(head_of "$plugin")|$(cat "$plugin/deep/mine.txt")" "failed|untracked|deep/mine.txt|$first|mine"
+rm -r "$plugin/deep"
+git -C "$tmp/dev" rm --quiet -r sub deep
+git -C "$tmp/dev" commit --quiet -m "chore: sem sub e deep"
 git -C "$tmp/dev" push --quiet origin main
 third="$(head_of "$tmp/dev")"
 
@@ -138,15 +166,19 @@ replies "and writes nothing in the plugin folder, whose watcher would reload the
   "$(diff <(printf '%s\n' "$before") <(listing "$plugin") | grep -c '^[<>]' || true) paths changed" "0 paths changed"
 replies "the validator ran on a copy outside the plugin folder" "$(tail -n 1 "$tmp/validated.log" | grep -c "^$plugin" || true)" "0"
 
-run "$plugin" apply || true
+: > "$tmp/validate-request.log"
+run "$plugin" apply req-pull || true
 replies "apply on a clean folder fast-forwards to origin/main" "$(head_of "$plugin")" "$third"
+replies "every record the apply wrote names its request, the one it left before validating and the last" \
+  "$(cat "$tmp/validate-request.log")|$(field request)" "req-pull|req-pull"
 replies "and records the update from the old head to the new one" \
-  "$(field phase)|$(field from)|$(field to)|$(field head)|$(field behind)|$(field error)|$(field step)" "updated|$first|$third|$third|4||"
+  "$(field phase)|$(field from)|$(field to)|$(field head)|$(field behind)|$(field error)|$(field step)" "updated|$first|$third|$third|5||"
 replies "the script never asks the shell to reload: its plugin watcher does" "$(cat "$tmp/omarchy-shell.log" 2> /dev/null | wc -l)" "0"
 replies "and one notification names the change" "$(cat "$tmp/omarchy-notification-send.log")" \
-  "Omanotes updated $(git -C "$plugin" rev-parse --short "$first") → $(git -C "$plugin" rev-parse --short "$third") · 4 commits"
+  "Omanotes updated $(git -C "$plugin" rev-parse --short "$first") → $(git -C "$plugin" rev-parse --short "$third") · 5 commits"
 run "$plugin" check
-replies "a check right after keeps the update as the news" "$(field phase)|$(field to)|$(field behind)|$(field error)" "updated|$third|4|"
+replies "a check right after keeps the update as the news" "$(field phase)|$(field to)|$(field behind)|$(field error)" "updated|$third|5|"
+replies "and its record names no request" "$(field request)" ""
 replies "no git the script started held the lock" "$(cat "$tmp/git-fd9.log" 2> /dev/null | wc -l)" "0"
 
 # `status` from several panels at once while apply merges: none of them may
@@ -226,6 +258,26 @@ newest="$(head_of "$tmp/dev")"
 run "$plugin" apply || true
 replies "an update that rewrites the update script itself still ends updated" "$(field phase)|$(field to)|$(head_of "$plugin")" "updated|$newest|$newest"
 replies "with the new script in place" "$(grep -c "The whole script is read first" "$plugin/data/update.sh")" "1"
+
+# systemd stops the unit with SIGTERM to all of it, on RuntimeMaxSec among
+# others: the copy being validated goes with it.
+publish "feat: sexto" "sixth"
+touch "$tmp/validate-hangs"
+setsid bash "$plugin/data/update.sh" apply "$plugin" & unit=$!
+for _ in $(seq 100); do [[ -e "$tmp/validating" ]] && break; sleep 0.1; done
+tree="$(tail -n 1 "$tmp/validated.log")"
+kill -TERM -- "-$unit"
+wait "$unit" || true
+rm "$tmp/validate-hangs"
+replies "an apply stopped while it validates removes its copy" "$([[ -n "$tree" && ! -e "$tree" ]] && echo removed || echo "left $tree")" "removed"
+replies "and pulls nothing" "$(head_of "$plugin")" "$newest"
+
+touch "$tmp/validate-locks-state"
+code=0
+run "$plugin" apply || code=$?
+chmod 755 "$tmp/state/omanotes"
+rm "$tmp/validate-locks-state"
+replies "an apply that pulls but cannot record it exits 1" "$code|$(head_of "$plugin")" "1|$(head_of "$tmp/dev")"
 
 echo "update: $checks checks, $failures failed"
 exit $(( failures > 0 ))

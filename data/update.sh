@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Omanotes self-update (ADR-0017). Usage: bash update.sh status|check|apply <plugin-dir>
+# Omanotes self-update (ADR-0017).
+# Usage: bash update.sh status|check <plugin-dir>, or apply <plugin-dir> [request]
 #
 # status prints `key value` lines about the checkout and touches nothing.
 # check fetches origin/main and records what is new in the state file.
@@ -12,25 +13,29 @@
 # shell reloads and destroys whoever started this, and the new panel reads
 # the file. It is written whole to a temporary file and moved into place.
 # One `key value` per line; only the first space splits a line. Hashes are
-# whole; the panel shortens them.
+# whole; the panel shortens them. Every record apply writes carries the
+# request it was started with, so the panel that asked tells its own apply's
+# records from a check's.
 #
 # Exits 0 once a result is recorded, a refusal included, 3 when the lock
-# stayed taken and 1 when nothing could be recorded.
+# stayed taken and 1 when nothing could be recorded or an update that
+# landed could not be.
 
 main() {
   local mode="${1:-}" dir="${2:-}"
+  request="${3:-}"
   # Optional locks off: several panels run `status` at any moment, and a
   # `git status` holding index.lock makes the merge fail.
   export LC_ALL=C GIT_TERMINAL_PROMPT=0 GIT_OPTIONAL_LOCKS=0
   state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omanotes"
   state_file="$state_dir/update"
-  phase="" error="" detail="" step="" behind=0 from="" to="" commits="" head="" branch=""
+  phase="" error="" detail="" step="" behind=0 from="" to="" commits="" head="" branch="" tree=""
 
   case "$mode" in
     status) status_mode "$dir" ;;
     check) locked_run check_mode "$dir" ;;
     apply) locked_run apply_mode "$dir" ;;
-    *) echo "usage: update.sh status|check|apply <plugin-dir>" >&2; return 2 ;;
+    *) echo "usage: update.sh status|check|apply <plugin-dir> [request]" >&2; return 2 ;;
   esac
 }
 
@@ -66,11 +71,14 @@ read_local() {
 
 is_dirty() { [[ -n "$(in_git "$1" status --porcelain --untracked-files=no 2> /dev/null)" ]]; }
 
-# Untracked files that origin/main tracks: the merge would refuse to
-# overwrite them.
-collides() {
-  [[ -n "$(comm -12 <(in_git "$1" ls-files --others --exclude-standard | sort) \
-    <(in_git "$1" ls-tree -r --name-only origin/main | sort))" ]]
+# The first untracked path the merge would refuse to overwrite: one that
+# origin/main tracks, one where it tracks a folder, or one inside a path it
+# tracks as a file. Ignored files are left out, since git overwrites them.
+collision() {
+  awk 'NR == FNR { tracked[$0] = 1; p = $0; while (sub(/\/[^\/]*$/, "", p)) folders[p] = 1; next }
+    ($0 in tracked) || ($0 in folders) { print; exit }
+    { p = $0; while (sub(/\/[^\/]*$/, "", p)) if (p in tracked) { print $0; exit } }' \
+    <(in_git "$1" ls-tree -r --name-only origin/main) <(in_git "$1" ls-files --others --exclude-standard)
 }
 
 status_mode() {
@@ -87,8 +95,8 @@ write_state() {
   local tmp
   tmp="$(mktemp "$state_dir/.update.XXXXXX")" || return 1
   {
-    printf 'phase %s\nat %s\nhead %s\nbranch %s\nbehind %s\nerror %s\ndetail %s\nstep %s\nfrom %s\nto %s\n' \
-      "$phase" "$(date +%s)" "$head" "$branch" "$behind" "$error" "$detail" "$step" "$from" "$to"
+    printf 'phase %s\nat %s\nhead %s\nbranch %s\nbehind %s\nerror %s\ndetail %s\nstep %s\nfrom %s\nto %s\nrequest %s\n' \
+      "$phase" "$(date +%s)" "$head" "$branch" "$behind" "$error" "$detail" "$step" "$from" "$to" "$request"
     if [[ -n "$commits" ]]; then printf '%s\n' "$commits"; fi
   } > "$tmp" || return 1
   mv -f -- "$tmp" "$state_file"
@@ -122,14 +130,14 @@ fetch() {
 # What is new on origin/main, and the first thing that keeps apply from
 # pulling it.
 survey() {
-  local dir="$1"
+  local dir="$1" clash
   to="$(in_git "$dir" rev-parse --verify --quiet origin/main)"
   behind="$(in_git "$dir" rev-list --count HEAD..origin/main)"
   commits="$(in_git "$dir" log --format='commit %H %s' -n 20 HEAD..origin/main)"
   if is_dirty "$dir"; then error="dirty"
   elif [[ "$branch" != main ]]; then error="offMain"
   elif ! in_git "$dir" merge-base --is-ancestor HEAD origin/main; then error="diverged"
-  elif (( behind > 0 )) && collides "$dir"; then error="untracked"
+  elif (( behind > 0 )) && clash="$(collision "$dir")" && [[ -n "$clash" ]]; then error="untracked" detail="$clash"
   fi
 }
 
@@ -158,11 +166,14 @@ check_mode() {
 }
 
 # Checks origin/main as the shell would load it, in a copy outside the plugin
-# folder, so a version that does not validate never touches the folder.
+# folder, so a version that does not validate never touches the folder. The
+# copy goes on any exit, including the SIGTERM systemd stops the unit with.
 validate() {
-  local dir="$1" tree out
+  local dir="$1" out
   detail=""
   command -v omarchy-plugin-validate > /dev/null 2>&1 || return 0
+  trap 'exit 143' TERM INT HUP
+  trap '[[ -z "$tree" ]] || rm -rf -- "$tree"' EXIT
   tree="$(mktemp -d)" || { detail="could not make a temporary folder"; return 1; }
   if ! out="$(set -o pipefail; { in_git "$dir" archive "$to" | tar -x -C "$tree"; } 2>&1)"; then
     detail="$(first_error "$out")"
@@ -172,6 +183,7 @@ validate() {
     out=""
   fi
   rm -rf -- "$tree"
+  tree=""
   [[ -z "$detail" ]]
 }
 
@@ -218,11 +230,12 @@ apply_mode() {
   fi
   read_local "$dir"
   phase="updated" step=""
-  write_state
+  local recorded=0
+  write_state || recorded=1
   command -v omarchy-notification-send > /dev/null 2>&1 \
     && omarchy-notification-send "Omanotes updated" \
       "$(in_git "$dir" rev-parse --short "$from") → $(in_git "$dir" rev-parse --short "$to") · $behind commit$( (( behind == 1 )) || echo s)" 9>&-
-  return 0
+  return "$recorded"
 }
 
 # One line, so bash has read the whole script before the merge rewrites it.

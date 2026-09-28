@@ -55,7 +55,8 @@ function parseState(text) {
     detail: s.detail || "",
     step: s.step || "",
     from: s.from || "",
-    to: s.to || ""
+    to: s.to || "",
+    request: s.request || ""
   }
 }
 
@@ -106,9 +107,12 @@ function view(local, state, running, requested, nowMs) {
 }
 
 // True when the daily check is owed: never checked, a day since the last,
-// or an hour since one that could not reach origin.
-function dueForCheck(local, state, nowMs) {
+// or an hour since one that could not reach origin. `failedAtMs` is the
+// last check that left no record, 0 for none; the record cannot say so, so
+// without it such a check would run again every minute.
+function dueForCheck(local, state, nowMs, failedAtMs) {
   if (!local || !local.git) return false
+  if (failedAtMs && nowMs - failedAtMs < RETRY_OFFLINE_MS) return false
   if (!state) return true
   var age = nowMs - state.at
   return age >= DAY_MS || (state.error === "offline" && age >= RETRY_OFFLINE_MS)
@@ -120,7 +124,8 @@ function dueForCheck(local, state, nowMs) {
 var UNIT_ENV = ["PATH", "XDG_STATE_HOME", "OMARCHY_PATH", "DBUS_SESSION_BUS_ADDRESS", "WAYLAND_DISPLAY", "SSH_AUTH_SOCK"]
 
 // argv that runs apply outside the shell's process tree, so the reload the
-// merge sets off does not kill it. A test passes an empty launcher and runs
+// merge sets off does not kill it. The unit's name is also the request each
+// record of that apply carries. A test passes an empty launcher and runs
 // the script directly. `envOf(key)` reads the shell's environment.
 function applyCommand(launcher, unit, envOf, scriptPath, pluginDir) {
   var cmd = launcher.slice()
@@ -131,5 +136,5 @@ function applyCommand(launcher, unit, envOf, scriptPath, pluginDir) {
       if (value) cmd.push("--setenv=" + UNIT_ENV[i] + "=" + value)
     }
   }
-  return cmd.concat(["bash", scriptPath, "apply", pluginDir])
+  return cmd.concat(["bash", scriptPath, "apply", pluginDir, unit])
 }

@@ -99,6 +99,8 @@ test("a copy that is no checkout is told how to get one, and a page still readin
 test("an untracked file that the update would overwrite blocks it", () => {
   assert.equal(S.updateHeadline({ phase: "blocked", error: "untracked" }, LOCAL),
     "The plugin folder has untracked files that the update would overwrite. Nothing was changed.")
+  assert.equal(S.updateHeadline({ phase: "blocked", error: "untracked", detail: "sub" }, LOCAL),
+    "The plugin folder has untracked files that the update would overwrite, such as sub. Nothing was changed.")
 })
 
 test("checkedAgoText counts minutes, hours and days", () => {

@@ -1468,15 +1468,21 @@ ShellRoot {
     },
     function() { sr.click(sr.findByText(settingsTab, "Check for updates")) },
     function() { sr.updates("AVAILABLE") },
+    function() { sr.watchDot = true; settingsTab.updater.check() },
+    function() { sr.watchDot = false },
     function() { toast.text = ""; sr.click(sr.findByText(settingsTab, "Update")) },
     function() { sr.updates("START-FAILED") },
     function() {
       settingsTab.updater.launcher = [Quickshell.env("CFG_DIR") + "/bin/launch-lost"]
-      settingsTab.updater.startTimeoutMs = 1000
+      settingsTab.updater.startTimeoutMs = 2000
       toast.text = ""
       sr.click(sr.findByText(settingsTab, "Update"))
       sr.updates("REQUESTED")
+      Quickshell.execDetached(["bash", settingsTab.updater.scriptPath, "check", sr.clone])
     },
+    function() {},
+    function() { sr.updates("FOREIGN") },
+    function() {},
     function() {},
     function() { sr.updates("LOST") },
     function() { Quickshell.execDetached(["git", "-C", sr.clone, "remote", "set-url", "origin", sr.clone + "-gone.git"]) },
@@ -1526,6 +1532,18 @@ ShellRoot {
       item.open()
     }
   }
+  // The gear's dot once the check is seen running, after the bindings on it
+  // settle.
+  property bool watchDot: false
+  Connections {
+    target: sr.watchDot ? sr.settingsTab.updater.checkProcess : null
+    function onRunningChanged() {
+      if (!sr.settingsTab.updater.checkProcess.running) return
+      Qt.callLater(function() {
+        console.log("DOT-WHILE-CHECKING phase=" + sr.settingsTab.updater.view.phase + " dot=" + !!sr.gear().modelData.dot)
+      })
+    }
+  }
   Connections {
     target: testDb
     function onSettingsLoadedChanged() { if (!sr.started && testDb.settingsLoaded) { sr.started = true; stepTimer.start() } }
@@ -1563,9 +1581,11 @@ logged "Back up now copies the database and names the copy" "BACKUP toast=\[Save
 logged "the Data page shows where the database is and its size" "BACKUP .* database=\[$db · [0-9]+ KB\]$"
 logged "a check finds the 22 new commits and lists four, then how many more" \
   "UPDATES-AVAILABLE phase=available running=false headline=\[22 new commits on origin/main\] more=\[and 18 more\] update=shown"
+logged "the gear keeps its dot while a check runs" "DOT-WHILE-CHECKING phase=checking dot=true$"
 logged "an update that systemd-run cannot start says why and offers Update again" \
   "UPDATES-START-FAILED phase=available .* update=shown toast=\[Could not start the update: Failed to connect to bus: No medium found\]$"
 logged "an update asked for shows as updating at once, with Update gone" "UPDATES-REQUESTED phase=updating .* update=hidden toast=\[\]$"
+logged "a record the update did not write, a check's in the same second, leaves it asked for" "UPDATES-FOREIGN phase=updating .* toast=\[\]$"
 logged "an update that never writes its record is called lost and offers Update again" \
   "UPDATES-LOST phase=available .* update=shown toast=\[The update did not start.\]$"
 logged "a check that cannot reach origin says offline with git's reason" "UPDATES-OFFLINE phase=offline running=false headline=\[Could not reach origin: fatal: "
