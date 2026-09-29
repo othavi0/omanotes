@@ -371,7 +371,7 @@ publish_broken "feat: binário é um link" ln -sfn "$worktree/$name" "$tmp/dev/$
 refused "an update whose omanotes-db is a symlink is invalid, even to a binary that runs" "$name is not a regular file"
 
 publish_broken "feat: binário sem bit de execução" chmod -x "$tmp/dev/$name"
-refused "an update whose omanotes-db lost its executable bit is invalid" "$name is not executable"
+refused "an update whose omanotes-db lost its executable bit is invalid" "$name is not executable (no x bit, or a noexec mount)"
 
 publish_broken "feat: binário de outra arquitetura" cp "$worktree/bin/omanotes-db.$other" "$tmp/dev/$name"
 refused "an update whose omanotes-db is built for another machine is invalid, whatever binfmt would start" \
@@ -393,12 +393,18 @@ if [[ -n "$(PATH="$novalidate_path" command -v omarchy-plugin-validate)" || "$(P
 else
   apply_path="$novalidate_path" refused "without omarchy-plugin-validate the smoke still runs" "omanotes-db selftest failed with exit 1"
 fi
+mkdir "$tmp/silenttar"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/silenttar/tar"
+chmod +x "$tmp/silenttar/tar"
+apply_path="$tmp/silenttar:$PATH" refused "an extraction that fails without a word is invalid, not a pass" "could not extract origin/main"
 replies "no update the smoke refused restarted the shell" "$(wc -l < "$tmp/order.log")" "0"
 
-publish_broken "fix: binário de volta" true
+publish_broken "fix: binário de volta" sed -i 's/^var PROTOCOL = \([0-9]*\)$/  var PROTOCOL = \1 \/\/ reformatted/' "$tmp/dev/data/Db.js"
 code=0
-run "$plugin" apply || code=$?
-replies "the same version with a good omanotes-db ends updated" "$code|$(field phase)|$(field error)|$(head_of "$plugin")" "0|updated||$(head_of "$tmp/dev")"
+# A DOTNET_* variable that crashes the runtime at start: the smoke's env -i
+# keeps it from the binary.
+DOTNET_GCHeapHardLimit=600000 run "$plugin" apply || code=$?
+replies "the same version with a good omanotes-db, a reformatted PROTOCOL line and DOTNET_* in the environment ends updated" "$code|$(field phase)|$(field error)|$(head_of "$plugin")" "0|updated||$(head_of "$tmp/dev")"
 replies "with the binary in place and executable, and no copy left beside the state file" \
   "$([[ -f "$plugin/$name" && -x "$plugin/$name" ]] && echo executable)|$(compgen -G "$tmp/state/omanotes/validate.*" | wc -l)" "executable|0"
 

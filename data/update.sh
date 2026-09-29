@@ -181,10 +181,13 @@ validate() {
   trap '[[ -z "$work" ]] || rm -rf -- "$work"' EXIT
   rm -rf -- "$state_dir"/validate.*
   work="$(mktemp -d "$state_dir/validate.XXXXXX")" || { detail="could not make a temporary folder"; return 1; }
-  if ! out="$(set -o pipefail; mkdir "$work/tree" && { in_git "$dir" archive "$to" | tar -x -C "$work/tree"; } 2>&1)"; then
+  # A step that fails silently still fails: success is an empty detail.
+  if ! out="$(set -o pipefail; { mkdir "$work/tree" && { in_git "$dir" archive "$to" | tar -x -C "$work/tree"; }; } 2>&1)"; then
     detail="$(first_error "$out")"
+    detail="${detail:-could not extract origin/main}"
   elif command -v omarchy-plugin-validate > /dev/null 2>&1 && ! out="$(omarchy-plugin-validate "$work/tree" 2>&1 9>&-)"; then
     detail="$(printf '%s\n' "$out" | tail -n 1)"
+    detail="${detail:-omarchy-plugin-validate failed}"
   else
     smoke_db "$work"
   fi
@@ -224,10 +227,12 @@ smoke_db() {
   name="bin/omanotes-db.$arch"
   bin="$work/tree/$name"
   want="$(elf_machine_of "$arch")"
-  proto="$(sed -n 's/^var PROTOCOL = \([0-9][0-9]*\);\{0,1\}[[:space:]]*$/\1/p' "$work/tree/data/Db.js" 2> /dev/null | head -n 1)"
+  # Loose on purpose: an installed update.sh reads the Db.js of every later
+  # version, so a reformatted line must not lock updates out.
+  proto="$(sed -nE 's/^[[:space:]]*(var|let|const)[[:space:]]+PROTOCOL[[:space:]]*=[[:space:]]*([0-9]+).*/\2/p' "$work/tree/data/Db.js" 2> /dev/null | head -n 1)"
   if [[ ! -e "$bin" && ! -L "$bin" ]]; then detail="there is no $name"
   elif [[ -L "$bin" || ! -f "$bin" ]]; then detail="$name is not a regular file"
-  elif [[ ! -x "$bin" ]]; then detail="$name is not executable"
+  elif [[ ! -x "$bin" ]]; then detail="$name is not executable (no x bit, or a noexec mount)"
   elif [[ -z "$want" ]]; then detail="no ELF machine is known for $arch"
   elif got="$(elf_machine "$bin")" && [[ "$got" != "$want" ]]; then detail="$name is built for ELF machine ${got:-none}, not $arch"
   elif [[ -z "$proto" ]]; then detail="data/Db.js declares no PROTOCOL"

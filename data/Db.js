@@ -6,7 +6,9 @@
 // binary (ADR-0018). No QML imports, so Node loads this file (ADR-0009).
 
 // The protocol this QML speaks, argv[1] of every spawn. The binary answers
-// every protocol from its Min to its Current (db/Wire.cs).
+// every protocol from its Min to its Current (db/Wire.cs). The installed
+// data/update.sh reads this line from each new version before it merges, so
+// it stays a plain number assigned to PROTOCOL on one line.
 var PROTOCOL = 1
 
 // A request over this many bytes is refused by the binary as too_large, so
