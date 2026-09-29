@@ -3,7 +3,7 @@ import "Db.js" as Db
 
 // One per bar widget: the view of the Store (data/Store.qml) that the
 // widget's IPC and its panel share. It keeps what is per monitor: the filter
-// and search of the panel, the move the list shows before the write lands,
+// and search of the panel, the moves the list shows before their writes land,
 // the settings overlay and the signals the panel answers. The rows are the
 // Store's, shared by reference, so M monitors hold one copy of them.
 QtObject {
