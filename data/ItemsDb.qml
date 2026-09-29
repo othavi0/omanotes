@@ -62,10 +62,10 @@ QtObject {
     signal writeFailed(string kind, var args, string message)
 
     property string _key: ""
-    // The drop the list shows before its write lands, { write, id, anchorId,
-    // after }, laid over the rows until Store.covered reaches its write, as
-    // the settings overlay is. null with none.
-    property var _move: null
+    // The drops the list shows before their writes land, { write, id,
+    // anchorId, after } in the order they were made, each laid over the rows
+    // until Store.covered reaches its write, as the settings overlay is.
+    property var _moves: []
     property bool _heard: false                 // a snapshot has landed since init
     property bool _fromScript: false
     // key -> { value, id }: the settings writes still on their way.
@@ -92,7 +92,7 @@ QtObject {
         for (var key in root._settingsPatch) {
             if (root._settingsPatch[key].id <= Store.covered) delete root._settingsPatch[key]
         }
-        if (root._move !== null && root._move.write <= Store.covered) root._move = null
+        root._moves = root._moves.filter(function(m) { return m.write > Store.covered })
         root._showSettings()
         var shown = root.items
         root._showItems()
@@ -112,8 +112,8 @@ QtObject {
     }
 
     // The rows of the list: every item narrowed by type, or the ids the
-    // binary matched for this view's search, with the drop not landed yet
-    // laid over them. A search not answered yet keeps the rows shown.
+    // binary matched for this view's search, with the drops not landed yet
+    // laid over them in order. A search not answered yet keeps the rows shown.
     function _showItems() {
         var query = Db.viewQuery(root.listQuery)
         var rows
@@ -124,7 +124,9 @@ QtObject {
             if (!match || match.query !== query || match.filter !== root.listFilter) return
             rows = Db.matchedRows(Store.itemsById, match.ids)
         }
-        root.items = root._move === null ? rows : Db.movedRows(rows, root._move.id, root._move.anchorId, root._move.after)
+        for (var i = 0; i < root._moves.length; ++i)
+            rows = Db.movedRows(rows, root._moves[i].id, root._moves[i].anchorId, root._moves[i].after)
+        root.items = rows
     }
 
     // The IPC writes inside fromScript: the write reloads the panel but emits
@@ -200,11 +202,13 @@ QtObject {
 
     // What a finished write does. The snapshot after it lands right after,
     // from the same request, so nothing here asks for a reload. A drop whose
-    // write failed leaves the list as the file has it.
+    // write failed is taken off: the list shows the file's order with only
+    // the other drops laid over it.
     function _ended(kind, args, r, quiet, id) {
         if (!r.ok) {
-            if (root._move !== null && root._move.write === id) {
-                root._move = null
+            var kept = root._moves.filter(function(m) { return m.write !== id })
+            if (kept.length !== root._moves.length) {
+                root._moves = kept
                 var shown = root.items
                 root._showItems()
                 if (!Db.sameRows(shown, root.items)) root.itemsUpdated(root.items)
@@ -259,7 +263,7 @@ QtObject {
         return root._write("move", "item.move",
             function() { return { id: Db.wholeId(id), anchorId: Db.wholeId(anchorId), after: !!after } },
             args, function(write) {
-                root._move = { write: write, id: args.id, anchorId: args.anchorId, after: args.after }
+                root._moves = root._moves.concat([{ write: write, id: args.id, anchorId: args.anchorId, after: args.after }])
                 root.items = Db.movedRows(root.items, id, anchorId, after)
             })
     }
