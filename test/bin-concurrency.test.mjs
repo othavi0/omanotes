@@ -232,7 +232,8 @@ async function until(what, ok, ms = 5000) {
 
 test("a request killed during its second write has already written the whole result line of the first (#57)", async (t) => {
   if (spawnSync("cc", ["--version"]).error) {
-    t.skip("no C compiler (cc) to build test/lib/stall-journal.c")
+    assert.ok(process.env.OMANOTES_REQUIRE_CC !== "1", "OMANOTES_REQUIRE_CC=1, and there is no C compiler (cc) to build test/lib/stall-journal.c")
+    t.skip("no C compiler (cc) to build test/lib/stall-journal.c (OMANOTES_REQUIRE_CC=1 fails instead)")
     return
   }
   const shim = join(tempDir(t), "stall.so")

@@ -64,12 +64,14 @@ if [[ "$kinds" == sync ]]; then
   if [[ -e "$cfg/hold-reads" ]]; then
     failing=0
     [[ -e "$cfg/fail-list" && "$req" == *'"views":[{'* ]] && failing=1   # decided when the read starts
-    out="$("$real" "$@" <<< "$req")"
+    # $(...) drops every last "\n", and a line without it is not whole
+    # (ADR-0020): the x keeps the binary's bytes as they were.
+    out="$("$real" "$@" <<< "$req"; c=$?; printf x; exit "$c")"
     code=$?
+    out="${out%x}"
     wait_while hold-reads
     (( failing )) && disk
-    # $(...) drops the last "\n", and a line without it is not whole (ADR-0020).
-    [[ -n "$out" ]] && printf '%s\n' "$out"
+    printf '%s' "$out"
     exit "$code"
   fi
 else

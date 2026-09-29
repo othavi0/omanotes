@@ -22,8 +22,9 @@ namespace Omanotes.Db;
 /// results are whole and the snapshot failed, {"syncErr":{"err","detail"}} on
 /// the last line of stderr. Exit 1 (a failure), 64 (another protocol or
 /// command line) or 70 (a bug here): the last line of stderr is
-/// {"err","detail"}, after the result lines of the writes that ended. No user
-/// text ever travels in argv.
+/// {"err","detail"}. Exit 1 and 64 are raised before the first write, so no
+/// result line comes before them; only exit 70 can follow the result lines of
+/// the writes that ended. No user text ever travels in argv.
 /// </summary>
 internal static partial class Program
 {
@@ -105,74 +106,58 @@ internal static partial class Program
 
         // The results go out before the snapshot is read: what fails or dies
         // after this point never takes back a write that was committed.
-        if (protocol == 1)
-        {
-            WriteResultsLine(db, req.Writes);
-        }
-        else
-        {
-            WriteResultLines(db, req.Writes);
-        }
-
+        WriteResults(db, req.Writes, protocol);
         return req.Sync is SyncReq sync ? WriteSnapshot(db, sync) : 0;
     }
 
     /// <summary>
-    /// Protocol 2: each result is one line, in one write(2) of its own buffer
-    /// as soon as its write ends, so a kill during the next write never takes
-    /// back a write that committed (ADR-0020). Through FdWriter it would wait
-    /// for the buffer to fill.
+    /// Runs the writes in order and writes their results. Protocol 2 writes
+    /// each result as one line, in one write(2) of its own buffer as soon as its
+    /// write ends, so a kill during the next write never takes back a write that
+    /// committed (ADR-0020); through FdWriter it would wait for the buffer to
+    /// fill. Protocol 1 gets one {"results":[...]} line once every write ended,
+    /// the bytes the QML of before reads between an update and the restart
+    /// (ADR-0017). A lock held outside is held for the next write too, so after
+    /// a `busy` the rest are refused with it: waiting 5 s again for each would
+    /// hold the caller's queue N times as long.
     /// </summary>
-    private static void WriteResultLines(Conn db, IReadOnlyList<WriteReq> writes)
+    private static void WriteResults(Conn db, IReadOnlyList<WriteReq> writes, int protocol)
     {
+        ArrayBufferWriter<byte>? oneLine = protocol == Protocol.OneResultsLine ? new() : null;
+        oneLine?.Write("{\"results\":["u8);
         OpException? busy = null;
-        foreach (WriteReq write in writes)
+        for (int i = 0; i < writes.Count; i++)
         {
-            var line = new ArrayBufferWriter<byte>();
-            using (var w = new Utf8JsonWriter(line, Json))
+            var result = new ArrayBufferWriter<byte>();
+            using (var w = new Utf8JsonWriter(result, Json))
             {
-                busy = RunWrite(db, write, busy, w);
+                OpException? failure = busy is null ? Writes.Run(db, writes[i], w) : Writes.Refuse(writes[i], busy, w);
+                if (failure is { Code: ErrorCode.Busy })
+                {
+                    busy = failure;
+                }
             }
 
-            line.Write("\n"u8);
-            Fd.Write(Fd.Stdout, line.WrittenSpan);
-        }
-    }
-
-    /// <summary>
-    /// Protocol 1: one {"results":[...]} line once every write ended, the bytes
-    /// the QML of before reads between an update and the restart (ADR-0017).
-    /// </summary>
-    private static void WriteResultsLine(Conn db, IReadOnlyList<WriteReq> writes)
-    {
-        var results = new ArrayBufferWriter<byte>();
-        using (var w = new Utf8JsonWriter(results, Json))
-        {
-            w.WriteStartObject();
-            w.WriteStartArray("results");
-            OpException? busy = null;
-            foreach (WriteReq write in writes)
+            if (oneLine is null)
             {
-                busy = RunWrite(db, write, busy, w);
+                result.Write("\n"u8);
+                Fd.Write(Fd.Stdout, result.WrittenSpan);
+                continue;
             }
 
-            w.WriteEndArray();
-            w.WriteEndObject();
+            if (i > 0)
+            {
+                oneLine.Write(","u8);
+            }
+
+            oneLine.Write(result.WrittenSpan);
         }
 
-        results.Write("\n"u8);
-        Fd.Write(Fd.Stdout, results.WrittenSpan);
-    }
-
-    /// <summary>
-    /// Runs one write, or refuses it after a `busy`, and returns the `busy` for
-    /// the next. A lock held outside is held for the next write too: waiting 5 s
-    /// again for each would hold the caller's queue N times as long.
-    /// </summary>
-    private static OpException? RunWrite(Conn db, WriteReq write, OpException? busy, Utf8JsonWriter w)
-    {
-        OpException? failure = busy is null ? Writes.Run(db, write, w) : Writes.Refuse(write, busy, w);
-        return failure is { Code: ErrorCode.Busy } ? failure : busy;
+        if (oneLine is not null)
+        {
+            oneLine.Write("]}\n"u8);
+            Fd.Write(Fd.Stdout, oneLine.WrittenSpan);
+        }
     }
 
     /// <summary>

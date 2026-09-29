@@ -89,6 +89,9 @@ internal static class Protocol
     /// </summary>
     public const int Min = 1;
 
+    /// <summary>The protocol that writes every result in one {"results":[...]} line after the last write. Its branch goes once Min passes it.</summary>
+    public const int OneResultsLine = 1;
+
     /// <summary>A body over about 64 KB was lost in argv before (issue #55); the request now travels on stdin up to this.</summary>
     public const int MaxRequestBytes = 1 << 20;
 
