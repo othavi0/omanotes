@@ -201,8 +201,13 @@ test("selftest migrates, writes, reads and removes a database on disk in the fol
 const QEMU = "/usr/bin/qemu-aarch64-static"
 const SYSROOT = process.env.SYSROOT_AARCH64 ?? join(process.env.HOME ?? "", ".cache/omanotes-build/sysroot-aarch64")
 const armReady = existsSync(QEMU) && existsSync(join(SYSROOT, "usr/lib/libc.so.6"))
+// Where the aarch64 binary must be proven (a release, CI), a missing qemu or sysroot fails instead of skipping.
+const armRequired = process.env.OMANOTES_REQUIRE_ARM === "1"
 
-test("the aarch64 binary passes its selftest under qemu, and without libsqlite3 says sqlite_missing", { skip: !armReady && "needs qemu-aarch64-static and the sysroot of tools/sysroot.sh" }, (t) => {
+test("the aarch64 binary passes its selftest under qemu, and without libsqlite3 says sqlite_missing", {
+  skip: !armReady && !armRequired && "needs qemu-aarch64-static and the sysroot of tools/sysroot.sh (OMANOTES_REQUIRE_ARM=1 fails instead)"
+}, (t) => {
+  assert.ok(armReady, `OMANOTES_REQUIRE_ARM=1, and ${QEMU} or the sysroot at ${SYSROOT} is missing`)
   const armBin = join(ROOT, "bin", "omanotes-db.aarch64")
   const ok = qemu(SYSROOT, [armBin, PROTOCOL, "selftest", join(tempDir(t), "smoke")])
   assert.equal(ok.status, 0, ok.stderr)
