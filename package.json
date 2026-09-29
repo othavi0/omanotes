@@ -13,7 +13,13 @@
     "test:panel": "test/panel.sh",
     "test:alarm": "test/alarm.sh",
     "test:startup": "test/startup.sh",
-    "test:teardown": "test/teardown.sh"
+    "test:teardown": "test/teardown.sh",
+    "build:db": "tools/build.sh",
+    "analyze:db": "tools/analyze.sh",
+    "canaries": "tools/canaries.sh",
+    "sysroot": "tools/sysroot.sh",
+    "verify:bin": "tools/verify-bin.sh --check",
+    "verify:bin:rebuild": "tools/verify-bin.sh --rebuild"
   },
   "engines": {
     "node": ">=18"
