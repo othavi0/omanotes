@@ -239,15 +239,28 @@ Item {
     // Chime's player chain (MIT, see NOTICE). $2 is the volume, 0 to 100,
     // turned into each player's scale with integer maths under LC_ALL=C, so
     // no locale puts a comma in pw-play's 0.50. $3 plays when $1 is gone.
+    // Without $4 it plays once (the preview). With $4 it is the ring: one
+    // process that plays, waits the gap and plays again, so a ring of a short
+    // sound is not a new spawn every half second. The gap is a read on the
+    // service's stdin pipe, which ends when the shell is gone. The shell
+    // SIGKILLs the process when it quits, so no trap runs then: setpriv makes
+    // the player die with it. A player that fails ends the ring's process
+    // with its code, for the latch in onExited.
     readonly property int unplayableExit: 3
+    readonly property int repeatGapMs: 350
     readonly property string soundScript: 'export LC_ALL=C; f="$1"; v="${2:-100}"; '
         + '[[ -f "$f" && -r "$f" ]] || f="${3:-}"; '
         + '[[ -n "$f" && -f "$f" && -r "$f" ]] || { sleep 2; exit ' + unplayableExit + '; }; '
-        + 'if command -v pw-play >/dev/null 2>&1; then exec pw-play --volume "$((v / 100)).$(printf %02d $((v % 100)))" -- "$f"; fi; '
-        + 'if command -v paplay >/dev/null 2>&1; then exec paplay --volume "$((v * 65536 / 100))" -- "$f"; fi; '
-        + 'if command -v mpv >/dev/null 2>&1; then exec mpv --no-video --no-terminal --really-quiet --volume="$v" -- "$f"; fi; '
-        + 'if command -v ffplay >/dev/null 2>&1; then exec ffplay -nodisp -autoexit -loglevel quiet -volume "$v" "$f"; fi; '
-        + 'sleep 2; exit ' + unplayableExit
+        + 'if command -v pw-play >/dev/null 2>&1; then p=(pw-play --volume "$((v / 100)).$(printf %02d $((v % 100)))" -- "$f"); '
+        + 'elif command -v paplay >/dev/null 2>&1; then p=(paplay --volume "$((v * 65536 / 100))" -- "$f"); '
+        + 'elif command -v mpv >/dev/null 2>&1; then p=(mpv --no-video --no-terminal --really-quiet --volume="$v" -- "$f"); '
+        + 'elif command -v ffplay >/dev/null 2>&1; then p=(ffplay -nodisp -autoexit -loglevel quiet -volume "$v" "$f"); '
+        + 'else sleep 2; exit ' + unplayableExit + '; fi; '
+        + '[[ -n "${4:-}" ]] || exec "${p[@]}"; '
+        + '! command -v setpriv >/dev/null 2>&1 || p=(setpriv --pdeathsig TERM -- "${p[@]}"); '
+        + "k=; trap 'exit 143' TERM; trap '[[ -z \"$k\" ]] || kill \"$k\" 2>/dev/null' EXIT; "
+        + 'while :; do "${p[@]}" & k=$!; wait "$k" || exit; k=; '
+        + 'read -rt ' + (repeatGapMs / 1000) + '; (( $? > 128 )) || exit 0; done'
     readonly property int quickFailureMs: 1500
     readonly property int maxQuickFailures: 3
     property double soundStartedAt: 0
@@ -257,12 +270,14 @@ Item {
         if (!root.ringing || !root.settings.soundOn || root.soundBroken || sound.running) return
         root.soundStartedAt = Date.now()
         sound.command = ["bash", "-c", root.soundScript, "omanotes-ring", root.soundFile,
-            String(root.settings.volume), root.fallbackSoundFile]
+            String(root.settings.volume), root.fallbackSoundFile, "repeat"]
         sound.running = true
     }
 
     Process {
         id: sound
+        // Held open for the ring's gap, and closed when the shell is gone.
+        stdinEnabled: true
         onExited: function(exitCode) {
             if (!root.ringing || !root.settings.soundOn) return
             var quickFailure = exitCode !== 0 && Date.now() - root.soundStartedAt < root.quickFailureMs
@@ -291,7 +306,7 @@ Item {
 
     Timer {
         id: soundLoop
-        interval: 350
+        interval: root.repeatGapMs
         onTriggered: root._ensureSound()
     }
 
