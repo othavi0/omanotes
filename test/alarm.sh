@@ -21,28 +21,9 @@ tomorrow_name="$(date -d "$day 1 day" +%a)"
 sound_file="$cfg_dir/alarm.oga"
 : > "$sound_file"
 
-real_sqlite3="$(command -v sqlite3)"
-mkdir "$cfg_dir/bin"
-cat > "$cfg_dir/bin/sqlite3" <<SH
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >> "$cfg_dir/sqlite3.log"
-if [[ "\$*" == *"UPDATE alarms"* ]]; then
-  for _ in \$(seq 400); do [[ -e "$cfg_dir/hold-writes" ]] || break; sleep 0.05; done
-  if [[ -e "$cfg_dir/fail-writes" ]]; then echo "Error: disk I/O error" >&2; exit 10; fi
-fi
-if [[ "\$*" == *"INSERT INTO alarms"* ]]; then
-  for _ in \$(seq 400); do [[ -e "$cfg_dir/hold-inserts" ]] || break; sleep 0.05; done
-  if [[ -e "$cfg_dir/fail-insert" ]]; then echo "Error: disk I/O error" >&2; exit 10; fi
-fi
-if [[ "\$*" == *"FROM alarms ORDER BY"* && -e "$cfg_dir/hold-reads" ]]; then
-  out="\$("$real_sqlite3" "\$@" 2>&1)"
-  code=\$?
-  for _ in \$(seq 400); do [[ -e "$cfg_dir/hold-reads" ]] || break; sleep 0.05; done
-  printf '%s' "\$out"
-  exit \$code
-fi
-exec "$real_sqlite3" "\$@"
-SH
+# The binary is a stub (lib/stub-db.sh) that logs every request in db.log and holds or
+# fails the ones a check names; the player and the notification are stubs in PATH.
+stub_db
 # The player logs its start and its end on TERM, and fails at once while
 # sound-fails exists.
 cat > "$cfg_dir/bin/pw-play" <<SH
@@ -276,7 +257,7 @@ ShellRoot {
 QML
 
 touch "$cfg_dir/hold-reads"
-PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$worktree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
+PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$stub_tree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
 trap 'kill "$qs_pid" 2> /dev/null || true; wait "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
 
@@ -329,7 +310,8 @@ sound_is() {
   done
   fail "$what: want $starts starts and $ends ends, got $got"
 }
-alarm_reads() { grep -c "FROM alarms ORDER BY" "$cfg_dir/sqlite3.log" || true; }
+# Every request reads the alarms, so a read is a request.
+alarm_reads() { wc -l < "$cfg_dir/db.log"; }
 state_editor() {
   local what="$1" want="$2" n="${3:-1}" got=""
   for _ in $(seq 50); do
@@ -398,7 +380,7 @@ rm "$cfg_dir/hold-writes"
 expect "the ring is written to the daily alarm" "SELECT last_fired_at_ms FROM alarms WHERE id = 1" "$t0730"
 expect "the missed one-shots are consumed and switched off" "SELECT group_concat(enabled || ':' || last_fired_at_ms) FROM alarms WHERE id IN (2, 3)" \
   "0:$(ms "$day 06:00"),0:$(ms "$day 06:10")"
-replies "the tick wrote one row per due alarm" "$(grep -c "UPDATE alarms SET" "$cfg_dir/sqlite3.log" || true)" "3"
+replies "the tick wrote one row per due alarm" "$(grep -o '"op":"alarm.save"' "$cfg_dir/db.log" | wc -l)" "3"
 replies "a tick after the writes landed rings nothing new either" \
   "$(ipc tick "$(( t0730 + 2000 ))")" '{"loaded":true,"alarms":4,'"$ringing_wake"
 sound_is "and starts no second player" 1 0
@@ -469,7 +451,7 @@ tab_is() {
   done
   fail "$what: want '$want', got '$got'"
 }
-updates() { grep -c "UPDATE alarms SET" "$cfg_dir/sqlite3.log" || true; }
+updates() { grep -o '"op":"alarm.save"' "$cfg_dir/db.log" | wc -l; }
 
 replies "the panel of widget 1 opens on the Alarms tab" "$(ipc openAlarms)" "ok"
 contains "+ Alarm opens a draft" "$(ipc startNew)" "|draft:true||-|toast:"
@@ -557,7 +539,7 @@ state_editor "a failed insert shows the error and gives the draft back" "$(ipc e
 for n in 2 3; do
   replies "widget $n gets neither the draft nor the error of that insert" "$(ipc tabState "$n" | cut -d'|' -f2,5)" "draft:false|toast:"
 done
-failing_inserts() { grep -c "INSERT INTO alarms.*'Failing'" "$cfg_dir/sqlite3.log" || true; }
+failing_inserts() { grep -o '"op":"alarm.insert".*"label":"Failing"' "$cfg_dir/db.log" | wc -l; }
 ipc closePanel 1
 # The time field of widget 1 keeps focus in its hidden window until another
 # window opens, and that blur commits too, so widget 3 takes it first.

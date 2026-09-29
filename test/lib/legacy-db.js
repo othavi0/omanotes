@@ -206,22 +206,6 @@ function moveSql(id, anchorId, after) {
   ])
 }
 
-// `rows` with the row `id` moved as moveSql moves it, so the list shows the
-// drop before the reload confirms it. The same rows when either is missing.
-function movedRows(rows, id, anchorId, after) {
-  var list = rows.slice()
-  var from = -1
-  for (var i = 0; i < list.length; ++i) if (Number(list[i].id) === Number(id)) from = i
-  if (from < 0) return list
-  var row = list.splice(from, 1)[0]
-  for (var j = 0; j < list.length; ++j) {
-    if (Number(list[j].id) !== Number(anchorId)) continue
-    list.splice(after ? j + 1 : j, 0, row)
-    return list
-  }
-  return rows.slice()
-}
-
 // The newest 500 history rows, for the History tab. The table keeps growing;
 // countsSql() counts all of it.
 function historySql() {
@@ -241,12 +225,6 @@ function clearHistorySql() {
 // deletes nothing, and SQLite leaves the file as it was.
 function pruneHistorySql(days) {
   return "DELETE FROM history WHERE ts < CAST(strftime('%s', 'now') AS INTEGER) - " + sqlInt(days, 1, 36500) + " * 86400"
-}
-
-// True when keeping `days` of history would remove an entry, from the
-// oldest entry's time (seconds, 0 with none) and now (seconds).
-function prunes(days, oldest, nowSeconds) {
-  return days > 0 && oldest > 0 && oldest < nowSeconds - days * 86400
 }
 
 // A whole number in [min, max], for interpolation into SQL text (ADR-0002),
@@ -357,19 +335,6 @@ function parseAlarms(text) {
   })
 }
 
-// The rows with each pending record laid over its row. A pending null drops
-// the row, and a pending record whose row is gone is not brought back. The
-// order is alarmsSql's order.
-function mergeAlarms(rows, pending) {
-  var out = []
-  for (var i = 0; i < rows.length; i++) {
-    var entry = pending ? pending[rows[i].id] : undefined
-    if (entry === undefined) out.push(rows[i])
-    else if (entry.record !== null) out.push(entry.record)
-  }
-  return out
-}
-
 // The settings record, { soundOn, sound, soundFile, volume, snoozeMinutes,
 // ringMinutes, historyDays, checkUpdates }, one spec per key. It drives the
 // read, the write and the fallbacks. `column` stays inside this file. The
@@ -441,13 +406,6 @@ function parseSettings(text) {
     else settings[key] = clampedInt(v, spec.min, spec.max, spec.fallback)
   }
   return { settings: settings, bytes: Number(row.db_bytes) || 0 }
-}
-
-function mergeSettings(settings, patch) {
-  var out = {}
-  for (var key in settings) out[key] = settings[key]
-  for (var k in patch) out[k] = patch[k]
-  return out
 }
 
 // searchText(column) in SQL: each character through search_map, joined back
@@ -577,56 +535,6 @@ function migrateSql(version) {
   ].concat(steps, ["PRAGMA user_version = " + MIGRATIONS.length]))
 }
 
-function migrationRaced(stderr) {
-  return errorText(stderr, 1) === "CHECK constraint failed: " + VERSION_CHANGED
-}
-
-// argv for a read or write via the sqlite3 CLI. `sql` is one statement or a
-// transaction() array, one argument per statement. `json` enables -json output.
-//
-// `.timeout 5000` is a CLI dot-command (not SQL) that sets the busy timeout for
-// the session: it makes sqlite wait up to 5s on a locked db instead of failing,
-// and — unlike `PRAGMA busy_timeout=...` — it prints nothing, so it cannot
-// corrupt the -json output.
-//
-// `-init /dev/null` skips the user's sqliterc, which the CLI reads even when not
-// interactive: a `.headers on` there turns a write's "1" into "changes()\n1".
-function sqliteCommand(dbPath, sql, json) {
-  var cmd = ["sqlite3", "-init", "/dev/null"]
-  if (json) cmd.push("-json")
-  return cmd.concat(String(dbPath), ".timeout 5000", sql)
-}
-
-// argv for start-up: ensure the data dir exists, then read the schema version
-// through sqliteCommand, so it waits on a locked db like every other command
-// ("$@" is quoted, so the shell cannot mangle the SQL).
-function initCommand(dataDir, dbPath) {
-  return ["bash", "-c", 'mkdir -p -- "$0" && exec "$@"', String(dataDir)]
-    .concat(sqliteCommand(dbPath, "PRAGMA user_version", false))
-}
-
-// The backup of the day `dayText` ("2026-09-28"), next to the database.
-function backupName(dayText) {
-  return "scratchpad-" + dayText + ".db"
-}
-
-// argv for a backup: VACUUM INTO a temporary file, then a move over the
-// day's backup, so a VACUUM that fails leaves the earlier copy of the day.
-// VACUUM INTO writes another file, so the watcher does not fire, and it
-// cannot run inside a transaction, so it is its own argument.
-function backupCommand(dbPath, dataDir, dayText) {
-  var target = String(dataDir) + "/" + backupName(dayText)
-  var temporary = target + ".tmp"
-  return ["bash", "-c", 'rm -f -- "$3" && sqlite3 -init /dev/null "$1" ".timeout 5000" "$2" && mv -f -- "$3" "$4"',
-    "omanotes-backup", String(dbPath), "VACUUM INTO " + q(temporary), temporary, target]
-}
-
-function parseVersion(text) {
-  var t = String(text || "").trim()
-  if (!/^\d+$/.test(t)) throw new Error("unreadable sqlite3 output")
-  return Number(t)
-}
-
 // Parse a `sqlite3 -json` result into an array of row objects. An empty result
 // set prints nothing, so "" → []. Anything else that is not a JSON array throws.
 function parseRows(text) {
@@ -667,12 +575,4 @@ function parseId(text) {
 // Parse the CHANGES count a one-item write prints: false when no item had its id.
 function parseFound(text) {
   return Number(String(text || "").trim()) > 0
-}
-
-// The first line sqlite3 printed on stderr, without the "Error in 3rd command
-// line argument: " prefix that only locates the failing argument.
-function errorText(stderr, exitCode) {
-  var line = String(stderr || "").trim().split("\n")[0]
-  line = line.replace(/^[A-Za-z ]*error( in \S+ command line argument)?: /i, "")
-  return line !== "" ? line : "sqlite3 exited " + exitCode
 }

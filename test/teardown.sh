@@ -10,7 +10,7 @@ trap 'rm -rf "$sandbox"' EXIT
 
 copy="$sandbox/omanotes"
 mkdir "$copy"
-cp -r "$src/Panel.qml" "$src/data" "$src/ui" "$src/test" "$copy/"
+cp -r "$src/Panel.qml" "$src/bin" "$src/data" "$src/ui" "$src/test" "$copy/"
 sed 's/function ping(): string { return root.ipcReply("") }/function ping(): string { return "down" }/' \
   "$src/BarWidget.qml" > "$copy/BarWidget.qml"
 

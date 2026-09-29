@@ -28,17 +28,38 @@ ln -s "$worktree/data" "$cfg_dir/data"
 
 mkdir -p "$data_home/omarchy"
 db="$data_home/omarchy/scratchpad.db"
-# `run_db_js v0` applies the schema of version 0, `run_db_js migrate` takes the
-# database from version 0 to the current one.
-run_db_js() {
-  node --input-type=module -e '
-    const { loadQmlLib } = await import(process.argv[1])
-    const Db = loadQmlLib(process.argv[2], ["MIGRATIONS", "migrateSql"])
-    const sql = process.argv[3] === "v0" ? Db.MIGRATIONS[0] : Db.migrateSql(0)
-    process.stdout.write(sql.join(";\n") + ";\n")
-  ' "$worktree/test/lib/load-qml-lib.mjs" "$worktree/data/Db.js" "$1" | sqlite3 "$db"
+# The binary of this checkout, under the name the Store resolves next to data/.
+# A script that wants to hold, fail or count requests replaces the link with
+# lib/stub-db.sh (see stub_db below).
+arch="$(uname -m)"
+real_db="$worktree/bin/omanotes-db.$arch"
+mkdir -p "$cfg_dir/bin"
+ln -s "$real_db" "$cfg_dir/bin/omanotes-db.$arch"
+# The Store finds the binary at ../bin/ from its own data/Store.qml. A script that loads
+# the plugin from the checkout (BarWidget.qml, Service.qml by URL) gets a farm of links to
+# the checkout with a bin/ of its own that holds the stub, and runs the shell on that
+# ($stub_tree). Scripts that load the plugin from $cfg_dir/data need only $cfg_dir/bin.
+stub_db() {
+  rm -f "$cfg_dir/bin/omanotes-db.$arch"
+  sed "s#@CFG@#$cfg_dir#; s#@REAL@#$real_db#" "$worktree/test/lib/stub-db.sh" > "$cfg_dir/bin/omanotes-db.$arch"
+  chmod +x "$cfg_dir/bin/omanotes-db.$arch"
+  stub_tree="$cfg_dir/tree"
+  mkdir -p "$stub_tree"
+  local entry
+  for entry in "$worktree"/*; do
+    [[ "$(basename "$entry")" == bin ]] || ln -sfn "$entry" "$stub_tree/$(basename "$entry")"
+  done
+  ln -sfn "$cfg_dir/bin" "$stub_tree/bin"
 }
-run_db_js v0
+# The protocol the QML speaks, for the requests a script sends the binary itself.
+protocol="$(sed -n 's/^var PROTOCOL = \([0-9]*\)$/\1/p' "$worktree/data/Db.js")"
+# One sync of the whole file, which opening it with the binary migrates first.
+sync_db() { "$real_db" "$protocol" run "$1" <<< '{"sync":{}}'; }
+# `v0_db` writes the schema of version 0 (lib/v0.sql), on which the rows go;
+# `migrate_db` takes the file to the current version.
+v0_db() { sqlite3 "$db" < "$worktree/test/lib/v0.sql"; }
+migrate_db() { sync_db "$db" > /dev/null; }
+v0_db
 
 now="$(date +%s)"
 sqlite3 "$db" "INSERT INTO items (id, type, title, body, status, created_at, updated_at) VALUES
@@ -53,7 +74,7 @@ INSERT INTO history (id, type, title, action, ts) VALUES
   (2, 'note', 'Buy coffee', 'completed', $now - 90000),
   (3, 'todo', 'Old errand', 'deleted', $now - 100000),
   (4, 'note', 'Ideas for the panel', 'edited', $now - 3600);"
-run_db_js migrate
+migrate_db
 
 # A plain command, so a caller that backgrounds it gets the pid of `timeout`
 # in `$!`; killing that pid then reaches qs.
