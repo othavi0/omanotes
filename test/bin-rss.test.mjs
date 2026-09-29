@@ -2,8 +2,9 @@
 // it reads it, so its own memory (RssAnon: the GC heap, SQLite's cache, the
 // stacks) does not grow with the database. VmHWM, the peak of the whole
 // process, also counts the pages of libc, libsqlite3 and libm, which the
-// system shares and a package update moves, so it is gated only on its growth
-// from 1 000 to 2 000 items, where those pages cancel out.
+// system shares and a package update moves: its growth from 1 000 to 2 000
+// items moved from -276 to +356 kB between runs, so it is reported and not
+// gated.
 //
 // The child's stdout is a FIFO filled before the spawn, so the child blocks on
 // its first write, line 1, right after the migration and the writes. The test
@@ -20,7 +21,6 @@ import { BIN, PROTOCOL, T0, answerOf, call, newDb, tempDb, tempDir } from "./lib
 
 const ANON_LIMIT_KB = 3 * 1024
 const WRITE_ANON_LIMIT_KB = 16 * 1024
-const PEAK_SLOPE_KB = 256
 const ANON_SLOPE_KB = 128
 
 function memory(pid) {
@@ -120,7 +120,7 @@ function withItems(t, count) {
 
 const reload = { sync: { since: -1, views: [{ key: "v", filter: "all", query: "cafe" }] } }
 
-test("a reload's own memory stays flat from 1 000 to 2 000 items, and so does its peak", async (t) => {
+test("a reload's own memory stays flat from 1 000 to 2 000 items", async (t) => {
   const small = await peakOf(t, withItems(t, 1000), reload)
   const large = await peakOf(t, withItems(t, 2000), reload)
   assert.equal(small.answer.snapshot.items.length, 1000)
@@ -129,7 +129,6 @@ test("a reload's own memory stays flat from 1 000 to 2 000 items, and so does it
   t.diagnostic(`reload of 2 000 items: RssAnon ${large.anon} kB, VmHWM ${large.hwm} kB`)
   assert.ok(small.anon <= ANON_LIMIT_KB && large.anon <= ANON_LIMIT_KB, `RssAnon ${small.anon} and ${large.anon} kB`)
   assert.ok(large.anon - small.anon <= ANON_SLOPE_KB, `RssAnon grew ${large.anon - small.anon} kB with 1 000 more items`)
-  assert.ok(large.hwm - small.hwm <= PEAK_SLOPE_KB, `the peak grew ${large.hwm - small.hwm} kB with 1 000 more items`)
 })
 
 test("the first spawn on a missing file, which migrates it from 0 to 5, stays under the same limit", async (t) => {

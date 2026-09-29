@@ -4,8 +4,9 @@
 # was started, and a throwaway XDG_STATE_HOME. Asserts the state file each
 # mode leaves, that apply refuses everything that could lose work and
 # validates before it touches the folder, that `status` calls running at the
-# same time never break a merge, the lock, and an update that rewrites the
-# script itself. Needs git and flock, not qs.
+# same time never break a merge, the lock, an update that rewrites the
+# script itself, and the smoke of the new omanotes-db, which runs the
+# committed binary of this machine. Needs git and flock, not qs.
 
 set -euo pipefail
 worktree="$(cd "$(dirname "$0")/.." && pwd)"
@@ -55,7 +56,7 @@ chmod +x "$tmp/bin/"* "$tmp/gitbin/git"
 # find no omarchy-restart-shell: the real one would restart this session's
 # shell.
 mkdir "$tmp/sysbin"
-for tool in bash env sh sed awk grep head tail cat date mktemp mv rm mkdir flock timeout tar tr wc sort cut dirname; do
+for tool in bash env sh sed awk grep head tail cat date mktemp mv rm mkdir flock timeout tar tr wc sort cut dirname uname od; do
   ln -s "$(command -v "$tool")" "$tmp/sysbin/$tool"
 done
 plain_path="$tmp/bin:$PATH"
@@ -83,8 +84,10 @@ listing() { find "$1" -path "$1/.git" -prune -o -printf '%P %T@ %s\n' | sort; }
 
 git init --quiet --bare -b main "$tmp/origin.git"
 git clone --quiet "$tmp/origin.git" "$tmp/dev" 2> /dev/null
-mkdir "$tmp/dev/data"
-cp "$worktree/data/update.sh" "$tmp/dev/data/update.sh"
+mkdir "$tmp/dev/data" "$tmp/dev/bin"
+cp "$worktree/data/update.sh" "$worktree/data/Db.js" "$tmp/dev/data/"
+arch="$(uname -m)"
+cp "$worktree/bin/omanotes-db.$arch" "$tmp/dev/bin/"
 printf '{\n  "id": "othavi0.omanotes",\n  "version": "1.0.0"\n}\n' > "$tmp/dev/manifest.json"
 for i in $(seq 200); do echo "$i" > "$tmp/dev/file-$i.txt"; done
 echo "first" > "$tmp/dev/notes.txt"
@@ -332,6 +335,78 @@ run "$plugin" apply || code=$?
 chmod 755 "$tmp/state/omanotes"
 rm "$tmp/validate-locks-state"
 replies "an apply that pulls but cannot record it exits 1" "$code|$(head_of "$plugin")" "1|$(head_of "$tmp/dev")"
+
+# The smoke of omanotes-db runs on the copy before the merge. Each case
+# publishes origin/main as it was good, with one thing broken.
+good="$(head_of "$tmp/dev")"
+name="bin/omanotes-db.$arch"
+case "$arch" in x86_64) other=aarch64 ;; *) other=x86_64 ;; esac
+declare -A machine=([x86_64]=62 [aarch64]=183)
+publish_broken() {
+  git -C "$tmp/dev" checkout --quiet "$good" -- bin data
+  "${@:2}"
+  git -C "$tmp/dev" add -A
+  git -C "$tmp/dev" commit --quiet -m "$1"
+  git -C "$tmp/dev" push --quiet origin main
+}
+# Apply refuses the version as invalid with `detail`, keeps the head and
+# writes nothing in the plugin folder. apply_path, when set, is the PATH
+# apply runs with.
+refused() {
+  local what="$1" want="$2" before was code=0
+  before="$(listing "$plugin")"
+  was="$(head_of "$plugin")"
+  PATH="${apply_path:-$PATH}" run "$plugin" apply || code=$?
+  replies "$what" "$code|$(field phase)|$(field error)|$(field detail)|$(head_of "$plugin")|$(diff <(printf '%s\n' "$before") <(listing "$plugin") | grep -c '^[<>]' || true) paths changed" \
+    "0|failed|invalid|$want|$was|0 paths changed"
+}
+mkdir "$tmp/state/omanotes/validate.stale"
+: > "$tmp/order.log"
+
+publish_broken "feat: sem binário" git -C "$tmp/dev" rm --quiet "$name"
+refused "an update without this machine's omanotes-db is invalid" "there is no $name"
+replies "a copy an earlier apply left behind is gone" "$(compgen -G "$tmp/state/omanotes/validate.*" | wc -l)" "0"
+
+publish_broken "feat: binário é um link" ln -sfn "$worktree/$name" "$tmp/dev/$name"
+refused "an update whose omanotes-db is a symlink is invalid, even to a binary that runs" "$name is not a regular file"
+
+publish_broken "feat: binário sem bit de execução" chmod -x "$tmp/dev/$name"
+refused "an update whose omanotes-db lost its executable bit is invalid" "$name is not executable (no x bit, or a noexec mount)"
+
+publish_broken "feat: binário de outra arquitetura" cp "$worktree/bin/omanotes-db.$other" "$tmp/dev/$name"
+refused "an update whose omanotes-db is built for another machine is invalid, whatever binfmt would start" \
+  "$name is built for ELF machine ${machine[$other]}, not $arch"
+
+publish_broken "feat: selftest falha" cp "$(type -P false)" "$tmp/dev/$name"
+refused "an update whose omanotes-db fails its selftest is invalid" "omanotes-db selftest failed with exit 1"
+
+publish_broken "feat: protocolo 99" sed -i 's/^var PROTOCOL = .*/var PROTOCOL = 99/' "$tmp/dev/data/Db.js"
+refused "an update whose omanotes-db refuses the protocol of its own data/Db.js is invalid" \
+  "omanotes-db does not speak protocol 99 of data/Db.js"
+
+publish_broken "feat: selftest falha sem validador" cp "$(type -P false)" "$tmp/dev/$name"
+mkdir "$tmp/novalidate"
+ln -s "$tmp/bin/omarchy-notification-send" "$tmp/bin/omarchy-restart-shell" "$tmp/novalidate/"
+novalidate_path="$tmp/gitbin:$tmp/novalidate:$tmp/sysbin"
+if [[ -n "$(PATH="$novalidate_path" command -v omarchy-plugin-validate)" || "$(PATH="$novalidate_path" command -v omarchy-restart-shell)" != "$tmp/novalidate/omarchy-restart-shell" ]]; then
+  fail "the PATH without omarchy-plugin-validate still finds one, or not the restart stub, so that apply did not run"
+else
+  apply_path="$novalidate_path" refused "without omarchy-plugin-validate the smoke still runs" "omanotes-db selftest failed with exit 1"
+fi
+mkdir "$tmp/silenttar"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/silenttar/tar"
+chmod +x "$tmp/silenttar/tar"
+apply_path="$tmp/silenttar:$PATH" refused "an extraction that fails without a word is invalid, not a pass" "could not extract origin/main"
+replies "no update the smoke refused restarted the shell" "$(wc -l < "$tmp/order.log")" "0"
+
+publish_broken "fix: binário de volta" sed -i 's/^var PROTOCOL = \([0-9]*\)$/  var PROTOCOL = \1 \/\/ reformatted/' "$tmp/dev/data/Db.js"
+code=0
+# A DOTNET_* variable that crashes the runtime at start: the smoke's env -i
+# keeps it from the binary.
+DOTNET_GCHeapHardLimit=600000 run "$plugin" apply || code=$?
+replies "the same version with a good omanotes-db, a reformatted PROTOCOL line and DOTNET_* in the environment ends updated" "$code|$(field phase)|$(field error)|$(head_of "$plugin")" "0|updated||$(head_of "$tmp/dev")"
+replies "with the binary in place and executable, and no copy left beside the state file" \
+  "$([[ -f "$plugin/$name" && -x "$plugin/$name" ]] && echo executable)|$(compgen -G "$tmp/state/omanotes/validate.*" | wc -l)" "executable|0"
 
 echo "update: $checks checks, $failures failed"
 exit $(( failures > 0 ))
