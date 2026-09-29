@@ -199,9 +199,20 @@ Item {
         root._stopSound()
     }
 
+    // The loop reads the file and the volume once, so a change saved during
+    // a ring restarts it. root.soundFile still holds the old file here.
     onSettingsChanged: {
-        if (root.settings.soundOn) root._ensureSound()
-        else root._stopSound()
+        if (!root.settings.soundOn) {
+            root._stopSound()
+            return
+        }
+        var wanted = root._ringCommand()
+        if (sound.running && (sound.command[4] !== wanted[4] || sound.command[5] !== wanted[5])) {
+            root._soundRestarting = true
+            sound.running = false
+            return
+        }
+        root._ensureSound()
     }
 
     function _stopSound() {
@@ -265,12 +276,17 @@ Item {
     readonly property int maxQuickFailures: 3
     property double soundStartedAt: 0
     property int soundFailures: 0
+    property bool _soundRestarting: false
+
+    function _ringCommand() {
+        return ["bash", "-c", root.soundScript, "omanotes-ring", Sound.soundPath(root.settings),
+            String(root.settings.volume), root.fallbackSoundFile, "repeat"]
+    }
 
     function _ensureSound() {
         if (!root.ringing || !root.settings.soundOn || root.soundBroken || sound.running) return
         root.soundStartedAt = Date.now()
-        sound.command = ["bash", "-c", root.soundScript, "omanotes-ring", root.soundFile,
-            String(root.settings.volume), root.fallbackSoundFile, "repeat"]
+        sound.command = root._ringCommand()
         sound.running = true
     }
 
@@ -279,7 +295,13 @@ Item {
         // Held open for the ring's gap, and closed when the shell is gone.
         stdinEnabled: true
         onExited: function(exitCode) {
+            var restarting = root._soundRestarting
+            root._soundRestarting = false
             if (!root.ringing || !root.settings.soundOn) return
+            if (restarting) {
+                soundLoop.restart()
+                return
+            }
             var quickFailure = exitCode !== 0 && Date.now() - root.soundStartedAt < root.quickFailureMs
             if (exitCode === root.unplayableExit || (quickFailure && ++root.soundFailures >= root.maxQuickFailures)) {
                 root.soundBroken = true
