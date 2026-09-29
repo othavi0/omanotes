@@ -7,7 +7,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 inputs=(db tools/build.sh tools/sysroot.lock)
-if [[ "$(git rev-parse --show-toplevel 2> /dev/null)" == "$(pwd -P)" ]]; then
+checkout=false
+[[ "$(git rev-parse --show-toplevel 2> /dev/null)" == "$(pwd -P)" ]] && checkout=true
+if $checkout; then
+  # The csproj compiles every .cs under db/, tracked or not, so an untracked
+  # build input would change the bytes without changing this hash.
+  stray="$(git ls-files -o --exclude-standard -- db | grep -E '\.(cs|csproj|props|targets|json|txt|tsv|editorconfig)$' || true)"
+  if [[ -n "$stray" ]]; then
+    printf 'source-hash: untracked build input in db/, add or remove it:\n%s\n' "$stray" >&2
+    exit 1
+  fi
+fi
+if $checkout; then
   git ls-files -z -- "${inputs[@]}"
 else
   find "${inputs[@]}" -type f -not -path 'db/bin/*' -not -path 'db/obj/*' -print0
