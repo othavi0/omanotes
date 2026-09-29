@@ -45,8 +45,12 @@ ShellRoot {
     function onWriteFailed(kind, args, message) { sr.lastFailure = kind + ":" + message }
   }
 
+  // False destroys the service and every widget, as a plugin reload does.
+  property bool pluginOn: true
+
   Loader {
     id: svc
+    active: sr.pluginOn
     source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/Service.qml"
   }
 
@@ -60,6 +64,7 @@ ShellRoot {
       Loader {
         id: loader
         anchors.fill: parent
+        active: sr.pluginOn
         source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml"
         onLoaded: item.service = Qt.binding(function() { return svc.item })
       }
@@ -118,6 +123,12 @@ ShellRoot {
       return sr.panelDb(0).add("note", title, "x".repeat(size))
     }
     function lastFailure(): string { return sr.lastFailure }
+    function setPlugin(on: bool): void { sr.pluginOn = on }
+    function loaded(): int {
+      var n = svc.item ? 1 : 0
+      for (var i = 0; i < monitors.instances.length; ++i) if (monitors.instances[i].widget && monitors.instances[i].widget.panelItem) n++
+      return n
+    }
     // How many widgets list an item with this title.
     function seen(title: string): int {
       var n = 0
@@ -265,6 +276,29 @@ replies "and fails in the panel, naming the file that did not start" "$failure" 
 replies "the queue moves on once the binary is back" "$(ipc addNote AFTER)" '{"ok":true}'
 wait_for_count AFTER 1
 replies "the next write lands and the failed one was not sent again" "$(count AFTER)|$(count LOST)" "1|0"
+
+sleep 1
+ipc setPlugin false > /dev/null
+gone=""
+for _ in $(seq 30); do
+  gone="$(ipc loaded)"
+  [[ "$gone" == 0 ]] && break
+  sleep 0.1
+done
+replies "the service and the widgets go away, as in a plugin reload" "$gone" "0"
+: > "$cfg_dir/db.log"
+sqlite3 "$file" "INSERT INTO items (type, title, status, created_at, updated_at) VALUES ('note', 'WHILE-DOWN', 0, 1, 1)"
+sleep 1
+replies "with no view the Store spawns nothing, even when the file changes" "$(requests)" ""
+ipc setPlugin true > /dev/null
+seen=""
+for _ in $(seq 50); do
+  seen="$(ipc seen WHILE-DOWN 2> /dev/null)"
+  [[ "$seen" == "$monitors" ]] && break
+  sleep 0.1
+done
+replies "the widgets that come back list what changed while nothing watched" "$seen" "$monitors"
+replies "and they talk to the same one Store" "$(ipc stores)" '{"views":4,"stores":1}'
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
