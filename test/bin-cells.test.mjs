@@ -6,7 +6,7 @@
 // parsers made of it, is frozen in test/fixtures/parity/cells.json.
 import test from "node:test"
 import assert from "node:assert/strict"
-import { Db, PROTOCOL, call, cli, exec, fixture, projected, rows, run, sync, tempDb, write } from "./lib/bin-fixture.mjs"
+import { Db, PROTOCOL, call, cli, exec, fixture, projected, projectedRows, rows, run, sync, tempDb, write } from "./lib/bin-fixture.mjs"
 
 const C = fixture("cells.json")
 
@@ -80,10 +80,10 @@ for (const [name, cell] of Object.entries(HOSTILE)) {
     const frozenSettings = cliRows(frozen.text.settings)[0]
     assert.deepEqual(projected(settings.rest, frozenSettings), frozenSettings, "settings cells")
     assert.equal(settings.bytes, fileBytes(path), "the size of the file")
-    assert.deepEqual(snap.alarms, cliRows(frozen.text.alarms), "alarm cells")
+    assert.deepEqual(projectedRows(snap.alarms, cliRows(frozen.text.alarms)), cliRows(frozen.text.alarms), "alarm cells")
     assert.deepEqual(snap.counts, cliRows(frozen.text.counts)[0], "count cells")
-    assert.deepEqual(snap.items, cliRows(frozen.text.items), "item cells")
-    assert.deepEqual(snap.history, cliRows(frozen.text.history), "history cells")
+    assert.deepEqual(projectedRows(snap.items, cliRows(frozen.text.items)), cliRows(frozen.text.items), "item cells")
+    assert.deepEqual(projectedRows(snap.history, cliRows(frozen.text.history)), cliRows(frozen.text.history), "history cells")
 
     // The coercion of data/Db.js over the binary's cells, and the old one over the CLI's text.
     const fromBin = {

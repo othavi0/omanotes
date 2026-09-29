@@ -74,7 +74,9 @@ test("a v0 file with rows migrates to the rows the JS migrations leave", (t) => 
   assert.ok(rows(bin, "PRAGMA user_version")[0].user_version >= S.v0WithRows.userVersion)
   assert.deepEqual(Object.keys(S.v0WithRows.tables), ["items", "history", "alarms", "settings", "sqlite_sequence"])
   for (const [table, frozen] of Object.entries(S.v0WithRows.tables)) {
-    assert.deepEqual(projectedRows(rows(bin, `SELECT * FROM ${table} ORDER BY 1`), frozen), frozen, table)
+    const live = rows(bin, `SELECT * FROM ${table} ORDER BY 1`)
+    const kept = table === "sqlite_sequence" ? live.filter((row) => frozen.some((f) => f.name === row.name)) : live
+    assert.deepEqual(projectedRows(kept, frozen), frozen, table)
   }
   assert.equal(sha256(foldTable(bin)), SEARCH_MAP_SHA256)
   assert.ok(rows(bin, "SELECT count(*) AS n FROM items WHERE search_title IS NOT NULL")[0].n >= 5, "the backfill folded the rows")

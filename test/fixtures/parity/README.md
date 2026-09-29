@@ -1,6 +1,6 @@
 # Parity fixtures
 
-What the SQL of before the binary left and read, run once and frozen (ADR-0018). `test/bin-parity.test.mjs`, `test/bin-schema.test.mjs`, `test/bin-cells.test.mjs` and `test/bin-backup.test.mjs` hold the binary to them.
+What the SQL of before the binary left and read, run once and frozen (ADR-0018). `test/bin-parity.test.mjs`, `test/bin-schema.test.mjs` and `test/bin-cells.test.mjs` hold the binary to them.
 
 - `writes.json` holds the five tables after each write step, the id of each insert, the found of each write to one item and the ids of each search.
 - `schema.json` holds `sqlite_master`, `user_version` and the rows of a new file and of a migrated v0 file, and the first migration.
