@@ -68,4 +68,4 @@ Each gate is a test that failed with its defect planted and passes without it.
 
 - The QML scripts replace the binary with `test/lib/stub-db.sh`, which logs each request in `db.log` with the ops it carries and holds or fails the requests a script names. `sqlite3` stays as the oracle and as someone editing the file by hand.
 - `test/lib/v0.sql` is the frozen schema of a database from before versioning. The scripts write their rows on it, and the binary migrates the file when it opens it.
-- `test/lib/legacy-db.js` keeps the SQL of before the binary, only as the oracle of the parity tests (`test/bin-parity.test.mjs`, `test/bin-cells.test.mjs`, `test/bin-schema.test.mjs`). The plugin never loads it.
+- `test/fixtures/parity/` holds what the SQL of before the binary left and read, run once and frozen: the tables after each write, the search matches, the schema and the cells the old reads printed. The parity tests (`test/bin-parity.test.mjs`, `test/bin-cells.test.mjs`, `test/bin-schema.test.mjs`) hold the binary to it. A new write has no old SQL to match; its tests state what it must do.

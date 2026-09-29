@@ -1,11 +1,11 @@
 // The fixture of the database tests: the committed binary for this machine,
 // driven over its wire, data/Db.js as the plugin runs it, and the sqlite3 CLI
-// as the oracle and as someone editing the file by hand. test/lib/legacy-db.js
-// keeps the SQL of before the binary, so a parity test runs that SQL on one
-// copy of a database and the binary on the other and compares the tables.
+// as the oracle and as someone editing the file by hand. test/fixtures/parity/
+// holds what the SQL of before the binary left and read, so a parity test runs
+// the binary and compares the tables with the frozen ones.
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { machine, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { loadQmlLib } from "./load-qml-lib.mjs"
@@ -16,28 +16,11 @@ export const Db = loadQmlLib(new URL("../../data/Db.js", import.meta.url), [
   "movedRows", "typeRows", "matchedRows", "wellFormed", "request", "utf8Length", "command", "reply", "ERROR_TEXT", "errorText",
   "MAX_WRITE_BYTES", "MAX_QUERY", "viewQuery", "sameRows", "writeJson", "definitive"
 ])
-export const Legacy = loadQmlLib(new URL("./legacy-db.js", import.meta.url), [
-  "addSql", "setStatusSql", "updateSql", "deleteItemSql", "convertTypeSql", "moveSql", "deleteHistorySql",
-  "clearHistorySql", "pruneHistorySql", "setSettingsSql", "insertAlarmSql", "saveAlarmSql", "deleteAlarmSql",
-  "listSql", "countsSql", "historySql", "alarmsSql", "settingsSql", "MIGRATIONS", "migrateSql", "searchText",
-  "parseRows", "parseId", "parseFound", "parseSettings", "parseAlarms", "parseCounts"
-])
 
 export const T0 = 1700000000
 // The schema every database had before it was versioned, frozen. The comment
 // lines go: the CLI reads an argument that starts with "--" as an option.
 export const V0_SCHEMA = readFileSync(new URL("./v0.sql", import.meta.url), "utf8").replace(/^--.*\n/gm, "")
-
-// Freezes the clock of the old builders at T0, the `at` the new writes send.
-export function atT0(fn) {
-  const real = Date.now
-  Date.now = () => T0 * 1000
-  try {
-    return fn()
-  } finally {
-    Date.now = real
-  }
-}
 
 export const ROOT = new URL("../../", import.meta.url).pathname
 // The file suffix is `uname -m`, the rule the QML and update.sh use.
@@ -139,29 +122,6 @@ export function rows(dbPath, sql) {
   return parsed
 }
 
-// The start-up of before the binary: the version read, then the migrations
-// above it, through the CLI.
-export function legacyStart(path) {
-  mkdirSync(dirname(path), { recursive: true })
-  const sql = Legacy.migrateSql(Number(cli(path, "PRAGMA user_version").trim()))
-  if (sql.length > 0) cli(path, sql)
-}
-
-// A database as the JS of before left it: the v0 schema, the seed rows, then
-// its migrations.
-export function legacyDb(t) {
-  const path = v0Db(t)
-  legacyStart(path)
-  return path
-}
-
-// A file the JS of before created from nothing.
-export function legacyNewDb(t) {
-  const path = tempDb(t)
-  legacyStart(path)
-  return path
-}
-
 // A file the binary created from nothing.
 export function newDb(t) {
   const path = tempDb(t)
@@ -175,14 +135,6 @@ export function seeded(t) {
   const path = v0Db(t)
   sync(path)
   return path
-}
-
-// The same bytes twice: the old SQL runs on `old`, the binary on `bin`.
-export function pair(t) {
-  const old = legacyDb(t)
-  const bin = old.replace("scratchpad.db", "scratchpad-bin.db")
-  copyFileSync(old, bin)
-  return { old, bin }
 }
 
 // A v0 file, before any migration: the live database before versioning. With
@@ -234,12 +186,6 @@ export const TABLES = {
   alarms: "SELECT * FROM alarms ORDER BY id",
   settings: "SELECT * FROM settings ORDER BY id",
   sequence: "SELECT * FROM sqlite_sequence ORDER BY name"
-}
-
-export function sameTables(a, b, label) {
-  for (const [name, sql] of Object.entries(TABLES)) {
-    assert.deepEqual(rows(b, sql), rows(a, sql), `${label}: ${name}`)
-  }
 }
 
 // What the SQL of before the binary left and read, frozen in test/fixtures/parity/.
