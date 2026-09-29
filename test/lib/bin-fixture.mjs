@@ -1,18 +1,43 @@
-// The fixture of the omanotes-db tests: the committed binary for this machine,
-// driven over its wire, and the sqlite3 CLI as the oracle and as someone
-// editing the file by hand. data/Db.js still builds the SQL of today, so a
-// parity test runs that SQL on one copy of a database and the binary on the
-// other and compares the tables.
+// The fixture of the database tests: the committed binary for this machine,
+// driven over its wire, data/Db.js as the plugin runs it, and the sqlite3 CLI
+// as the oracle and as someone editing the file by hand. test/lib/legacy-db.js
+// keeps the SQL of before the binary, so a parity test runs that SQL on one
+// copy of a database and the binary on the other and compares the tables.
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { machine, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { DB_JS, NAMES, T0, V0_SCHEMA, seed, start, dbAt } from "./db-fixture.mjs"
 import { loadQmlLib } from "./load-qml-lib.mjs"
 
-export { T0, V0_SCHEMA }
-export const Db = loadQmlLib(DB_JS, [...NAMES, "searchText"])
+export const Db = loadQmlLib(new URL("../../data/Db.js", import.meta.url), [
+  "PROTOCOL", "MAX_REQUEST_BYTES", "now", "wholeId", "wholeIn", "daysMask", "maskDays", "alarmCells", "clampedInt",
+  "parseAlarms", "mergeAlarms", "SETTINGS", "settingsCells", "parseSettings", "mergeSettings", "parseCounts", "prunes",
+  "movedRows", "typeRows", "matchedRows", "wellFormed", "request", "utf8Length", "command", "reply", "ERROR_TEXT", "errorText",
+  "MAX_WRITE_BYTES", "MAX_QUERY", "viewQuery", "sameRows", "writeJson", "definitive"
+])
+export const Legacy = loadQmlLib(new URL("./legacy-db.js", import.meta.url), [
+  "addSql", "setStatusSql", "updateSql", "deleteItemSql", "convertTypeSql", "moveSql", "deleteHistorySql",
+  "clearHistorySql", "pruneHistorySql", "setSettingsSql", "insertAlarmSql", "saveAlarmSql", "deleteAlarmSql",
+  "listSql", "countsSql", "historySql", "alarmsSql", "settingsSql", "MIGRATIONS", "migrateSql", "searchText",
+  "parseRows", "parseId", "parseFound", "parseSettings", "parseAlarms", "parseCounts"
+])
+
+export const T0 = 1700000000
+// The schema every database had before it was versioned, frozen. The comment
+// lines go: the CLI reads an argument that starts with "--" as an option.
+export const V0_SCHEMA = readFileSync(new URL("./v0.sql", import.meta.url), "utf8").replace(/^--.*\n/gm, "")
+
+// Freezes the clock of the old builders at T0, the `at` the new writes send.
+export function atT0(fn) {
+  const real = Date.now
+  Date.now = () => T0 * 1000
+  try {
+    return fn()
+  } finally {
+    Date.now = real
+  }
+}
 
 export const ROOT = new URL("../../", import.meta.url).pathname
 // The file suffix is `uname -m`, the rule the QML and update.sh use.
@@ -36,15 +61,25 @@ export function exec(args, input = "", { env = {} } = {}) {
   return { status: r.status, signal: r.signal, stdout: r.stdout.toString("utf8"), stderr: r.stderr.toString("utf8") }
 }
 
-// One `run` request. On exit 0 the parsed response; on anything else the
-// failure, and stdout must be empty then.
+// One `run` request, as { results, snapshot }: stdout's line 1 is the writes'
+// results and line 2 the snapshot. On exit 3 the snapshot failed after line 1
+// went out: { status: 3, results, syncErr } from stderr's last line. On any
+// other failure the error, and stdout must be empty then.
 export function call(dbPath, request, opts = {}) {
-  const r = exec([PROTOCOL, "run", dbPath], request, opts)
-  if (r.status !== 0) {
-    assert.equal(r.stdout, "", "stdout carries nothing unless the exit is 0")
-    return { status: r.status, error: lastError(r.stderr), stderr: r.stderr }
+  return answerOf(exec([PROTOCOL, "run", dbPath], request, opts))
+}
+
+// The answer of a finished `run`, { status, stdout, stderr }, as call() gives it.
+export function answerOf(r) {
+  if (r.status === 0 || r.status === 3) {
+    const [head, snapshot] = r.stdout.split("\n")
+    const res = JSON.parse(head)
+    if (r.status === 3) return { status: 3, results: res.results, syncErr: lastError(r.stderr).syncErr, stderr: r.stderr }
+    if (snapshot) res.snapshot = JSON.parse(snapshot)
+    return res
   }
-  return JSON.parse(r.stdout)
+  assert.equal(r.stdout, "", "stdout carries nothing unless the exit is 0 or 3")
+  return { status: r.status, error: lastError(r.stderr), stderr: r.stderr }
 }
 
 export function write(op, args = {}, { by = "widget", id = 1, at = T0 } = {}) {
@@ -85,21 +120,44 @@ export function cli(dbPath, sql, { json = false } = {}) {
 }
 
 export function rows(dbPath, sql) {
-  return Db.parseRows(cli(dbPath, sql, { json: true }))
+  return Legacy.parseRows(cli(dbPath, sql, { json: true }))
 }
 
-// A database as today's JS leaves it: the v0 schema, the seed rows, then
-// migrateSql through the CLI (test/lib/db-fixture.mjs start).
+// The start-up of before the binary: the version read, then the migrations
+// above it, through the CLI.
+export function legacyStart(path) {
+  mkdirSync(dirname(path), { recursive: true })
+  const sql = Legacy.migrateSql(Number(cli(path, "PRAGMA user_version").trim()))
+  if (sql.length > 0) cli(path, sql)
+}
+
+// A database as the JS of before left it: the v0 schema, the seed rows, then
+// its migrations.
 export function legacyDb(t) {
   const path = v0Db(t)
-  start(path)
+  legacyStart(path)
   return path
 }
 
-// A file today's JS creates from nothing.
+// A file the JS of before created from nothing.
 export function legacyNewDb(t) {
   const path = tempDb(t)
-  start(path)
+  legacyStart(path)
+  return path
+}
+
+// A file the binary created from nothing.
+export function newDb(t) {
+  const path = tempDb(t)
+  sync(path)
+  return path
+}
+
+// The seed rows as the live database has them: written before versioning,
+// then migrated by the binary.
+export function seeded(t) {
+  const path = v0Db(t)
+  sync(path)
   return path
 }
 
@@ -111,14 +169,26 @@ export function pair(t) {
   return { old, bin }
 }
 
-// A v0 file with the seed rows, before any migration: the live database before versioning.
-export function v0Db(t) {
+// A v0 file, before any migration: the live database before versioning. With
+// `withSeed` it holds the seed rows.
+export function v0Db(t, { withSeed = true } = {}) {
   const path = tempDb(t)
   mkdirSync(dirname(path), { recursive: true })
-  assert.equal(spawnSync("sqlite3", [path, V0_SCHEMA]).status, 0)
-  seed(dbAt(path))
+  cli(path, V0_SCHEMA)
+  if (withSeed) cli(path, SEED)
   return path
 }
+
+const SEED = "INSERT INTO items (id, type, title, body, status, created_at, updated_at) VALUES"
+  + " (1, 'note', 'Ideas for the panel', 'Tabs the same width', 0, " + (T0 - 3600) + ", " + (T0 - 3600) + "),"
+  + " (2, 'todo', 'Renew the domain', 'Due day 30', 0, " + (T0 - 720) + ", " + (T0 - 720) + "),"
+  + " (3, 'todo', 'Reply to upstream PR review', NULL, 0, " + (T0 - 10800) + ", " + (T0 - 10800) + "),"
+  + " (4, 'note', 'Buy coffee', 'Medium grind', 1, " + (T0 - 90000) + ", " + (T0 - 90000) + "),"
+  + " (5, 'todo', 'Backup scratchpad.db', NULL, 1, " + (T0 - 172800) + ", " + (T0 - 60) + ");"
+  + " INSERT INTO history (id, type, title, action, ts) VALUES"
+  + " (1, 'todo', 'Renew the domain', 'added', " + (T0 - 720) + "),"
+  + " (2, 'note', 'Buy coffee', 'completed', " + (T0 - 90000) + "),"
+  + " (3, 'todo', 'Old errand', 'deleted', " + (T0 - 100000) + ");"
 
 // Holds a lock with a sqlite3 process until release() is awaited. `mode` is
 // IMMEDIATE (other readers go on) or EXCLUSIVE (nobody reads).

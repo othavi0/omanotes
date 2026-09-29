@@ -1,82 +1,62 @@
 import QtQuick
-import Quickshell.Io
 import "Db.js" as Db
 
-DbCore {
+// The service's view of the Store (data/Store.qml), and the only writer of
+// the alarms table (ADR-0015): it attaches as the service, so every write it
+// makes goes out as the service's, and the binary refuses alarm writes from
+// anyone else. It lays each alarm it
+// wrote over its row until a snapshot read after that write lands, and
+// retries a write that failed with back-off. It reads the settings row and
+// never writes it (ADR-0016).
+QtObject {
     id: root
+
+    readonly property string dataDir: Store.dataDir
+    readonly property string dbPath: Store.dbPath
+    readonly property bool ready: Store.ready
+    readonly property var settings: Store.settings
 
     property var alarms: []
     property var alarmsById: ({})
     property bool alarmsLoaded: false
-    readonly property int unlistedInserts: root._insertSeqs.length
+    readonly property int unlistedInserts: root._inserts.length
     signal shown()
+    signal failed(string message)
     signal alarmAdded(int id, var caller)
     signal alarmWriteFailed(string kind, var record, string message, var caller)
 
-    property var _alarmRows: []
-    property var _insertSeqs: []
-    property var _alarmPending: ({})
-    property int _alarmSeq: 0             // the last seq handed to a write
-    property int _alarmDoneSeq: 0         // the highest seq whose write ended. The queue is FIFO, so it only grows
-    property int _alarmsReadSeq: 0        // _alarmDoneSeq when the running alarms read started
-    property bool _alarmsStale: false
+    property string _key: ""
+    // The ids of the Store writes of inserts no snapshot has listed yet.
+    property var _inserts: []
+    // alarm id -> { write, record, retry, unwritable }: what is laid over the
+    // rows. `write` is the id of the Store write that sends it.
+    property var _pending: ({})
 
-    onReloadDue: root.listAlarms()
-    onWriteRefused: function(kind, args, message) { root._log(message) }
-    onWriteEnded: function(kind, args, exitCode, output, errors) { root._alarmWriteEnded(kind, args, exitCode, output, errors) }
+    function init() {
+        if (root._key !== "") return
+        root._key = Store.attach("service")
+        root._land()
+    }
+    Component.onDestruction: if (root._key !== "") Store.detach(root._key)
 
-    property Process alarmsProcess: Process {
-        stdout: StdioCollector {
-            id: alarmsStdout
-            waitForEnd: true
-        }
-        stderr: StdioCollector {
-            id: alarmsStderr
-            waitForEnd: true
-        }
-        onExited: function(exitCode) {
-            var rows = root._parsed("alarms", exitCode, alarmsStdout, alarmsStderr, Db.parseAlarms)
-            if (root._alarmsStale) {
-                Qt.callLater(root.listAlarms)
-                return
-            }
-            if (rows === null) return
-            root._alarmsLanded(rows)
-        }
+    // QtObject has no default property, so the connection is an explicit property.
+    property Connections _store: Connections {
+        target: Store
+        function onSnapshotApplied(changed) { root._land() }
+        function onFailed(message) { root.failed(message) }
     }
 
-    function listAlarms() {
-        if (!root.ready) return
-        if (root.alarmsProcess.running) { root._alarmsStale = true; return }
-        root._alarmsStale = false
-        root._alarmsReadSeq = root._alarmDoneSeq
-        root.alarmsProcess.command = Db.sqliteCommand(root.dbPath, Db.alarmsSql(), true)
-        root.alarmsProcess.running = true
-    }
-
-    function _alarmsLanded(rows) {
-        root._alarmRows = rows
-        var pending = root._alarmPending
+    // A snapshot drops a pending entry only once it was read after that write
+    // ended, so a read that ran before the write cannot bring the old row back.
+    function _land() {
+        if (!Store.ready) return
+        var pending = root._pending
         for (var id in pending) {
-            if (pending[id].seq <= root._alarmsReadSeq && !pending[id].retry && !pending[id].unwritable) delete pending[id]
+            if (pending[id].write <= Store.covered && !pending[id].retry && !pending[id].unwritable) delete pending[id]
         }
-        root._insertSeqs = root._insertSeqs.filter(function(seq) { return seq > root._alarmsReadSeq })
-        root._show(Db.mergeAlarms(rows, pending))
+        root._inserts = root._inserts.filter(function(write) { return write > Store.covered })
+        root._show(Db.mergeAlarms(Store.alarms, pending))
         root.alarmsLoaded = true
-    }
-
-    // Lays `record` (null to delete) over its row now and queues the write.
-    // Returns "" or why it was refused.
-    function _pendAlarm(id, record, caller) {
-        if (!root.ready) return root._log("not ready")
-        var kind = record === null ? "deleteAlarm" : "saveAlarm"
-        var seq = root._alarmSeq + 1
-        var error = root._write(kind, function() { return record === null ? Db.deleteAlarmSql(id) : Db.saveAlarmSql(record) },
-            { id: Number(id), seq: seq, record: record, caller: caller || null })
-        root._alarmSeq = seq
-        root._alarmPending[Number(id)] = { seq: seq, record: record, retry: false, unwritable: error !== "" }
-        root._show(Db.mergeAlarms(root._alarmRows, root._alarmPending))
-        return error
     }
 
     function _show(list) {
@@ -85,6 +65,33 @@ DbCore {
         root.alarmsById = byId
         root.alarms = list
         root.shown()
+    }
+
+    function _log(message) {
+        console.error("omanotes db: " + message)
+        return message
+    }
+
+    // Lays `record` (null to delete) over its row now and queues the write.
+    // Returns "" or why it was refused. A record that cannot be sent stays
+    // laid over its row, so a tick still consumes an occurrence once.
+    function _pendAlarm(id, record, caller) {
+        if (!Store.ready) return root._log("not ready")
+        var kind = record === null ? "deleteAlarm" : "saveAlarm"
+        var wire
+        try {
+            wire = record === null ? { id: Db.wholeId(id) } : { id: Db.wholeId(id), alarm: Db.alarmCells(record) }
+        } catch (e) {
+            root._pending[Number(id)] = { write: 0, record: record, retry: false, unwritable: true }
+            root._show(Db.mergeAlarms(Store.alarms, root._pending))
+            return root._log(e.message)
+        }
+        var args = { id: Number(id), record: record, caller: caller || null }
+        var write = Store.write(root._key, record === null ? "alarm.delete" : "alarm.save", wire,
+            function(r) { root._ended(kind, args, write, r) })
+        root._pending[Number(id)] = { write: write, record: record, retry: false, unwritable: false }
+        root._show(Db.mergeAlarms(Store.alarms, root._pending))
+        return ""
     }
 
     function saveAlarm(record, caller) {
@@ -97,47 +104,52 @@ DbCore {
 
     // Not laid over: the row has no id until the insert lands.
     function insertAlarm(record, caller) {
-        var seq = root._alarmSeq + 1
-        var error = root._write("insertAlarm", function() { return Db.insertAlarmSql(record) },
-            { seq: seq, record: record, caller: caller || null })
-        if (error !== "") return error
-        root._alarmSeq = seq
-        root._insertSeqs = root._insertSeqs.concat([seq])
+        if (!Store.ready) return root._log("not ready")
+        var wire
+        try {
+            wire = { alarm: Db.alarmCells(record) }
+        } catch (e) {
+            return root._log(e.message)
+        }
+        var args = { record: record, caller: caller || null }
+        var write = Store.write(root._key, "alarm.insert", wire, function(r) { root._ended("insertAlarm", args, write, r) })
+        root._inserts = root._inserts.concat([write])
         return ""
     }
 
     // What a finished alarm write does to the overlay. A write that failed
     // keeps its entry and is retried with back-off, and the retry sends the
     // newest state of that alarm because a later change replaced the entry.
-    // A row that is gone (CHANGES 0) only drops the entry, quietly.
-    function _alarmWriteEnded(kind, args, exitCode, output, errors) {
-        root._alarmDoneSeq = args.seq
-        var error = exitCode !== 0 ? root._log(Db.errorText(errors, exitCode)) : ""
+    // A row that is gone only drops the entry, quietly. A write refused for
+    // what it is (Db.definitive: the schema, the side, the size) stays laid
+    // over its row and is not retried: it would be refused again.
+    function _ended(kind, args, write, r) {
+        var entry = kind === "insertAlarm" ? undefined : root._pending[args.id]
+        var current = !!entry && entry.write === write
+        if (!r.ok && r.err === "not_found" && kind !== "insertAlarm") {
+            if (current) delete root._pending[args.id]
+            root._log("alarm not found")
+            return
+        }
+        var error = r.ok ? "" : root._log(Db.errorText(r))
         if (error !== "" && args.caller) root.alarmWriteFailed(kind, args.record, error, args.caller)
         if (kind === "insertAlarm") {
             if (error !== "") {
-                root._insertSeqs = root._insertSeqs.filter(function(seq) { return seq !== args.seq })
+                root._inserts = root._inserts.filter(function(w) { return w !== write })
                 return
             }
-            root.alarmAdded(Db.parseId(output), args.caller)
-            root.reloadSoon()
+            root.alarmAdded(r.value, args.caller)
             return
         }
-        var entry = root._alarmPending[args.id]
-        var current = !!entry && entry.seq === args.seq
         if (error !== "") {
-            if (current) {
+            if (current && Db.definitive(r.err)) entry.unwritable = true
+            else if (current) {
                 entry.retry = true
                 alarmRetry.start()
             }
             return
         }
         alarmRetry.interval = 500
-        if (!Db.parseFound(output)) {
-            if (current) delete root._alarmPending[args.id]
-            root._log("alarm not found")
-        }
-        root.reloadSoon()
     }
 
     property Timer alarmRetry: Timer {
@@ -145,7 +157,7 @@ DbCore {
         repeat: false
         onTriggered: {
             interval = Math.min(interval * 2, 30000)
-            var pending = root._alarmPending
+            var pending = root._pending
             for (var id in pending) {
                 if (pending[id].retry && root._pendAlarm(Number(id), pending[id].record, null) !== "") restart()
             }

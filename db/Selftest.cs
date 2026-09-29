@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text.Json;
 
 namespace Omanotes.Db;
@@ -80,20 +81,20 @@ internal static class Selftest
     private static bool RoundTrip(Conn db)
     {
         using Request req = Request.Parse("""{"writes":[{"id":1,"by":"widget","op":"item.add","at":1700000000,"args":{"type":"note","title":"Café","body":"Ação"}}],"sync":{"views":[{"key":"v","filter":"all","query":"acao"}]}}"""u8.ToArray());
-        var results = new Chunks(1 << 16);
+        var results = new ArrayBufferWriter<byte>();
         using (var w = new Utf8JsonWriter(results, Program.Json))
         {
             Writes.Run(db, req.Writes[0], w);
         }
 
-        var snapshot = new Chunks(1 << 16);
+        var snapshot = new ArrayBufferWriter<byte>();
         using (var w = new Utf8JsonWriter(snapshot, Program.Json))
         {
             Snapshot.Write(db, req.Sync!, w);
         }
 
-        using JsonDocument result = JsonDocument.Parse(results.ToArray());
-        using JsonDocument snap = JsonDocument.Parse(snapshot.ToArray());
+        using JsonDocument result = JsonDocument.Parse(results.WrittenMemory);
+        using JsonDocument snap = JsonDocument.Parse(snapshot.WrittenMemory);
         JsonElement item = snap.RootElement.GetProperty("items")[0];
         return result.RootElement.GetProperty("value").GetInt64() == 1
             && item.GetProperty("title").GetString() == "Café"

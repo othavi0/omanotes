@@ -1,10 +1,11 @@
 // The snapshot hands back each cell in the storage class `sqlite3 -json`
-// printed, so the JS that coerces rows today (parseSettings, parseAlarms,
-// parseCounts) reads the same values from it, even from a file edited by hand
-// with text, fractions, blobs and infinities in number columns.
+// printed, so the coercion of data/Db.js (parseSettings, parseAlarms,
+// parseCounts) makes of it what the old coercion made of the CLI's text, even
+// from a file edited by hand with text, fractions, blobs and infinities in
+// number columns.
 import test from "node:test"
 import assert from "node:assert/strict"
-import { Db, PROTOCOL, call, cli, exec, run, sync, tempDb, write } from "./lib/bin-fixture.mjs"
+import { Db, Legacy, PROTOCOL, call, cli, exec, run, sync, tempDb, write } from "./lib/bin-fixture.mjs"
 
 const SETTINGS_COLUMNS = ["sound_on", "sound", "sound_file", "volume", "snooze_minutes", "ring_minutes", "history_days", "check_updates"]
 const ALARM_COLUMNS = ["hour", "minute", "label", "days", "enabled", "snooze_minutes", "ring_minutes", "snoozed_until_ms", "last_fired_at_ms", "armed_at_ms", "auto_snoozes"]
@@ -67,27 +68,27 @@ for (const [name, cell] of Object.entries(HOSTILE)) {
       `UPDATE history SET ts = ${cell}, action = ${cell}`])
     const snap = sync(path)
 
-    const settings = cliRows(path, Db.settingsSql())
-    const alarms = cliRows(path, Db.alarmsSql())
-    const counts = cliRows(path, Db.countsSql())
-    const items = cliRows(path, Db.listSql("all", ""))
-    const history = cliRows(path, Db.historySql())
+    const settings = cliRows(path, Legacy.settingsSql())
+    const alarms = cliRows(path, Legacy.alarmsSql())
+    const counts = cliRows(path, Legacy.countsSql())
+    const items = cliRows(path, Legacy.listSql("all", ""))
+    const history = cliRows(path, Legacy.historySql())
     assert.deepEqual(snap.settings, settings.rows[0], "settings cells")
     assert.deepEqual(snap.alarms, alarms.rows, "alarm cells")
     assert.deepEqual(snap.counts, counts.rows[0], "count cells")
     assert.deepEqual(snap.items, items.rows, "item cells")
     assert.deepEqual(snap.history, history.rows, "history cells")
 
-    // The coercion that runs today, over the binary's cells and over the CLI's text.
+    // The coercion of data/Db.js over the binary's cells, and the old one over the CLI's text.
     const fromBin = {
-      settings: Db.parseSettings(JSON.stringify([snap.settings])),
-      alarms: Db.parseAlarms(JSON.stringify(snap.alarms)),
-      counts: Db.parseCounts(JSON.stringify([snap.counts]))
+      settings: Db.parseSettings(snap.settings),
+      alarms: Db.parseAlarms(snap.alarms),
+      counts: Db.parseCounts(snap.counts)
     }
     const fromCli = {
-      settings: oldParse(Db.parseSettings, settings.text),
-      alarms: oldParse(Db.parseAlarms, alarms.text),
-      counts: oldParse(Db.parseCounts, counts.text)
+      settings: oldParse(Legacy.parseSettings, settings.text),
+      alarms: oldParse(Legacy.parseAlarms, alarms.text),
+      counts: oldParse(Legacy.parseCounts, counts.text)
     }
     for (const key of Object.keys(fromBin)) {
       if (hasInf(key === "settings" ? settings.text : key === "alarms" ? alarms.text : counts.text)) {
@@ -104,12 +105,12 @@ test("infinity in a number column falls back where the old read failed whole", (
   cli(path, ["PRAGMA ignore_check_constraints = ON", "UPDATE settings SET volume = 9e999, snooze_minutes = -9e999", "UPDATE alarms SET snooze_minutes = 9e999, armed_at_ms = 9e999"])
   const raw = exec([PROTOCOL, "run", path], { sync: { since: -1, views: [] } }).stdout
   assert.ok(raw.includes("\"volume\":9e999") && raw.includes("\"snooze_minutes\":-9e999"), "the cells travel as 9e999")
-  const snap = JSON.parse(raw).snapshot
+  const snap = JSON.parse(raw.split("\n")[1])
   assert.equal(snap.settings.volume, Infinity)
-  const settings = Db.parseSettings(JSON.stringify([snap.settings])).settings
+  const settings = Db.parseSettings(snap.settings).settings
   assert.equal(settings.volume, 100)
   assert.equal(settings.snoozeMinutes, 9)
-  const [alarm] = Db.parseAlarms(JSON.stringify(snap.alarms))
+  const [alarm] = Db.parseAlarms(snap.alarms)
   assert.equal(alarm.snoozeMinutes, 9)
   assert.equal(alarm.armedAt, 0)
 })
@@ -118,14 +119,14 @@ test("a settings row deleted by hand reads as NULL cells, which fall back to the
   const path = hostileDb(t)
   cli(path, "DELETE FROM settings")
   const snap = sync(path)
-  const cells = cliRows(path, Db.settingsSql()).rows[0]
+  const cells = cliRows(path, Legacy.settingsSql()).rows[0]
   assert.deepEqual(snap.settings, cells)
   assert.equal(snap.settings.volume, null)
   assert.ok(snap.settings.db_bytes > 0)
-  assert.deepEqual(Db.parseSettings(JSON.stringify([snap.settings])).settings, Db.parseSettings("").settings)
+  assert.deepEqual(Db.parseSettings(snap.settings).settings, Db.parseSettings(null).settings)
   // The next write of a setting brings the row back with the defaults for the rest, as the old upsert did.
   call(path, { writes: [write("settings.set", { values: { volume: 40 } })] })
-  assert.equal(Db.parseSettings(JSON.stringify([sync(path).settings])).settings.volume, 40)
+  assert.equal(Db.parseSettings(sync(path).settings).settings.volume, 40)
 })
 
 test("a NUL inside a text travels whole, where the CLI cut the text at it", (t) => {
@@ -134,5 +135,5 @@ test("a NUL inside a text travels whole, where the CLI cut the text at it", (t) 
   const snap = sync(path)
   assert.equal(snap.items[0].title, "a\u0000b")
   assert.equal(snap.items[0].body, null)
-  assert.equal(cliRows(path, Db.listSql("all", "")).rows[0].title, "a")
+  assert.equal(cliRows(path, Legacy.listSql("all", "")).rows[0].title, "a")
 })

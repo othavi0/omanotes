@@ -43,3 +43,21 @@ test("verify-bin --check refuses a changed byte of a binary and a source changed
   assert.equal(source.status, 1)
   assert.match(source.out, /changed since bin\/ was built/)
 })
+
+test("in a checkout the source hash is what git tracks: a stray file in db/ changes nothing, a tracked edit does", (t) => {
+  const root = join(tempDir(t), "checkout")
+  for (const part of ["bin", "db", "tools"]) cpSync(join(ROOT, part), join(root, part), { recursive: true })
+  const git = (...args) => {
+    const r = spawnSync("git", ["-C", root, "-c", "user.name=test", "-c", "user.email=test@example.com", ...args], { encoding: "utf8" })
+    assert.equal(r.status, 0, r.stderr)
+  }
+  git("init", "-q")
+  git("add", "-A")
+  git("commit", "-q", "-m", "tree")
+  assert.equal(verify(root).status, 0, verify(root).out)
+  writeFileSync(join(root, "db", "Wire.cs.orig"), "an editor backup\n")
+  const stray = verify(root)
+  assert.equal(stray.status, 0, stray.out)
+  appendFileSync(join(root, "db", "Wire.cs"), "\n")
+  assert.match(verify(root).out, /changed since bin\/ was built/)
+})

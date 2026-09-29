@@ -4,7 +4,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { chmodSync, existsSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
-import { Db, legacyDb, rows, run } from "./lib/bin-fixture.mjs"
+import { Legacy, legacyDb, rows, run } from "./lib/bin-fixture.mjs"
 
 test("a backup copies every row beside the database, and a second one the same day replaces it", (t) => {
   const path = legacyDb(t)
@@ -15,7 +15,7 @@ test("a backup copies every row beside the database, and a second one the same d
   for (const table of ["items", "history", "settings", "alarms"]) {
     assert.deepEqual(rows(copy, `SELECT * FROM ${table} ORDER BY id`), rows(path, `SELECT * FROM ${table} ORDER BY id`), table)
   }
-  assert.equal(rows(copy, "PRAGMA user_version")[0].user_version, Db.MIGRATIONS.length)
+  assert.equal(rows(copy, "PRAGMA user_version")[0].user_version, Legacy.MIGRATIONS.length)
   run(path, "item.add", { type: "note", title: "after the first backup" })
   run(path, "backup", { day: "2026-09-28" })
   assert.equal(rows(copy, "SELECT count(*) AS n FROM items WHERE title = 'after the first backup'")[0].n, 1)

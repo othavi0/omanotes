@@ -83,3 +83,55 @@ T:System.Console;Use the raw descriptors of Program.Fd
 # UseSystemResourceKeys turns Message into a resource id. A detail is
 # sqlite3_errmsg or a constant.
 P:System.Exception.Message;A detail is sqlite3_errmsg or a constant
+
+# One descriptor on the database, SQLite's own. Closing any other descriptor
+# of the file drops every POSIX lock this process holds on it (fcntl(2)), the
+# SHARED lock of a snapshot included, and the reads after it run unlocked:
+# torn snapshots and a false "database disk image is malformed"
+# (sqlite.org/howtocorrupt.html, 2.2). Conn.ReadHeader reads through SQLite.
+T:System.IO.FileStream;A second descriptor of the database drops its locks when it closes: read the file through Conn
+T:System.IO.RandomAccess;A second descriptor of the database drops its locks when it closes: read the file through Conn
+T:Microsoft.Win32.SafeHandles.SafeFileHandle;A second descriptor of the database drops its locks when it closes: read the file through Conn
+T:System.IO.FileInfo;A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.AppendAllBytes(System.String,System.Byte[]);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.AppendAllBytes(System.String,System.ReadOnlySpan{System.Byte});A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.AppendAllLines(System.String,System.Collections.Generic.IEnumerable{System.String});A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.AppendAllLines(System.String,System.Collections.Generic.IEnumerable{System.String},System.Text.Encoding);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.AppendAllText(System.String,System.ReadOnlySpan{System.Char});A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.AppendAllText(System.String,System.ReadOnlySpan{System.Char},System.Text.Encoding);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.AppendAllText(System.String,System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.AppendAllText(System.String,System.String,System.Text.Encoding);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.AppendText(System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Copy(System.String,System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Copy(System.String,System.String,System.Boolean);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Create(System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Create(System.String,System.Int32);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Create(System.String,System.Int32,System.IO.FileOptions);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.CreateText(System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Open(System.String,System.IO.FileMode);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Open(System.String,System.IO.FileMode,System.IO.FileAccess);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Open(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Open(System.String,System.IO.FileStreamOptions);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.OpenHandle(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare,System.IO.FileOptions,System.Int64);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.OpenRead(System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.OpenText(System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.OpenWrite(System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.ReadAllBytes(System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.ReadAllLines(System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.ReadAllLines(System.String,System.Text.Encoding);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.ReadAllText(System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.ReadAllText(System.String,System.Text.Encoding);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.ReadLines(System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.ReadLines(System.String,System.Text.Encoding);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Replace(System.String,System.String,System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.Replace(System.String,System.String,System.String,System.Boolean);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.WriteAllBytes(System.String,System.Byte[]);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.WriteAllBytes(System.String,System.ReadOnlySpan{System.Byte});A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.WriteAllLines(System.String,System.Collections.Generic.IEnumerable{System.String});A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.WriteAllLines(System.String,System.Collections.Generic.IEnumerable{System.String},System.Text.Encoding);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.WriteAllLines(System.String,System.String[]);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.WriteAllLines(System.String,System.String[],System.Text.Encoding);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.WriteAllText(System.String,System.ReadOnlySpan{System.Char});A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.WriteAllText(System.String,System.ReadOnlySpan{System.Char},System.Text.Encoding);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.WriteAllText(System.String,System.String);A second descriptor of the database drops its locks when it closes: read the file through Conn
+M:System.IO.File.WriteAllText(System.String,System.String,System.Text.Encoding);A second descriptor of the database drops its locks when it closes: read the file through Conn

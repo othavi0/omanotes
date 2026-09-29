@@ -8,25 +8,10 @@ set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
 stub_keyboard_panel
 
-# While the hold file exists, a read runs at once but prints only when the
-# release file appears, so the test can write and reload in between. A held
-# list read of todos with a search fails while the fail-list file exists.
-real_sqlite3="$(command -v sqlite3)"
-mkdir "$cfg_dir/bin"
-cat > "$cfg_dir/bin/sqlite3" <<SH
-#!/usr/bin/env bash
-[[ "\$*" == *-json* && -e "$cfg_dir/hold" ]] || exec "$real_sqlite3" "\$@"
-fail=0
-[[ -e "$cfg_dir/fail-list" && "\$*" == *"WHERE type = 'todo' AND (search_title LIKE"* ]] && fail=1
-out="\$("$real_sqlite3" "\$@" 2>&1)"
-code=\$?
-printf '%s\n' "\$*" >> "$cfg_dir/held.log"
-for _ in \$(seq 200); do [[ -e "$cfg_dir/release" ]] && break; sleep 0.05; done
-if (( fail )); then echo "Error: disk I/O error" >&2; exit 10; fi
-printf '%s' "\$out"
-exit \$code
-SH
-chmod +x "$cfg_dir/bin/sqlite3"
+# The binary is a stub (lib/stub-db.sh). While hold-reads exists, a read runs at once but
+# answers only when the file is removed, so the test can write and reload in between. A
+# held read that carried a search fails while the fail-list file exists.
+stub_db
 
 # The widget loads from its own path, outside the config dir, as the shell
 # loads a plugin. Symlinked into the config dir, Panel.qml fails to resolve the
@@ -90,6 +75,17 @@ ShellRoot {
       if (!itemsTab) return "no ItemsTab"
       itemsTab.filterType = type
       itemsTab.searchText = query
+      return "ok"
+    }
+    // A drop, as the list makes it, and the order the list shows.
+    function moveItem(id: int, anchorId: int, after: bool): string { return widget.item.panelItem.db.move(id, anchorId, after) }
+    function order(): string { return widget.item.panelItem.db.items.map(function(i) { return i.id }).join(",") }
+    function reloadPanel(): void { widget.item.panelItem.db.load() }
+    // A search too long for the argv of an IPC call.
+    function searchRepeated(text: string, times: int): string {
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      if (!itemsTab) return "no ItemsTab"
+      itemsTab.searchText = text.repeat(times)
       return "ok"
     }
     function panelRows(): int {
@@ -159,7 +155,7 @@ ShellRoot {
 }
 QML
 
-PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$worktree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
+PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$stub_tree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
 trap 'kill "$qs_pid" 2> /dev/null || true; wait "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
 
@@ -396,14 +392,15 @@ caught_up() {
   done
   replies "$what" "$got" "$want"
 }
-hold_reads() { rm -f "$cfg_dir/release"; : > "$cfg_dir/held.log"; touch "$cfg_dir/hold"; }
-release_reads() { rm -f "$cfg_dir/hold" "$cfg_dir/fail-list"; touch "$cfg_dir/release"; }
+hold_reads() { held_from="$(wc -l < "$cfg_dir/db.log")"; touch "$cfg_dir/hold-reads"; }
+release_reads() { rm -f "$cfg_dir/hold-reads" "$cfg_dir/fail-list"; }
+# One request reads what four did, so a reload holds one read.
 all_reads_held() {
   for _ in $(seq 50); do
-    (( $(wc -l < "$cfg_dir/held.log") >= 4 )) && { pass "$1"; return; }
+    (( $(wc -l < "$cfg_dir/db.log") > held_from )) && { pass "$1"; return; }
     sleep 0.2
   done
-  fail "$1: held $(wc -l < "$cfg_dir/held.log") of 4 reads"
+  fail "$1: no read was held"
 }
 panel_rows_are() {
   local what="$1" want="$2" got=""
@@ -423,7 +420,7 @@ ipc omanotes-test filterPanel note overlap > /dev/null
 panel_rows_are "the panel lists no note that matches overlap" 0
 hold_reads
 external_note "OVERLAP-1"
-all_reads_held "the reload after the first write holds its four reads"
+all_reads_held "the reload after the first write holds its read"
 external_note "OVERLAP-2"
 sleep 1
 release_reads
@@ -436,17 +433,52 @@ panel_rows_are "the panel lists the todos that match e" \
 hold_reads
 touch "$cfg_dir/fail-list"
 external_note "OVERLAP-3"
-all_reads_held "the reload after the third write holds its four reads"
+all_reads_held "the reload after the third write holds its read"
 ipc omanotes-test filterPanel note coffee > /dev/null
 sleep 0.5
 release_reads
 panel_rows_are "a failed list read re-runs with the latest filter and search" 1
+
 ipc omanotes-test filterPanel all "" > /dev/null
+sleep 1
+ipc omanotes-test filterPanel all "extern" > /dev/null
+panel_rows_are "a search lists what it matches" \
+  "$(sqlite3 "$db" "SELECT COUNT(*) FROM items WHERE search_title LIKE '%extern%' OR search_body LIKE '%extern%'")"
+searched="$(grep '"query":"extern"' "$cfg_dir/db.log" || true)"
+replies "a search asks for the ids after the stamp shown, not for every row again" \
+  "$(grep -c '"since":-1' <<< "$searched" || true)|$(( $(grep -c '"since":' <<< "$searched" || true) >= 1 ))" "0|1"
+ipc omanotes-test searchRepeated x 60000 > /dev/null
+panel_rows_are "a search of 60 000 characters lists nothing" 0
+replies "it goes out cut to 200 characters, under SQLite's limit on a LIKE pattern" \
+  "$(grep -o '"query":"x*"' "$cfg_dir/db.log" | awk '{ print length($0) - 10 }' | sort -n | tail -1)" "200"
+ipc omanotes-test searchRepeated "中" 20000 > /dev/null
+panel_rows_are "a search of 20 000 characters of 3 bytes lists nothing, and no view's reload fails for it" 0
+ipc omanotes-test filterPanel all "" > /dev/null
+
+# A read sent before a drop lands while the drop's write waits on a lock: the
+# list keeps the drop until a snapshot that includes the write lands.
+sleep 1
+IFS=, read -r top second < <(sqlite3 "$db" "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 2)")
+listed="$(ipc omanotes-test order)"
+dropped="$second,$top,${listed#"$top,$second,"}"
+hold_reads
+ipc omanotes-test reloadPanel > /dev/null
+all_reads_held "the reload before the drop holds its read"
+touch "$cfg_dir/hold-any-write"
+ipc omanotes-test moveItem "$second" "$top" false > /dev/null
+replies "the drop shows at once" "$(ipc omanotes-test order)" "$dropped"
+release_reads
+sleep 1
+replies "the read from before the drop lands and the list still shows the drop" "$(ipc omanotes-test order)" "$dropped"
+rm -f "$cfg_dir/hold-any-write"
+expect "the drop's write lands" \
+  "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 2)" "$second,$top"
+replies "and the list shows the file's order, the same" "$(ipc omanotes-test order)" "$dropped"
 
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
 replies "only the failure cases are logged" "$(logged_failures)" \
-  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;list read failed: disk I/O error;"
+  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
 echo "panel: $checks checks, $failures failed"

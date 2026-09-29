@@ -19,7 +19,7 @@ internal static class Snapshot
         // A deferred BEGIN takes no lock until the first read. With the SHARED
         // lock held no writer can commit, so the stamp and the rows agree.
         _ = db.Scalar($"SELECT count(*) FROM sqlite_schema");
-        long stamp = Stamp(db.Path);
+        long stamp = Stamp(db);
         bool unchanged = stamp >= 0 && stamp == req.Since;
         w.WriteStartObject();
         w.WriteNumber("stamp", stamp);
@@ -36,25 +36,54 @@ internal static class Snapshot
             db.WriteRows($"SELECT id, type, title, action, ts FROM history ORDER BY ts DESC, id DESC LIMIT 500", w);
             w.WritePropertyName("alarms");
             db.WriteRows($"SELECT id, hour, minute, label, days, enabled, snooze_minutes, ring_minutes, snoozed_until_ms, last_fired_at_ms, armed_at_ms, auto_snoozes FROM alarms ORDER BY hour, minute, id", w);
-            w.WriteStartObject("matches");
-            foreach (View v in req.Views)
-            {
-                // The query comes trimmed by String.prototype.trim and folds as the stored copies did (ADR-0012).
-                string needle = Fold.Text(v.Query);
-                w.WritePropertyName(v.Key);
-                db.WriteColumn(
-                    $"SELECT id FROM items WHERE (?1 IS NULL OR type = ?1) AND (?2 = '' OR search_title LIKE ?3 ESCAPE '\\' OR search_body LIKE ?3 ESCAPE '\\') ORDER BY status ASC, position ASC, id DESC",
-                    w,
-                    Value.Of(v.Type),
-                    Value.Of(needle),
-                    Value.Of("%" + Fold.LikeEscape(needle) + "%"));
-            }
+        }
 
-            w.WriteEndObject();
+        // An unchanged answer carries them too, so a search costs its ids and not the rows.
+        w.WriteStartObject("matches");
+        foreach (View v in req.Views)
+        {
+            w.WritePropertyName(v.Key);
+            WriteMatches(db, v, w);
         }
 
         w.WriteEndObject();
+        w.WriteEndObject();
         tx.Commit();
+    }
+
+    /// <summary>
+    /// The ids a view's search matched, in list order, or {"err","detail"}
+    /// when SQLite refused that search (a LIKE pattern over 50 000 bytes): the
+    /// other views and the rows still go out.
+    /// </summary>
+    private static void WriteMatches(Conn db, View v, Utf8JsonWriter w)
+    {
+        // The query comes trimmed by String.prototype.trim and folds as the stored copies did (ADR-0012).
+        string needle = Fold.Text(v.Query);
+        List<long> ids;
+        try
+        {
+            ids = db.Ids(
+                $"SELECT id FROM items WHERE (?1 IS NULL OR type = ?1) AND (?2 = '' OR search_title LIKE ?3 ESCAPE '\\' OR search_body LIKE ?3 ESCAPE '\\') ORDER BY status ASC, position ASC, id DESC",
+                Value.Of(v.Type),
+                Value.Of(needle),
+                Value.Of("%" + Fold.LikeEscape(needle) + "%"));
+        }
+        catch (OpException e)
+        {
+            w.WriteStartObject();
+            e.WriteFields(w);
+            w.WriteEndObject();
+            return;
+        }
+
+        w.WriteStartArray();
+        foreach (long id in ids)
+        {
+            w.WriteNumberValue(id);
+        }
+
+        w.WriteEndArray();
     }
 
     /// <summary>
@@ -62,26 +91,11 @@ internal static class Snapshot
     /// which every commit moves; -1 in WAL, where it does not move, so a stamp
     /// of -1 never skips a read.
     /// </summary>
-    private static long Stamp(string path)
+    private static long Stamp(Conn db)
     {
         Span<byte> header = stackalloc byte[100];
-        try
-        {
-            using Microsoft.Win32.SafeHandles.SafeFileHandle h = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            if (RandomAccess.Read(h, header, 0) < 100 || header[18] != 1 || header[19] != 1)
-            {
-                return -1;
-            }
-        }
-        catch (IOException)
-        {
-            throw new OpException(ErrorCode.Io, "cannot read the database header");
-        }
-        catch (UnauthorizedAccessException)
-        {
-            throw new OpException(ErrorCode.Io, "cannot read the database header");
-        }
-
-        return BinaryPrimitives.ReadUInt32BigEndian(header[24..28]);
+        return db.ReadHeader(header) && header[18] == 1 && header[19] == 1
+            ? BinaryPrimitives.ReadUInt32BigEndian(header[24..28])
+            : -1;
     }
 }

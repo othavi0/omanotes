@@ -95,7 +95,7 @@ internal sealed partial class Conn : IDisposable
         Path = path;
     }
 
-    /// <summary>The file this connection opened; the snapshot reads its header and a backup goes beside it.</summary>
+    /// <summary>The file this connection opened; a backup goes beside it.</summary>
     public string Path { get; }
 
     public static Conn Open(string path)
@@ -183,17 +183,17 @@ internal sealed partial class Conn : IDisposable
         }
     }
 
-    /// <summary>The first cell of each row, as a JSON array.</summary>
-    public void WriteColumn(Sql sql, Utf8JsonWriter w, params ReadOnlySpan<Value> args)
+    /// <summary>The first column of each row as an integer, read whole before any of it is written, so a statement that fails part way writes nothing.</summary>
+    public List<long> Ids(Sql sql, params ReadOnlySpan<Value> args)
     {
         using Stmt st = Prepare(sql.ToString(), args);
-        w.WriteStartArray();
+        var ids = new List<long>();
         while (st.Step())
         {
-            Stmt.WriteCell(st.Handle, 0, w);
+            ids.Add(Native.sqlite3_column_int64(st.Handle, 0));
         }
 
-        w.WriteEndArray();
+        return ids;
     }
 
     /// <summary>BEGIN IMMEDIATE takes the write lock up front. Dispose without Commit rolls back.</summary>
@@ -208,6 +208,34 @@ internal sealed partial class Conn : IDisposable
     {
         _ = Run($"BEGIN");
         return new Tx(this);
+    }
+
+    /// <summary>
+    /// The first bytes of the database file, read through SQLite's own file
+    /// handle; false when the file is shorter. A second descriptor would not
+    /// do: closing it drops every POSIX lock this process holds on the file
+    /// (fcntl(2)), the SHARED lock of a read transaction included, and the
+    /// reads after it run unlocked (sqlite.org/howtocorrupt.html, 2.2).
+    /// </summary>
+    public unsafe bool ReadHeader(Span<byte> header)
+    {
+        if (Native.sqlite3_file_control(_db, "main", Native.FcntlFilePointer, out Native.SqliteFile* file) != Native.Ok || file == null || file->Methods == null)
+        {
+            throw new OpException(ErrorCode.Io, "cannot read the database header");
+        }
+
+        int rc;
+        fixed (byte* p = header)
+        {
+            rc = file->Methods->Read(file, p, header.Length, 0);
+        }
+
+        return rc switch
+        {
+            Native.Ok => true,
+            Native.IoErrShortRead => false,
+            _ => throw new OpException(ErrorCode.Io, "cannot read the database header"),
+        };
     }
 
     /// <summary>PRAGMA takes no bound value, so this is the one statement built from a number, and the number is Schema.Current.</summary>
@@ -335,17 +363,13 @@ internal sealed partial class Conn : IDisposable
     /// </summary>
     internal sealed class Row
     {
-        private Row(RowTable table, List<(string Column, Value Value)> cells, int columnCount)
+        private Row(RowTable table, List<(string Column, Value Value)> cells)
         {
             TableName = Name(table);
             Cells = cells;
-            ColumnCount = columnCount;
         }
 
         public IReadOnlyList<(string Column, Value Value)> Cells { get; }
-
-        /// <summary>How many writable columns the table has, so a write can require every one.</summary>
-        public int ColumnCount { get; }
 
         internal string TableName { get; }
 
@@ -374,7 +398,7 @@ internal sealed partial class Conn : IDisposable
                 cells.Add((column, value));
             }
 
-            return new Row(table, cells, columns.Count);
+            return new Row(table, cells);
         }
 
         internal Value[] Values()
@@ -558,7 +582,7 @@ internal sealed partial class Conn : IDisposable
                     var text = new ReadOnlySpan<byte>(Native.sqlite3_column_text(st, col), Native.sqlite3_column_bytes(st, col));
                     if (System.Text.Unicode.Utf8.IsValid(text))
                     {
-                        w.WriteStringValue(text);
+                        WriteText(text, w);
                     }
                     else
                     {
@@ -572,6 +596,27 @@ internal sealed partial class Conn : IDisposable
                 default:
                     w.WriteNullValue();
                     break;
+            }
+        }
+
+        /// <summary>
+        /// A long text in pieces: whole, the writer asks its output for six
+        /// times the text's size, the worst case of escaping, so a note of
+        /// 1 MB would cost 6 MB. The bytes written are the same.
+        /// </summary>
+        private static void WriteText(ReadOnlySpan<byte> text, Utf8JsonWriter w)
+        {
+            const int Piece = 8 * 1024;
+            if (text.Length <= Piece)
+            {
+                w.WriteStringValue(text);
+                return;
+            }
+
+            for (int at = 0; at < text.Length; at += Piece)
+            {
+                int n = Math.Min(Piece, text.Length - at);
+                w.WriteStringValueSegment(text.Slice(at, n), at + n == text.Length);
             }
         }
     }
@@ -623,6 +668,8 @@ internal sealed partial class Conn : IDisposable
         public const int Done = 101;
         public const int OpenReadWrite = 2;
         public const int OpenCreate = 4;
+        public const int IoErrShortRead = IoErr | (2 << 8);
+        public const int FcntlFilePointer = 7;
 
         private const string Lib = "libsqlite3.so.0";
 
@@ -694,5 +741,24 @@ internal sealed partial class Conn : IDisposable
 
         [LibraryImport(Lib)]
         public static partial byte* sqlite3_errmsg(DbHandle db);
+
+        [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+        public static partial int sqlite3_file_control(DbHandle db, string dbName, int op, out SqliteFile* file);
+
+        /// <summary>sqlite3_file: its methods come first.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct SqliteFile
+        {
+            public IoMethods* Methods;
+        }
+
+        /// <summary>The head of sqlite3_io_methods, up to xRead.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IoMethods
+        {
+            public int Version;
+            public delegate* unmanaged<SqliteFile*, int> Close;
+            public delegate* unmanaged<SqliteFile*, byte*, int, long, int> Read;
+        }
     }
 }

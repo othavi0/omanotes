@@ -11,16 +11,21 @@ namespace Omanotes.Db;
 /// omanotes-db: one process, one request, one response, no clock and no
 /// environment.
 ///
-///   omanotes-db PROTOCOL run DB        request JSON on stdin, response JSON on stdout
+///   omanotes-db PROTOCOL run DB        request JSON on stdin, response on stdout
 ///   omanotes-db PROTOCOL version       what this binary is, as one JSON line
 ///   omanotes-db PROTOCOL selftest DIR  migrate, write, read and delete a database in DIR
 ///
-/// stdout carries a whole response and only with exit 0. On exit 1 (a failure),
-/// 64 (another protocol or command line) or 70 (a bug here) the last line of
-/// stderr is {"err","detail"}. No user text ever travels in argv.
+/// A run's stdout is line 1, {"results":[...]}, then line 2, the snapshot
+/// when the request asked for one. Exit 0: both are whole. Exit 3: line 1 is
+/// whole and the snapshot failed, {"syncErr":{"err","detail"}} on the last
+/// line of stderr. Exit 1 (a failure), 64 (another protocol or command line)
+/// or 70 (a bug here): no line 1, and the last line of stderr is
+/// {"err","detail"}. No user text ever travels in argv.
 /// </summary>
 internal static partial class Program
 {
+    public const int SyncFailedExit = 3;
+
     public static readonly JsonWriterOptions Json = new()
     {
         // Notes are mostly non-ASCII: the default encoder would escape every accent. This is not HTML.
@@ -95,51 +100,79 @@ internal static partial class Program
             Log("migrated " + before.ToString(CultureInfo.InvariantCulture) + " -> " + Schema.Current.ToString(CultureInfo.InvariantCulture));
         }
 
+        // Line 1 goes out before the snapshot is read: what fails or dies
+        // after this point never takes back a write that was committed.
         var results = new ArrayBufferWriter<byte>();
         using (var w = new Utf8JsonWriter(results, Json))
         {
-            w.WriteStartArray();
+            w.WriteStartObject();
+            w.WriteStartArray("results");
+            OpException? busy = null;
             foreach (WriteReq write in req.Writes)
             {
-                Writes.Run(db, write, w);
+                // A lock held outside is held for the next write too: waiting 5 s again for each would hold the caller's queue N times as long.
+                OpException? failure = busy is null ? Writes.Run(db, write, w) : Writes.Refuse(write, busy, w);
+                if (failure is { Code: ErrorCode.Busy })
+                {
+                    busy = failure;
+                }
             }
 
             w.WriteEndArray();
+            w.WriteEndObject();
         }
 
-        Chunks? snapshot = null;
-        OpException? syncErr = null;
-        if (req.Sync is SyncReq sync)
+        Fd.Write(Fd.Stdout, results.WrittenSpan);
+        Fd.Write(Fd.Stdout, "\n"u8);
+        return req.Sync is SyncReq sync ? WriteSnapshot(db, sync) : 0;
+    }
+
+    /// <summary>
+    /// Line 2: the snapshot, written as it is read, so the peak does not grow
+    /// with the database. A failure part way leaves line 2 cut: exit 3, and
+    /// {"syncErr":{"err","detail"}} on the last line of stderr.
+    /// </summary>
+    private static int WriteSnapshot(Conn db, SyncReq sync)
+    {
+        try
         {
-            try
+            var output = new FdWriter(Fd.Stdout, Protocol.MaxResponseBytes);
+            using (var w = new Utf8JsonWriter(output, Json))
             {
-                snapshot = new Chunks(Protocol.MaxResponseBytes);
-                using var w = new Utf8JsonWriter(snapshot, Json);
                 Snapshot.Write(db, sync, w);
             }
-            catch (OpException e)
-            {
-                // The writes above are committed, so their results still go out.
-                (snapshot, syncErr) = (null, e);
-            }
+
+            output.Write("\n"u8);
+            output.Flush();
+            return 0;
+        }
+        catch (OpException e)
+        {
+            return FailSync(e);
+        }
+#pragma warning disable CA1031 // Only reads run here, and line 1 is out: any failure is the snapshot's, never a lost write.
+        catch (Exception e)
+#pragma warning restore CA1031
+        {
+            return FailSync(new OpException(ErrorCode.Internal, e.GetType().Name));
+        }
+    }
+
+    private static int FailSync(OpException e)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var w = new Utf8JsonWriter(buffer, Json))
+        {
+            w.WriteStartObject();
+            w.WriteStartObject("syncErr");
+            e.WriteFields(w);
+            w.WriteEndObject();
+            w.WriteEndObject();
         }
 
-        // Everything is decided: only now does a byte reach stdout.
-        Fd.Write(Fd.Stdout, "{\"results\":"u8);
-        Fd.Write(Fd.Stdout, results.WrittenSpan);
-        if (snapshot is not null)
-        {
-            Fd.Write(Fd.Stdout, ",\"snapshot\":"u8);
-            snapshot.WriteTo(Fd.Stdout);
-        }
-        else if (syncErr is not null)
-        {
-            Fd.Write(Fd.Stdout, ",\"syncErr\":"u8);
-            Fd.Write(Fd.Stdout, ErrorObject(syncErr));
-        }
-
-        Fd.Write(Fd.Stdout, "}\n"u8);
-        return 0;
+        Fd.Write(Fd.Stderr, buffer.WrittenSpan);
+        Fd.Write(Fd.Stderr, "\n"u8);
+        return SyncFailedExit;
     }
 
     private static void MakeDirectory(string dir)
@@ -342,87 +375,65 @@ internal static partial class Program
 }
 
 /// <summary>
-/// The snapshot, held whole before any of it is written, in 64 KiB chunks so
-/// no array is copied as it grows. The chunks are pinned and not zeroed: the
-/// GC never moves them and only written bytes are touched (measured: peak RSS
-/// of a 1.55 MB snapshot from 9.8 to 9.0 MB). Past `max` it is `too_large`.
+/// A descriptor behind one 64 KiB buffer, written each time it fills, so a
+/// snapshot costs the buffer and not its size. A value longer than the buffer
+/// gets a buffer of its own for as long as it takes. Past `max` bytes it is
+/// `response_too_large`.
 /// </summary>
-internal sealed class Chunks : IBufferWriter<byte>
+internal sealed class FdWriter : IBufferWriter<byte>
 {
-    private const int ChunkBytes = 64 * 1024;
+    private const int BufferBytes = 64 * 1024;
 
+    private readonly int _fd;
     private readonly long _max;
-    private readonly List<(byte[] Bytes, int Used)> _full = [];
-    private byte[] _current = [];
+    private byte[] _buffer = GC.AllocateUninitializedArray<byte>(BufferBytes);
     private int _used;
-    private long _total;
+    private long _written;
 
-    public Chunks(long max)
+    public FdWriter(int fd, long max)
     {
+        _fd = fd;
         _max = max;
     }
 
-    public void Advance(int count)
-    {
-        _used += count;
-        _total += count;
-    }
+    public void Advance(int count) => _used += count;
 
     public Memory<byte> GetMemory(int sizeHint = 0)
     {
         Ensure(sizeHint);
-        return _current.AsMemory(_used);
+        return _buffer.AsMemory(_used);
     }
 
     public Span<byte> GetSpan(int sizeHint = 0)
     {
         Ensure(sizeHint);
-        return _current.AsSpan(_used);
+        return _buffer.AsSpan(_used);
     }
 
-    public void WriteTo(int fd)
+    public void Flush()
     {
-        foreach ((byte[] bytes, int used) in _full)
+        if (_written + _used > _max)
         {
-            Program.Fd.Write(fd, bytes.AsSpan(0, used));
+            throw new OpException(ErrorCode.ResponseTooLarge, "the snapshot is over 64 MiB");
         }
 
-        Program.Fd.Write(fd, _current.AsSpan(0, _used));
-    }
-
-    public byte[] ToArray()
-    {
-        var all = new byte[_total];
-        int at = 0;
-        foreach ((byte[] bytes, int used) in _full)
-        {
-            bytes.AsSpan(0, used).CopyTo(all.AsSpan(at));
-            at += used;
-        }
-
-        _current.AsSpan(0, _used).CopyTo(all.AsSpan(at));
-        return all;
+        Program.Fd.Write(_fd, _buffer.AsSpan(0, _used));
+        _written += _used;
+        _used = 0;
     }
 
     private void Ensure(int sizeHint)
     {
         int need = Math.Max(sizeHint, 1);
-        if (_current.Length - _used >= need)
+        if (_buffer.Length - _used >= need)
         {
             return;
         }
 
-        if (_total + need > _max)
+        Flush();
+        if (need > BufferBytes || _buffer.Length > BufferBytes)
         {
-            throw new OpException(ErrorCode.TooLarge, "the response is over 64 MiB");
+            _buffer = GC.AllocateUninitializedArray<byte>(Math.Max(need, BufferBytes));
         }
-
-        if (_used > 0)
-        {
-            _full.Add((_current, _used));
-        }
-
-        _current = GC.AllocateUninitializedArray<byte>(Math.Max(ChunkBytes, need), pinned: true);
-        _used = 0;
     }
 }

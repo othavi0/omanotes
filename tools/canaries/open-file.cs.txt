@@ -1,0 +1,8 @@
+//! expect: RS0030
+// Closing a second descriptor of the database drops SQLite's POSIX locks: read it through Conn.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static void Touch(string path) => File.OpenHandle(path).Dispose();
+}

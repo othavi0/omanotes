@@ -338,10 +338,10 @@ ShellRoot {
       console.log("HISTORY-NOTE-LABELS " + ["read", "unread", "completed", "reopened"].map(function(label) { return !!sr.findByText(historyTab, label) }).join(" "))
       var button = sr.button(historyTab, "Clear history")
       sr.click(button)
-      console.log("HISTORY-AFTER-ONE-CLEAR-CLICK " + (db._writeKind === "") + " " + button.text)
+      console.log("HISTORY-AFTER-ONE-CLEAR-CLICK " + (!db.writing) + " " + button.text)
       // The checks after qs exits still read the log, so it is kept aside and
       // put back once the clear and the icon check are done.
-      db._write("test", function() { return "CREATE TABLE kept_history AS SELECT * FROM history" }, null)
+      Quickshell.execDetached(["sqlite3", "-init", "/dev/null", db.dbPath, ".timeout 5000", "CREATE TABLE kept_history AS SELECT * FROM history"])
       sr.click(button)
       db.setStatus(sr.keepId, 1); db.setStatus(sr.keepId, 0)
       db.setStatus(3, 1); db.setStatus(3, 0)
@@ -349,7 +349,7 @@ ShellRoot {
     function() {
       console.log("HISTORY-AFTER-TWO-CLEAR-CLICKS " + historyTab.rowList.length)
       console.log("HISTORY-TODO-ICONS " + !!sr.findByText(historyTab, Icons.boxOn) + " " + !!sr.findByText(historyTab, Icons.boxOff))
-      db._write("test", function() { return "DELETE FROM history; INSERT INTO history SELECT * FROM kept_history" }, null)
+      Quickshell.execDetached(["sqlite3", "-init", "/dev/null", db.dbPath, ".timeout 5000", "DELETE FROM history; INSERT INTO history SELECT * FROM kept_history"])
 
       var shown = []
       var counting = { show: function(message) { shown.push(message) } }
@@ -367,7 +367,7 @@ ShellRoot {
       sr.click(sr.findByText(header, "History")); sr.click(sr.findByText(header, "Items"))
       console.log("ITEMS-ARM-AFTER-TAB-SWITCH " + panel.activeTab + " " + itemsTab.deleteArmed + " [" + sr.deleteButtonText() + "]")
       sr.click(sr.button(sr.editor(), "Delete"))
-      console.log("ITEMS-DELETE-AFTER-TAB-SWITCH " + itemsTab.deleteArmed + " " + (db._writeKind === ""))
+      console.log("ITEMS-DELETE-AFTER-TAB-SWITCH " + itemsTab.deleteArmed + " " + (!db.writing))
     },
     function() { console.log("ITEMS-AFTER-TAB-SWITCH " + (sr.titleOf(sr.probeId) === "missing" ? "deleted" : "kept")) },
 
@@ -1011,7 +1011,7 @@ logged "a failed edit whose item a script removes while it waits behind a draft 
 # showed it before items had a position: pending 301-304, then read or
 # completed 305-306.
 rm -f "$db"
-run_db_js v0
+v0_db
 sqlite3 "$db" "INSERT INTO items (id, type, title, body, status, created_at, updated_at) VALUES
   (301, 'note', 'Alpha note', '', 0, $now - 10, $now - 10),
   (302, 'todo', 'Bravo todo', '', 0, $now - 20, $now - 20),
@@ -1019,7 +1019,7 @@ sqlite3 "$db" "INSERT INTO items (id, type, title, body, status, created_at, upd
   (304, 'todo', 'Delta todo', '', 0, $now - 40, $now - 40),
   (305, 'note', 'Echo read', '', 1, $now - 50, $now - 50),
   (306, 'todo', 'Foxtrot completed', '', 1, $now - 60, $now - 60);"
-run_db_js migrate
+migrate_db
 cat > "$cfg_dir/drag.qml" <<'QML'
 import QtQuick
 import QtTest
@@ -1117,7 +1117,7 @@ ShellRoot {
       sr.flick(405, 120)
     },
     function() {
-      console.log("SEARCH-FLICK scrolled=" + (sr.listView().contentY > 0) + " float=" + sr.floatText() + " write=[" + db._writeKind + "]")
+      console.log("SEARCH-FLICK scrolled=" + (sr.listView().contentY > 0) + " float=" + sr.floatText() + " write=[" + (db.writing ? "busy" : "") + "]")
       itemsTab.searchText = ""
     },
     function() { sr.listView().positionViewAtBeginning() },
@@ -1137,7 +1137,7 @@ ShellRoot {
     },
     function() {
       sr.release()
-      Qt.callLater(function() { console.log("SCROLLED-DROP " + sr.keptScroll() + " write=[" + db._writeKind + "]") })
+      Qt.callLater(function() { console.log("SCROLLED-DROP " + sr.keptScroll() + " write=[" + (db.writing ? "busy" : "") + "]") })
     },
     function() {
       console.log("SCROLLED-AFTER-RELOAD " + sr.keptScroll() + " at=" + itemsTab.itemList.map(function(i) { return i.id }).indexOf(sr.dragId)
@@ -1177,7 +1177,7 @@ ShellRoot {
       console.log("CLICK " + sr.order() + " selected=" + itemsTab.selectedId + " float=" + sr.floatText())
       sr.press(302); sr.moveTo(sr.at.y + 4); sr.release()
     },
-    function() { console.log("SHORT-MOVE " + sr.order() + " selected=" + itemsTab.selectedId + " write=[" + db._writeKind + "]") },
+    function() { console.log("SHORT-MOVE " + sr.order() + " selected=" + itemsTab.selectedId + " write=[" + (db.writing ? "busy" : "") + "]") },
 
     function() { sr.drag(306, 1) },
     function() {
@@ -1212,7 +1212,12 @@ ShellRoot {
       sr.drag(302, sr.listView().height - 2)
     },
     function() { console.log("SEARCH-DRAG float=" + sr.floatText() + " line=" + sr.named("dropLine").visible); sr.release() },
-    function() { console.log("AFTER-SEARCH-DRAG " + sr.order() + " write=[" + db._writeKind + "]"); itemsTab.searchText = "" },
+    function() { console.log("AFTER-SEARCH-DRAG " + sr.order() + " write=[" + (db.writing ? "busy" : "") + "]"); itemsTab.searchText = "" },
+
+    function() { sr.drag(304, sr.pointIn(304, 0.95).y) },
+    // The echo the watcher asks for after a write: the file did not move.
+    function() { Data.Store.reload() },
+    function() { console.log("ECHO-MID-DRAG float=" + sr.floatText()); sr.release() },
 
     function() { panel.close() },
     function() { panel.open() },
@@ -1290,6 +1295,7 @@ logged "a note dropped above another lands right before it, and the todos stay i
 logged "the search lists every row here" "SEARCH 304,302,303,301,306,305$"
 logged "while the search has text, a row does not drag" "SEARCH-DRAG float=none line=false$"
 logged "and nothing moves" "AFTER-SEARCH-DRAG 304,302,303,301,306,305 write=\[\]$"
+logged "a reload that finds the file as shown lands during a drag and leaves the drag alone" "ECHO-MID-DRAG float=Delta todo$"
 logged "the order survives closing and reopening the panel" "REOPEN 304,302,303,301,306,305$"
 logged "no write was rejected during the drag run" "WRITE-FAILURES 0$"
 expect "the order is stored in the database" \
@@ -1321,11 +1327,11 @@ logged "the order survives a shell restart" "RESTART 304,302,303,301,306,305$"
 # A sixth run takes the drag shell through a list longer than the panel: 40
 # pending rows, 401 first.
 rm -f "$db"
-run_db_js v0
+v0_db
 sqlite3 "$db" "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 40)
   INSERT INTO items (id, type, title, body, status, created_at, updated_at)
   SELECT 400 + i, CASE i % 2 WHEN 1 THEN 'note' ELSE 'todo' END, 'Row ' || i, '', 0, $now - i, $now - i FROM n;"
-run_db_js migrate
+migrate_db
 cp "$cfg_dir/drag.qml" "$cfg_dir/shell.qml"
 log_file="$cfg_dir/qs-long.log"
 env OMANOTES_RUN=long "${qs_cmd[@]}" > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
@@ -1334,7 +1340,7 @@ logged "while the search has text, dragging a row scrolls the list" "SEARCH-FLIC
 logged "a press on the status glyph that moves 6 px drags the row" "GLYPH-DRAG float=Row 4$"
 logged "and drops it there" "AFTER-GLYPH-DRAG 404,401,402,403 selected=404$"
 logged "a click on the status glyph toggles the item and keeps the selection" "GLYPH-CLICK status=1 selected=404$"
-logged "a drop in a scrolled list keeps the list where it was" "SCROLLED-DROP kept write=\[move\]$"
+logged "a drop in a scrolled list keeps the list where it was" "SCROLLED-DROP kept write=\[busy\]$"
 logged "and it stays there after the reload, with the dropped row selected and in view" \
   "SCROLLED-AFTER-RELOAD kept at=21 selected=true visible=true$"
 logged "a status change in a scrolled list keeps the list where it was" "SCROLLED-TOGGLE kept$"
