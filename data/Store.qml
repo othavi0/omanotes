@@ -238,6 +238,8 @@ QtObject {
             if (typeof r.err === "string") return { ok: false, err: r.err, detail: String(r.detail || "") }
             return { ok: true, value: r.value === undefined ? null : r.value }
         }
+        // No failure with every line whole: the binary answered another id.
+        if (!failure) return { ok: false, err: "crash", detail: "no result" }
         return { ok: false, err: failure.err, detail: String(failure.detail || "") }
     }
 
