@@ -250,8 +250,6 @@ FocusScope {
         if (root.draftNew || editorPane.dirty) root.commitEditor(false)
     }
 
-    function busy() { return editorPane.unsaved || root._failedWrites.length > 0 }
-
     // Holds focus for the tab when no field has it, so KeyboardPanel's
     // focusTarget lands inside the tab and Esc reaches Panel.qml.
     Item {
@@ -513,19 +511,10 @@ FocusScope {
         }
     }
 
-    // The panel is loaded on demand, so the Db it is handed may have loaded
-    // long ago and kept the last filter and search: no itemsUpdated comes for
-    // those rows. Deferred, so itemList has followed the new Db first.
-    onDbChanged: Qt.callLater(root.adoptDb)
-    function adoptDb() {
-        if (!root.db) return
-        root.filterType = root.db.listFilter
-        if (root.searchText !== root.db.listQuery) root.searchText = root.db.listQuery
-        root.onItemsSynced()
-    }
-
+    // The panel is created on demand (ADR-0019), often after the Db has
+    // loaded: no itemsUpdated comes for the rows it already holds.
     Component.onCompleted: {
-        root.refillEditor()
+        root.onItemsSynced()
         root.focusList()
     }
 }

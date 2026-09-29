@@ -44,7 +44,6 @@ ColumnLayout {
     function chooseFile() {
         if (!picker.running) picker.running = true
     }
-    function busy() { return picker.running }
 
     // Lives with the panel, which outlives a close, so a file picked after
     // the chooser took focus still saves.

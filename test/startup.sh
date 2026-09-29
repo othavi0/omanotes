@@ -84,13 +84,18 @@ ShellRoot {
       var out = []
       for (var i = 0; i < monitors.instances.length; ++i) {
         var w = monitors.instances[i].widget
-        var dbs = sr.dbsIn(w, [])
+        var dbs = sr.dbsIn(w.panelItem, sr.dbsIn(w, []))
         var ready = 0
         for (var j = 0; j < dbs.length; ++j) if (dbs[j].ready) ready++
-        var owned = sr.typesIn(w, "SystemClock", []).length + sr.typesIn(w, "RingWindow", []).length
-        out.push({ dbs: dbs.length, ready: ready, panel: w.panelItem ? "loaded" : "none", clocksAndWindows: owned })
+        var owned = sr.typesIn(w.panelItem, "SystemClock", sr.typesIn(w, "SystemClock", [])).length
+          + sr.typesIn(w.panelItem, "RingWindow", sr.typesIn(w, "RingWindow", [])).length
+        var panel = !w.panelItem ? "none" : w.panelItem.db === sr.widgetDb(i) ? "shares the Db" : "has its own Db"
+        out.push({ dbs: dbs.length, ready: ready, panel: panel, clocksAndWindows: owned })
       }
       return JSON.stringify(out)
+    }
+    function preparePanels(): void {
+      for (var i = 0; i < monitors.instances.length; ++i) monitors.instances[i].widget.preparePanel()
     }
     function serviceState(): string {
       if (!svc.item) return "none"
@@ -235,6 +240,16 @@ replies "the refused add never lands" \
   "$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT COUNT(*) FROM items WHERE title = 'EARLY'")" "0"
 replies "the migration the binary ran on the new file is in the journal, once" \
   "$(grep -c "omanotes-db: migrated 0 -> $current" "$cfg_dir/qs.log" || true)" "1"
+
+ipc preparePanels > /dev/null
+loaded='{"dbs":1,"ready":1,"panel":"shares the Db","clocksAndWindows":0}'
+want="[$loaded$(printf ",$loaded%.0s" $(seq 2 $monitors))]"
+for _ in $(seq 50); do
+  state="$(ipc state)"
+  [[ "$state" == "$want" ]] && break
+  sleep 0.2
+done
+replies "a loaded panel shares its widget's Db and adds no Db, clock or ring window" "$state" "$want"
 
 sleep 1
 : > "$cfg_dir/db.log"

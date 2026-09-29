@@ -24,21 +24,27 @@ BarWidget {
     readonly property bool opened: panelItem ? panelItem.opened === true : false
 
     // The panel is created on demand (ADR-0019): in the background when the
-    // pointer enters the button, at once when something opens it. It is
-    // dropped once closed for panelIdleMs with nothing only it can finish.
+    // pointer enters the button, at once when something opens it. Then it
+    // stays. It gets the Db as it is created, so its first frame already
+    // shows the rows the Db holds.
     readonly property QtObject panelItem: panelLoader.item
-    property bool panelWanted: false
-    property int panelIdleMs: 60000
 
-    function preparePanel() { root.panelWanted = true }
+    function preparePanel() {
+        if (panelLoader.status !== Loader.Null) return
+        panelLoader.setSource(Qt.resolvedUrl("Panel.qml"), {
+            bar: root.bar, settings: root.settings, anchorItem: button,
+            hostWidget: root, db: db, service: root.service
+        })
+    }
     // Turning `asynchronous` off also ends at once a load that the pointer
-    // started in the background, so the open is never lost.
+    // started in the background, so the open is never lost. A Panel.qml that
+    // failed to compile stays failed until the shell restarts.
     function open() {
         if (!panelItem) {
             panelLoader.asynchronous = false
-            root.panelWanted = true
+            root.preparePanel()
         }
-        panelItem.open()
+        if (panelItem) panelItem.open()
     }
     function close() { if (panelItem) panelItem.close() }
     function togglePanel() { root.opened ? root.close() : root.open() }
@@ -128,27 +134,13 @@ BarWidget {
 
     Loader {
         id: panelLoader
-        active: root.panelWanted
         asynchronous: true
-        source: Qt.resolvedUrl("Panel.qml")
         visible: false
         onLoaded: {
-            panelLoader.asynchronous = true
             root.injectPanel()
             Qt.callLater(root.injectPanel)
         }
-    }
-
-    // A write in flight holds the panel too: when it fails, the text it
-    // carried goes back to this panel's editor.
-    Timer {
-        id: unloadTimer
-        interval: root.panelIdleMs
-        running: !!root.panelItem && !root.opened && !button.tooltipHovered
-        onTriggered: {
-            if (db.writing || root.panelItem.busy()) unloadTimer.restart()
-            else root.panelWanted = false
-        }
+        onStatusChanged: if (status === Loader.Error) console.warn("omanotes: Panel.qml failed to load, the panel cannot open")
     }
 
     IpcHandler {

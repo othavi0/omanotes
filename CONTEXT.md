@@ -138,10 +138,6 @@ _Avoid_: daemon, backend, controller
 The popout opened from the bar icon, with the Items, Alarms and History tabs and the gear for Settings.
 _Avoid_: popup, dropdown, window
 
-**Unload**:
-Dropping a closed panel from memory after a minute with the pointer off the bar icon. A panel that holds something unsaved, a failed write, a write in flight or the sound file chooser is not unloaded. The next hover or open loads it again, on the Items tab with the last filter and search.
-_Avoid_: destroy, free, close (closing only hides the panel)
-
 **Order**:
 Where an item sits in the list. Unread notes and pending todos come first, read notes and completed todos after them, and inside each of those two blocks the user sets the order by dragging. One order serves every filter. A new or reopened item enters at the top of the first block, a newly read or completed one at the top of the second, and editing or converting an item leaves it in place.
 _Avoid_: sort, rank, priority
