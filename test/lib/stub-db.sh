@@ -14,6 +14,9 @@
 #   hold-writes       requests with alarm.save or alarm.delete wait until the file is removed
 #   hold-inserts      requests with alarm.insert wait until the file is removed
 #   hold-any-write    requests with any write wait until the file is removed
+#   hold-nth-write    holds N: the Nth request with writes in db.log, and every later one,
+#                     waits until the file is removed; a request counts from its own line,
+#                     so one logged earlier and still held by hold-any-write goes on
 #   fail-writes       requests with alarm.save or alarm.delete fail with "disk I/O error"
 #   refuse-writes     requests with alarm.save or alarm.delete fail as bad_request, as a
 #                     record the binary refuses
@@ -54,6 +57,12 @@ if [[ "$kinds" == sync ]]; then
   wait_while hold-sync
 else
   wait_while hold-any-write
+  if [[ -e "$cfg/hold-nth-write" ]]; then
+    { read -r nth < "$cfg/hold-nth-write"; } 2> /dev/null || nth=0
+    nth_write=1
+    for line in "${lines[@]}"; do [[ "$line" =~ ^[0-9]+\ write ]] && nth_write=$((nth_write + 1)); done
+    (( nth_write >= nth )) && wait_while hold-nth-write
+  fi
   (( inserts )) && wait_while hold-inserts
   (( saves )) && wait_while hold-writes
 fi
