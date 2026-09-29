@@ -733,6 +733,10 @@ ipc closePanel 1
   git init --quiet --bare -b main "$cfg_dir/origin.git"
   git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/dev" 2> /dev/null
   printf '{\n  "version": "1.1.0"\n}\n' > "$cfg_dir/dev/manifest.json"
+  # What the smoke of update.sh runs before it merges.
+  mkdir "$cfg_dir/dev/bin" "$cfg_dir/dev/data"
+  cp "$worktree/bin/omanotes-db.$(uname -m)" "$cfg_dir/dev/bin/"
+  cp "$worktree/data/Db.js" "$cfg_dir/dev/data/"
   git -C "$cfg_dir/dev" add -A && git -C "$cfg_dir/dev" commit --quiet -m "feat: first"
   git -C "$cfg_dir/dev" push --quiet origin main
   git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/clone"

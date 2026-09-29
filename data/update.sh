@@ -31,7 +31,7 @@ main() {
   export LC_ALL=C GIT_TERMINAL_PROMPT=0 GIT_OPTIONAL_LOCKS=0
   state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omanotes"
   state_file="$state_dir/update"
-  phase="" error="" detail="" step="" behind=0 from="" to="" commits="" head="" branch="" tree=""
+  phase="" error="" detail="" step="" behind=0 from="" to="" commits="" head="" branch="" work=""
 
   case "$mode" in
     status) status_mode "$dir" ;;
@@ -169,24 +169,82 @@ check_mode() {
 
 # Checks origin/main as the shell would load it, in a copy outside the plugin
 # folder, so a version that does not validate never touches the folder. The
-# copy goes on any exit, including the SIGTERM systemd stops the unit with.
+# copy lives beside the state file rather than in /tmp, which is often
+# mounted noexec: the smoke has to run the binary on the file system the
+# plugin runs it from. The copy goes on any exit, including the SIGTERM
+# systemd stops the unit with, and one a SIGKILL left goes with the next
+# apply, which holds the lock.
 validate() {
   local dir="$1" out
   detail=""
-  command -v omarchy-plugin-validate > /dev/null 2>&1 || return 0
   trap 'exit 143' TERM INT HUP
-  trap '[[ -z "$tree" ]] || rm -rf -- "$tree"' EXIT
-  tree="$(mktemp -d)" || { detail="could not make a temporary folder"; return 1; }
-  if ! out="$(set -o pipefail; { in_git "$dir" archive "$to" | tar -x -C "$tree"; } 2>&1)"; then
+  trap '[[ -z "$work" ]] || rm -rf -- "$work"' EXIT
+  rm -rf -- "$state_dir"/validate.*
+  work="$(mktemp -d "$state_dir/validate.XXXXXX")" || { detail="could not make a temporary folder"; return 1; }
+  if ! out="$(set -o pipefail; mkdir "$work/tree" && { in_git "$dir" archive "$to" | tar -x -C "$work/tree"; } 2>&1)"; then
     detail="$(first_error "$out")"
-  elif ! out="$(omarchy-plugin-validate "$tree" 2>&1 9>&-)"; then
+  elif command -v omarchy-plugin-validate > /dev/null 2>&1 && ! out="$(omarchy-plugin-validate "$work/tree" 2>&1 9>&-)"; then
     detail="$(printf '%s\n' "$out" | tail -n 1)"
   else
-    out=""
+    smoke_db "$work"
   fi
-  rm -rf -- "$tree"
-  tree=""
+  rm -rf -- "$work"
+  work=""
   [[ -z "$detail" ]]
+}
+
+# The ELF e_machine of each machine omanotes-db is built for, as `uname -m`
+# names it.
+elf_machine_of() {
+  case "$1" in
+    x86_64) echo 62 ;;
+    aarch64) echo 183 ;;
+  esac
+}
+
+# The e_machine field of an ELF file's header, or nothing when it is no ELF.
+elf_machine() {
+  local -a b
+  read -r -a b < <(od -An -v -tu1 -N20 "$1" 2> /dev/null | tr '\n' ' ')
+  (( ${#b[@]} == 20 )) && [[ "${b[*]:0:4}" == "127 69 76 70" ]] || return 0
+  case "${b[5]}" in
+    1) echo $(( b[18] + 256 * b[19] )) ;;
+    2) echo $(( 256 * b[18] + b[19] )) ;;
+  esac
+}
+
+# Proves the copy's omanotes-db runs on this machine and speaks the protocol
+# of the copy's data/Db.js (ADR-0018), since the merge would put the plugin
+# in a shell that cannot read its database. The machine is read from the ELF
+# header because running it proves nothing: with qemu's binfmt an aarch64
+# binary starts on x86_64. Sets detail on failure.
+smoke_db() {
+  local work="$1" arch name bin want got proto code=0 out reason
+  arch="$(uname -m)"
+  name="bin/omanotes-db.$arch"
+  bin="$work/tree/$name"
+  want="$(elf_machine_of "$arch")"
+  proto="$(sed -n 's/^var PROTOCOL = \([0-9][0-9]*\);\{0,1\}[[:space:]]*$/\1/p' "$work/tree/data/Db.js" 2> /dev/null | head -n 1)"
+  if [[ ! -e "$bin" && ! -L "$bin" ]]; then detail="there is no $name"
+  elif [[ -L "$bin" || ! -f "$bin" ]]; then detail="$name is not a regular file"
+  elif [[ ! -x "$bin" ]]; then detail="$name is not executable"
+  elif [[ -z "$want" ]]; then detail="no ELF machine is known for $arch"
+  elif got="$(elf_machine "$bin")" && [[ "$got" != "$want" ]]; then detail="$name is built for ELF machine ${got:-none}, not $arch"
+  elif [[ -z "$proto" ]]; then detail="data/Db.js declares no PROTOCOL"
+  else
+    # An empty environment, as the Lane starts it: a DOTNET_* variable
+    # changes the runtime.
+    out="$(timeout 20 env -i "$bin" "$proto" selftest "$work/selftest" 2>&1 > /dev/null 9>&-)" || code=$?
+    reason="$(printf '%s\n' "$out" | tail -n 1)"
+    reason="${reason//"$work/tree/"/}"
+    [[ "$reason" =~ ^\{\"err\":\"[^\"]*\",\"detail\":\"(.*)\"\}$ ]] && reason="${BASH_REMATCH[1]}"
+    case "$code" in
+      0) ;;
+      64) detail="omanotes-db does not speak protocol $proto of data/Db.js" ;;
+      124) detail="omanotes-db selftest did not finish in 20 s" ;;
+      *) detail="omanotes-db selftest failed with exit $code${reason:+: $reason}" ;;
+    esac
+  fi
 }
 
 apply_mode() {
