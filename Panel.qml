@@ -61,6 +61,15 @@ Panel {
         }
     }
 
+    // What only this panel can finish, so the bar widget keeps it loaded
+    // while closed: unsaved text, a failed write waiting to reopen, the
+    // sound file chooser, and the panel's own Updater at work.
+    function busy() {
+        var update = ownUpdater.item ? ownUpdater.item.view.phase : ""
+        return itemsTab.busy() || alarmsTab.busy() || settingsTab.busy()
+            || update === "checking" || update === "updating"
+    }
+
     property int activeTab: Tabs.items
     readonly property var shownTab: root.tabAt(root.activeTab)
     function tabAt(index) { return [itemsTab, alarmsTab, historyTab, settingsTab][index] }

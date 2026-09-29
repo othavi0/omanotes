@@ -74,10 +74,14 @@ ShellRoot {
     FloatingWindow {
       required property var modelData
       readonly property var widget: loader.item
-      implicitWidth: 120; implicitHeight: 40
+      // The chip away from the corner where offscreen puts the pointer, which
+      // would hold the panel loaded (ADR-0019).
+      implicitWidth: 320; implicitHeight: 40
       Loader {
         id: loader
-        anchors.fill: parent
+        x: 200
+        width: 120
+        height: 40
         source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml"
         // Bound, as the shell's serviceFor is: the service can load after the widget.
         onLoaded: item.service = Qt.binding(function() { return svc.item })
@@ -150,6 +154,19 @@ ShellRoot {
   IpcHandler {
     target: "omanotes-test"
     function ping(): string { return svc.item && monitors.instances.length === 3 && monitors.instances[2].widget ? "ok" : "loading" }
+    // The panels load on demand (ADR-0019); the checks read all three while closed.
+    function preparePanels(): string {
+      var n = 0
+      for (var i = 0; i < 3; ++i) {
+        var w = monitors.instances[i].widget
+        w.panelIdleMs = 3600000
+        w.preparePanel()
+        if (w.panelItem) n++
+      }
+      return String(n)
+    }
+    function setPanelIdle(n: int, ms: int): void { monitors.instances[n - 1].widget.panelIdleMs = ms }
+    function panelState(n: int): string { return monitors.instances[n - 1].widget.panelItem ? "loaded" : "none" }
     function tick(ms: string): string { svc.item.tick(Number(ms)); return sr.state() }
     function state(): string { return sr.state() }
     function settings(): string { return JSON.stringify(svc.item.settings) }
@@ -269,6 +286,10 @@ for _ in $(seq 50); do
   sleep 0.2
 done
 if (( ! up )); then cat "$cfg_dir/qs.log"; echo "the service never answered ping"; exit 2; fi
+for _ in $(seq 50); do
+  [[ "$(ipc preparePanels)" == 3 ]] && break
+  sleep 0.1
+done
 
 checks=0
 failures=0
@@ -770,6 +791,23 @@ replies "then apply runs" "$(ipc applyUpdate)" "[]updating"
 updater_is "and ends updated" "updated|blocked:false"
 replies "with the clone at origin/main" "$(git -C "$cfg_dir/clone" rev-parse HEAD)" "$(git -C "$cfg_dir/dev" rev-parse HEAD)"
 replies "and the shell restarted once, through the stub" "$(cat "$cfg_dir/restart.log" 2> /dev/null)" "restart"
+
+replies "the panel of widget 1 opens on the Alarms tab for the idle time" "$(ipc openAlarms)" "ok"
+ipc startNew > /dev/null
+ipc setEditor "25:00" "Unsaved" "" "9" "5" > /dev/null
+ipc closePanel 1
+ipc setPanelIdle 1 400
+replies "an alarm draft that cannot be committed keeps the closed panel loaded past the idle time" \
+  "$(sleep 1.2; ipc panelState 1)" "loaded"
+replies "with the draft in it" "$(ipc tabState 1 | cut -d'|' -f2,3)" "draft:true|25:00"
+ipc discard > /dev/null
+gone=""
+for _ in $(seq 50); do
+  gone="$(ipc panelState 1)"
+  [[ "$gone" == none ]] && break
+  sleep 0.1
+done
+replies "discarded, the panel is unloaded" "$gone" "none"
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true

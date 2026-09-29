@@ -23,21 +23,34 @@ BarWidget {
     // root (not the nested panel), so the widget is the popout identity.
     readonly property bool opened: panelItem ? panelItem.opened === true : false
 
-    function open() { if (panelItem) panelItem.open() }
+    // The panel is created on demand (ADR-0019): in the background when the
+    // pointer enters the button, at once when something opens it. It is
+    // dropped once closed for panelIdleMs with nothing only it can finish.
+    readonly property QtObject panelItem: panelLoader.item
+    property bool panelWanted: false
+    property int panelIdleMs: 60000
+
+    function preparePanel() { root.panelWanted = true }
+    // Turning `asynchronous` off also ends at once a load that the pointer
+    // started in the background, so the open is never lost.
+    function open() {
+        if (!panelItem) {
+            panelLoader.asynchronous = false
+            root.panelWanted = true
+        }
+        panelItem.open()
+    }
     function close() { if (panelItem) panelItem.close() }
-    function togglePanel() { if (panelItem) panelItem.toggle() }
+    function togglePanel() { root.opened ? root.close() : root.open() }
 
     // Forwarded: Bar.requestPopout prefers closeForPopoutSwitch over close,
     // and KeyboardPanel reads popoutSwitchClosing back off its owner.
     readonly property bool popoutSwitchClosing: panelItem ? panelItem.popoutSwitchClosing === true : false
     function closeForPopoutSwitch() { if (panelItem) panelItem.closeForPopoutSwitch() }
 
-    property var panelItem: null
-
     function injectPanel() {
         var target = panelLoader.item
         if (!target) return
-        panelItem = target
         if ("bar" in target) target.bar = root.bar
         if ("settings" in target) target.settings = root.settings
         if ("anchorItem" in target) target.anchorItem = button
@@ -115,12 +128,26 @@ BarWidget {
 
     Loader {
         id: panelLoader
-        active: true
+        active: root.panelWanted
+        asynchronous: true
         source: Qt.resolvedUrl("Panel.qml")
         visible: false
         onLoaded: {
+            panelLoader.asynchronous = true
             root.injectPanel()
             Qt.callLater(root.injectPanel)
+        }
+    }
+
+    // A write in flight holds the panel too: when it fails, the text it
+    // carried goes back to this panel's editor.
+    Timer {
+        id: unloadTimer
+        interval: root.panelIdleMs
+        running: !!root.panelItem && !root.opened && !button.tooltipHovered
+        onTriggered: {
+            if (db.writing || root.panelItem.busy()) unloadTimer.restart()
+            else root.panelWanted = false
         }
     }
 
@@ -158,6 +185,7 @@ BarWidget {
         text: button.vertical ? (root.ringing ? Icons.bell : Icons.noteFilled) : root.chipText
         fixedWidth: root.ringing || root.nextLabel !== "" ? -1 : Style.bar.iconSlot
         active: root.ringing
+        onTooltipHoveredChanged: if (button.tooltipHovered) root.preparePanel()
         tooltipText: root.ringing ? "Omanotes: " + root.service.ringTitle + " is ringing · click to stop"
             : "Omanotes: " + db.unreadNotes + " unread · " + db.pendingTodos + " pending"
                 + (root.nextLabel !== "" ? " · next alarm " + root.nextLabel : "")

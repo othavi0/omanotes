@@ -120,6 +120,8 @@ FocusScope {
         if (root.draftNew || editor.dirty) root.commitEditor(false)
     }
 
+    function busy() { return editor.unsaved }
+
     function discardEditor() {
         root.draftNew = false
         root.refillEditor()

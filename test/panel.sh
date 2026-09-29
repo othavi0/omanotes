@@ -20,11 +20,21 @@ cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import QtTest
 import "ui/Icons.js" as Icons
 import "ui/Tabs.js" as Tabs
 
 ShellRoot {
   id: sr
+
+  // The last panel seen, which reads null once that panel is destroyed.
+  property var seenPanel: null
+  function panelState() {
+    var w = widget.item
+    if (w.panelItem) sr.seenPanel = w.panelItem
+    return (w.panelItem ? "loaded" : "none") + "|" + (w.opened ? "open" : "closed")
+  }
+  function button() { return sr.find(widget.item, "WidgetButton") }
 
   function find(obj, typeName) {
     if (!obj) return null
@@ -55,14 +65,67 @@ ShellRoot {
     return null
   }
 
+  // Wider than the button, so the pointer can leave it, and the button away
+  // from the corner where offscreen puts the pointer at the start.
   FloatingWindow {
-    implicitWidth: 40; implicitHeight: 40
-    Loader { id: widget; anchors.fill: parent; source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml" }
+    implicitWidth: 200; implicitHeight: 40
+    Loader {
+      id: widget
+      x: 100
+      width: item ? item.implicitWidth : 0
+      height: 40
+      source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml"
+    }
   }
+  TestEvent { id: pointer }
 
   // Typing into the editor has no IPC, so the test reaches the panel's ItemsTab.
   IpcHandler {
     target: "omanotes-test"
+    function panelState(): string { return sr.panelState() }
+    function panelGone(): string { return String(sr.seenPanel === null) }
+    function setPanelIdle(ms: int): void { widget.item.panelIdleMs = ms }
+    function hover(): string {
+      var b = sr.button()
+      pointer.mouseMove(b, b.width / 2, b.height / 2, -1, Qt.NoButton, Qt.NoModifier)
+      return sr.panelState()
+    }
+    function leave(): string {
+      pointer.mouseMove(widget, -80, 20, -1, Qt.NoButton, Qt.NoModifier)
+      return sr.panelState()
+    }
+    function click(): string {
+      var b = sr.button()
+      pointer.mouseClick(b, b.width / 2, b.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
+      return sr.panelState()
+    }
+    // The click comes in the same turn as the hover, before the load it
+    // started can finish.
+    function hoverAndClick(): string {
+      var b = sr.button()
+      pointer.mouseMove(b, b.width / 2, b.height / 2, -1, Qt.NoButton, Qt.NoModifier)
+      var before = sr.panelState()
+      pointer.mouseClick(b, b.width / 2, b.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
+      return before + ">" + sr.panelState()
+    }
+    function itemsView(): string {
+      var panel = widget.item.panelItem
+      var itemsTab = sr.find(panel, "ItemsTab")
+      return ["items", "alarms", "history", "settings"][panel.activeTab] + "|" + itemsTab.itemList.length + "|" + itemsTab.selectedId + "|" + itemsTab.editorTitle + "|draft:" + itemsTab.draftNew
+    }
+    function setTab(tab: string): void { widget.item.panelItem.activeTab = Tabs[tab] }
+    function filterState(): string {
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      return itemsTab.filterType + "|" + itemsTab.searchText + "|" + itemsTab.itemList.length
+    }
+    // A draft with a body and no title, which closing the panel cannot commit.
+    function typeUntitled(body: string): string {
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      itemsTab.startNew("note")
+      itemsTab.editorBody = body
+      return "ok"
+    }
+    function discard(): void { sr.find(widget.item.panelItem, "ItemsTab").discardEditor() }
     function typeDraft(title: string): string {
       var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
       if (!itemsTab) return "no ItemsTab"
@@ -191,6 +254,108 @@ all_of() {
 }
 
 replies "ping answers JSON" "$(ipc scratchpad ping)" '{"ok":true}'
+
+# The panel is created on demand and dropped when idle (ADR-0019).
+panel_is() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(ipc omanotes-test panelState)"
+    [[ "$got" == "$want" ]] && break
+    sleep 0.1
+  done
+  replies "$what" "$got" "$want"
+}
+# The list as the panel shows it right after opening: the Items tab, every
+# row, the first one selected and in the editor.
+items_now() {
+  local first
+  first="$(sqlite3 "$db" "SELECT id || '|' || title FROM items ORDER BY status, position, id DESC LIMIT 1")"
+  echo "items|$(sqlite3 "$db" "SELECT COUNT(*) FROM items")|$first|draft:false"
+}
+sleep 1
+replies "no panel exists after the start, and the list IPC loads none" \
+  "$(ipc scratchpad listNotes > /dev/null; ipc scratchpad close; ipc omanotes-test panelState)" "none|closed"
+replies "an IPC open with no hover loads the panel and opens it at once" "$(ipc scratchpad open; ipc omanotes-test panelState)" "loaded|open"
+replies "it opens on the Items tab with every row, the first selected" "$(ipc omanotes-test itemsView)" "$(items_now)"
+ipc omanotes-test setTab history > /dev/null
+ipc scratchpad close > /dev/null
+ipc omanotes-test setPanelIdle 400 > /dev/null
+panel_is "closed and idle, the panel is unloaded" "none|closed"
+replies "and the instance is destroyed" "$(ipc omanotes-test panelGone)" "true"
+
+sqlite3 "$db" "INSERT INTO items (type, title, status, position, created_at, updated_at)
+  VALUES ('note', 'WHILE-UNLOADED', 0, -100, strftime('%s', 'now'), strftime('%s', 'now'))"
+for _ in $(seq 50); do
+  [[ "$(ipc scratchpad listNotes)" == *WHILE-UNLOADED* ]] && break
+  sleep 0.2
+done
+replies "the pointer entering the button loads the panel without opening it" "$(ipc omanotes-test hover)" "none|closed"
+panel_is "the load in the background ends" "loaded|closed"
+replies "a click then opens it" "$(ipc omanotes-test click)" "loaded|open"
+replies "reopened, it shows the Items tab and the row written while it was unloaded" \
+  "$(ipc omanotes-test itemsView)" "$(items_now)"
+ipc omanotes-test click > /dev/null
+ipc omanotes-test leave > /dev/null
+sleep 0.2
+ipc omanotes-test hover > /dev/null
+replies "the pointer back on the button before the idle time keeps the closed panel loaded" \
+  "$(sleep 1.2; ipc omanotes-test panelState)" "loaded|closed"
+ipc omanotes-test leave > /dev/null
+panel_is "once the pointer leaves, the idle panel is unloaded" "none|closed"
+
+replies "a click before the load the hover started has ended opens the panel once it is ready" \
+  "$(ipc omanotes-test hoverAndClick)" "none|closed>loaded|open"
+replies "with its rows" "$(ipc omanotes-test itemsView)" "$(items_now)"
+ipc omanotes-test filterPanel note coffee > /dev/null
+for _ in $(seq 50); do
+  [[ "$(ipc omanotes-test filterState)" == "note|coffee|1" ]] && break
+  sleep 0.1
+done
+ipc scratchpad close > /dev/null
+ipc omanotes-test leave > /dev/null
+panel_is "closed with a search, the idle panel is unloaded" "none|closed"
+ipc scratchpad open > /dev/null
+replies "reopened, it keeps the filter and the search, and lists what they match" "$(ipc omanotes-test filterState)" "note|coffee|1"
+ipc omanotes-test filterPanel all "" > /dev/null
+
+replies "the open panel takes a draft with no title" "$(ipc omanotes-test typeUntitled "UNTITLED-BODY")" "ok"
+ipc scratchpad close > /dev/null
+ipc omanotes-test leave > /dev/null
+replies "an untitled draft keeps the closed panel loaded past the idle time" \
+  "$(sleep 1.2; ipc omanotes-test panelState)" "loaded|closed"
+ipc scratchpad open > /dev/null
+replies "and the reopened panel still holds the draft" "$(ipc omanotes-test itemsView | cut -d'|' -f5)" "draft:true"
+ipc omanotes-test discard > /dev/null
+ipc scratchpad close > /dev/null
+panel_is "discarded, the panel is unloaded" "none|closed"
+
+ipc scratchpad open > /dev/null
+replies "the open panel edits item 3" "$(ipc omanotes-test editItem 3 "FAILED-EDIT")" "ok"
+touch "$cfg_dir/hold-any-write"
+ipc scratchpad close > /dev/null
+replies "a write in flight keeps the closed panel loaded" "$(sleep 1.2; ipc omanotes-test panelState)" "loaded|closed"
+touch "$cfg_dir/first-fails"
+rm -f "$cfg_dir/hold-any-write"
+failed_edit=""
+for _ in $(seq 50); do
+  failed_edit="$(ipc omanotes-test editorState)"
+  [[ "$failed_edit" == "3|FAILED-EDIT|toast:Error: database is locked" ]] && break
+  sleep 0.1
+done
+replies "the write fails and its text goes back to the editor" "$failed_edit" "3|FAILED-EDIT|toast:Error: database is locked"
+replies "an edit that could not be saved keeps the closed panel loaded" "$(sleep 1.2; ipc omanotes-test panelState)" "loaded|closed"
+ipc scratchpad open > /dev/null
+ipc omanotes-test discard > /dev/null
+ipc scratchpad close > /dev/null
+panel_is "discarded, the panel is unloaded" "none|closed"
+replies "nothing of the untitled draft or the failed edit was saved" \
+  "$(sqlite3 "$db" "SELECT COUNT(*) FROM items WHERE body = 'UNTITLED-BODY' OR title = 'FAILED-EDIT'")" "0"
+sqlite3 "$db" "DELETE FROM items WHERE title = 'WHILE-UNLOADED'; DELETE FROM history WHERE title = 'WHILE-UNLOADED'"
+
+# The checks below read the panel while it is closed.
+ipc omanotes-test setPanelIdle 3600000 > /dev/null
+ipc omanotes-test hover > /dev/null
+panel_is "the panel loads for the checks below" "loaded|closed"
 
 want_counts="Omanotes: 1 unread · 2 pending|1 unread · 2 pending"
 counts=""
@@ -342,7 +507,7 @@ expect "an unsaved draft is saved when the panel closes" \
   "SELECT COUNT(*) FROM items WHERE title = 'DRAFT-ON-CLOSE'" "1"
 
 logged_failures() { grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | tr '\n' ';' || true; }
-replies "no db failure logged before the failure cases" "$(logged_failures)" ""
+replies "only the failed edit is logged before the failure cases" "$(logged_failures)" "database is locked;"
 
 toast_is() {
   local what="$1" want="$2" got=""
@@ -478,7 +643,7 @@ replies "and the list shows the file's order, the same" "$(ipc omanotes-test ord
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
 replies "only the failure cases are logged" "$(logged_failures)" \
-  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;"
+  "database is locked;item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
 echo "panel: $checks checks, $failures failed"

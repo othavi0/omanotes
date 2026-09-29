@@ -58,6 +58,8 @@ FocusScope {
         focusSink.forceActiveFocus()
     }
 
+    function busy() { return soundSettings.busy() }
+
     // A Keep that would remove entries is armed like every destructive
     // button (Arm in CONTEXT.md); one that removes nothing saves at once.
     function pickKeep(days) {
@@ -200,6 +202,7 @@ FocusScope {
                 currentIndex: root.sectionIndex
 
                 SoundSettings {
+                    id: soundSettings
                     settings: root.settings
                     service: root.service
                     toast: root.toast
