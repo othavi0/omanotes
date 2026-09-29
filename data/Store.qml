@@ -19,7 +19,8 @@ import "Db.js" as Db
 // lock outside never holds up the list. A read older than a snapshot already
 // shown is dropped, so the two lanes never take the views back in time: by
 // the file's change counter, the stamp, or in WAL, where the stamp is -1, by
-// a write whose result landed after the read was sent.
+// a write whose result landed after the read was sent. That read may still
+// hold a change made outside, so in WAL the Store asks for another.
 QtObject {
     id: root
 
@@ -246,7 +247,10 @@ QtObject {
     // What one finished request did, as its lane read it (Db.reply). The
     // binary's own lines, such as a migration it ran, go to the journal. The
     // writes hear their results first, in order; then the snapshot lands, or
-    // the read failure is told and the Store asks again with back-off.
+    // the read failure is told and the Store asks again with back-off. A
+    // snapshot over 64 MiB fails only after the binary wrote 64 MiB, which
+    // the shell collects, so it is not asked again: the next change of the
+    // file, write or view reads again.
     function _finish(lane, answer) {
         var sent = lane.sent
         if (sent === null) return
@@ -265,7 +269,7 @@ QtObject {
                 root._log(said)
                 root.failed(said)
             }
-            initRetry.start()
+            if (failure.err !== "response_too_large") initRetry.start()
         } else if (answer.ok && answer.snapshot) {
             initRetry.interval = 500
             // A read asked for while this one ran makes its answer stale.
@@ -311,8 +315,13 @@ QtObject {
         }
         // In WAL the stamp is -1 and cannot order two snapshots. A read sent
         // before a write whose result has landed since may be older than
-        // that write's snapshot, which landed with the result: drop it.
-        if (snap.stamp < 0 && sent.writes.length === 0 && sent.covers < root._doneWrite) return
+        // that write's snapshot, which landed with the result: drop it. It
+        // may also be newer and hold a change made outside that the write's
+        // snapshot misses, so read again.
+        if (snap.stamp < 0 && sent.writes.length === 0 && sent.covers < root._doneWrite) {
+            root.reload()
+            return
+        }
         root._shown += 1
         root._stamp = snap.stamp
         var read = Db.parseSettings(snap.settings)
@@ -370,7 +379,8 @@ QtObject {
     }
 
     // The file is locked, the binary is missing or a read failed: ask again
-    // from 500 ms up to every 30 s, never in a loop.
+    // from 500 ms up to every 30 s, never in a loop. A snapshot over 64 MiB
+    // is not asked again (see _finish).
     property Timer initRetry: Timer {
         interval: 500
         repeat: false
