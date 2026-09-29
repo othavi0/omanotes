@@ -127,7 +127,7 @@ test("a shorter Keep prunes in the same transaction as the setting, as setSettin
 })
 
 test("a setting out of range, an unknown column or an empty patch changes nothing", (t) => {
-  const path = start(t, W.settingsStart.tables)
+  const path = start(t, W.items.start)
   for (const [label, values, code] of [
     ["volume 101 (the CHECK)", { volume: 101 }, "refused"],
     ["Keep 7 days (the CHECK)", { history_days: 7 }, "refused"],
@@ -140,7 +140,7 @@ test("a setting out of range, an unknown column or an empty patch changes nothin
   ]) {
     const res = call(path, { writes: [write("settings.set", { values })] }).results[0]
     assert.equal(res.err, code, `${label}: ${JSON.stringify(res)}`)
-    tablesAre(path, W.settingsStart.tables, label)
+    tablesAre(path, W.items.start, label)
   }
 })
 
