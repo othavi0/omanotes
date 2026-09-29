@@ -14,7 +14,7 @@ export const Db = loadQmlLib(new URL("../../data/Db.js", import.meta.url), [
   "PROTOCOL", "MAX_REQUEST_BYTES", "now", "wholeId", "wholeIn", "daysMask", "maskDays", "alarmCells", "clampedInt",
   "parseAlarms", "mergeAlarms", "SETTINGS", "settingsCells", "parseSettings", "mergeSettings", "parseCounts", "prunes",
   "movedRows", "typeRows", "matchedRows", "wellFormed", "request", "utf8Length", "command", "reply", "ERROR_TEXT", "errorText",
-  "MAX_WRITE_BYTES", "MAX_QUERY", "viewQuery", "sameRows", "writeJson", "definitive"
+  "MAX_WRITE_BYTES", "MAX_QUERY", "viewQuery", "sameRows", "writeJson", "definitive", "retriesRead"
 ])
 export const Legacy = loadQmlLib(new URL("./legacy-db.js", import.meta.url), [
   "addSql", "setStatusSql", "updateSql", "deleteItemSql", "convertTypeSql", "moveSql", "deleteHistorySql",

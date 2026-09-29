@@ -278,6 +278,13 @@ function definitive(err) {
   return err === "bad_request" || err === "forbidden" || err === "too_large" || err === "refused"
 }
 
+// Whether the Store asks again, with back-off, for a read that failed. A
+// snapshot over 64 MiB fails only after the binary wrote 64 MiB, which the
+// shell collects, so each retry would cost that again.
+function retriesRead(err) {
+  return err !== "response_too_large"
+}
+
 // The text with every lone surrogate replaced by U+FFFD. The QML engine
 // sends a lone surrogate raw on stdin, where the decoder drops it, and the
 // binary refuses an escaped one; the argv of the sqlite3 CLI turned it into
