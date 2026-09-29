@@ -42,7 +42,7 @@ function masterHolds(dbPath, frozen) {
   }
 }
 
-test("the versioned fold table is the searchText of before the binary, and its sha256 is the live database's", () => {
+test("the versioned fold table is the frozen search_map.tsv, and its sha256 is the live database's", () => {
   // The TSV is the searchText of before, frozen: the sha256 is the one the old fold's table had.
   const file = readFileSync(join(ROOT, "db", "Schema", "search_map.tsv"), "utf8")
   assert.equal(sha256(file), SEARCH_MAP_SHA256)

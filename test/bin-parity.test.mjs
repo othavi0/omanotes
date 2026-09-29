@@ -213,7 +213,7 @@ test("a search matches the ids the old listSql matched, in the same order", (t) 
   assert.deepEqual(empty.matches.todo, W.search.empty.todo)
 })
 
-test("the text the binary folds is the text searchText folds and the text the triggers fold", (t) => {
+test("the binary folds as the TSV and the triggers fold", (t) => {
   const path = seeded(t)
   // Every unit of the fold table, a surrogate pair, and some text the table leaves alone.
   let every = ""
