@@ -1,0 +1,8 @@
+//! expect: RS0030
+// Text never becomes a number: in invariant mode TryParse("1,5") gives 15.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static double Read(string s) => double.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
+}

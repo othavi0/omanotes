@@ -1,0 +1,8 @@
+//! expect: CS0122
+// Only Conn calls libsqlite3: a bind that skips SQLITE_TRANSIENT cannot be written elsewhere.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static int Version() => Conn.Native.sqlite3_libversion_number();
+}

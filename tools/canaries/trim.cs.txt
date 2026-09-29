@@ -1,0 +1,8 @@
+//! expect: RS0030
+// The caller trims with String.prototype.trim, whose set of spaces differs.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static string Clean(string s) => s.Trim();
+}

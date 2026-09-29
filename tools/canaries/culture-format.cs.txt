@@ -1,0 +1,8 @@
+//! expect: CA1305
+// Only the analysis build (InvariantGlobalization=false) sees this one.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static string Text(long n) => n.ToString();
+}

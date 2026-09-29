@@ -1,0 +1,8 @@
+//! expect: VSTHRD100
+// async void escapes every catch.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static async void Fire() => await System.Threading.Tasks.Task.Yield();
+}

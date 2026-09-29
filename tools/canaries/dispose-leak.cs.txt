@@ -1,0 +1,12 @@
+//! expect: CA2000
+// A transaction that is never disposed: a throw before Commit would leave it open.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static void Leak(Conn db)
+    {
+        Conn.Tx tx = db.Immediate();
+        tx.Commit();
+    }
+}

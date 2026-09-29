@@ -1,0 +1,19 @@
+//! expect: CA1031
+// The one catch-all is Program.Main's; anywhere else it hides a bug as a result.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static bool Try(Action a)
+    {
+        try
+        {
+            a();
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+}

@@ -1,0 +1,27 @@
+{
+  "protocol": [
+    1,
+    1
+  ],
+  "schema": 5,
+  "source": "b341840ce360e93ded209a60af9df6db85bbaa58484f95fd71685e2cfc820672",
+  "toolchain": {
+    "sdk": "10.0.401",
+    "ilcompiler": "10.0.12",
+    "clang": "clang version 22.1.8",
+    "lld": "LLD 22.1.8 (compatible with GNU linkers)",
+    "sysroot": "580d7490193257bb05153eaf0829eeee58f8092539eb341bde46db150d40743a"
+  },
+  "targets": {
+    "x86_64": {
+      "sha256": "b8e68eda03303f9577228444c809c5e28d858bdfa9eb6c900b3842ad80ab9faa",
+      "bytes": 1970552,
+      "glibc": "2.34"
+    },
+    "aarch64": {
+      "sha256": "0d9fe4f6cf0eadf5c52d0463c16ed03d6e358b52589a3c94da877b7ad428b5a9",
+      "bytes": 2031296,
+      "glibc": "2.34"
+    }
+  }
+}

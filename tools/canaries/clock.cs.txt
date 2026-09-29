@@ -1,0 +1,8 @@
+//! expect: RS0030
+// The binary has no clock: every write carries "at".
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static long Now() => DateTime.UtcNow.Ticks;
+}

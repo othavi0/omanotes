@@ -1,0 +1,8 @@
+//! expect: RS0030
+// Console follows LANG and its stdin has no timeout: raw descriptors only (Program.Fd).
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static string? Line() => Console.ReadLine();
+}
