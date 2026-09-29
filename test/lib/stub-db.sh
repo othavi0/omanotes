@@ -21,6 +21,8 @@
 #   fail-sync         requests with no writes fail as a lock held outside
 #   first-fails       the next request fails as a lock held outside, once
 #   crash             the next request dies by SIGKILL with no answer, once
+#   stall-journal     holds N: requests run with lib/stall-journal.c preloaded, so the Nth
+#                     write of each stalls on the disk until the Lane kills the request
 #
 # A failure is what the binary does: exit 1 and {"err","detail"} on the last line
 # of stderr. Builtins only until the real binary, but for sleep: a check races a
@@ -73,5 +75,9 @@ else
   (( inserts )) && [[ -e "$cfg/fail-insert" ]] && disk
   (( saves )) && [[ -e "$cfg/fail-writes" ]] && disk
   (( saves )) && [[ -e "$cfg/refuse-writes" ]] && refuse
+fi
+if [[ -e "$cfg/stall-journal" ]]; then
+  read -r stall < "$cfg/stall-journal"
+  LD_PRELOAD="$cfg/stall-journal.so" OMANOTES_STALL_JOURNAL="$stall" exec "$real" "$@" <<< "$req"
 fi
 exec "$real" "$@" <<< "$req"

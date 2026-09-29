@@ -137,6 +137,18 @@ ShellRoot {
     function moveItem(id: int, anchorId: int, after: bool): string { return widget.item.panelItem.db.move(id, anchorId, after) }
     function order(): string { return widget.item.panelItem.db.items.map(function(i) { return i.id }).join(",") }
     function reloadPanel(): void { widget.item.panelItem.db.load() }
+    // How long the lanes let a spawn run before they kill it.
+    function setLimits(spawnMs: int, writeMs: int): void {
+      var store = widget.item.panelItem.db._store.target
+      store.spawnLimitMs = spawnMs
+      store.writeLimitMs = writeMs
+    }
+    function commitEditor(): string {
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      if (!itemsTab) return "no ItemsTab"
+      itemsTab.commitEditor(false)
+      return "ok"
+    }
     // A search too long for the argv of an IPC call.
     function searchRepeated(text: string, times: int): string {
       var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
@@ -586,6 +598,36 @@ rm -f "$cfg_dir/hold-any-write"
 expect "the drop's write lands" \
   "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 2)" "$second,$top"
 replies "and the list shows the file's order, the same" "$(ipc omanotes-test order)" "$dropped"
+
+# A request killed part way: its first write, a new note, committed, and the
+# second hung on the disk until the lane killed the request. The note is in
+# the file, so it must not come back to the editor, where saving it again
+# adds it twice (issue #57).
+if stall_journal_lib; then
+  sleep 1
+  open_id="$(sqlite3 "$db" "SELECT id FROM items WHERE status = 0 AND id <> 3 ORDER BY id LIMIT 1")"
+  ipc omanotes-test setLimits 1500 0 > /dev/null
+  touch "$cfg_dir/hold-any-write"
+  ipc omanotes-test userWrite setStatus 3 > /dev/null
+  ipc omanotes-test typeDraft "KILLED-MID-BATCH" > /dev/null
+  ipc omanotes-test commitEditor > /dev/null
+  ipc omanotes-test userWrite setStatus "$open_id" > /dev/null
+  echo 2 > "$cfg_dir/stall-journal"
+  rm -f "$cfg_dir/hold-any-write"
+  expect "the note written before the kill is in the file" "SELECT COUNT(*) FROM items WHERE title = 'KILLED-MID-BATCH'" "1"
+  replies "the add and the status change went out in one request" \
+    "$(grep -c 'write:item.add write:item.status' "$cfg_dir/db.log")" "1"
+  sleep 3
+  rm -f "$cfg_dir/stall-journal"
+  ipc omanotes-test setLimits 30000 5000 > /dev/null
+  replies "the note does not come back to the editor as a draft" "$(ipc omanotes-test panelView | cut -d'|' -f4,5)" "KILLED-MID-BATCH|draft:false"
+  ipc omanotes-test commitEditor > /dev/null
+  sleep 1
+  expect "saving the editor again does not add the note twice" "SELECT COUNT(*) FROM items WHERE title = 'KILLED-MID-BATCH'" "1"
+  expect "the write the kill cut off left its item alone" "SELECT status FROM items WHERE id = $open_id" "0"
+else
+  echo "skip the request killed part way: no C compiler (cc)"
+fi
 
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
