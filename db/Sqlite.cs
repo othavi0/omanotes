@@ -115,7 +115,9 @@ internal sealed partial class Conn : IDisposable
             }
 
             _ = Native.sqlite3_busy_timeout(handle, BusyTimeoutMs);
-            _ = conn.Run($"PRAGMA cache_size = -512");
+
+            // A spawn reads each page once; a bigger cache only raises its peak RSS (measured: 128 KiB takes 0.4 MB off a full snapshot, at the same speed).
+            _ = conn.Run($"PRAGMA cache_size = -128");
             return conn;
         }
         catch (OpException)
