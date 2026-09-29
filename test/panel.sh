@@ -77,6 +77,10 @@ ShellRoot {
       itemsTab.searchText = query
       return "ok"
     }
+    // A drop, as the list makes it, and the order the list shows.
+    function moveItem(id: int, anchorId: int, after: bool): string { return widget.item.panelItem.db.move(id, anchorId, after) }
+    function order(): string { return widget.item.panelItem.db.items.map(function(i) { return i.id }).join(",") }
+    function reloadPanel(): void { widget.item.panelItem.db.load() }
     // A search too long for the argv of an IPC call.
     function searchRepeated(text: string, times: int): string {
       var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
@@ -450,6 +454,26 @@ replies "it goes out cut to 200 characters, under SQLite's limit on a LIKE patte
 ipc omanotes-test searchRepeated "中" 20000 > /dev/null
 panel_rows_are "a search of 20 000 characters of 3 bytes lists nothing, and no view's reload fails for it" 0
 ipc omanotes-test filterPanel all "" > /dev/null
+
+# A read sent before a drop lands while the drop's write waits on a lock: the
+# list keeps the drop until a snapshot that includes the write lands.
+sleep 1
+IFS=, read -r top second < <(sqlite3 "$db" "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 2)")
+listed="$(ipc omanotes-test order)"
+dropped="$second,$top,${listed#"$top,$second,"}"
+hold_reads
+ipc omanotes-test reloadPanel > /dev/null
+all_reads_held "the reload before the drop holds its read"
+touch "$cfg_dir/hold-any-write"
+ipc omanotes-test moveItem "$second" "$top" false > /dev/null
+replies "the drop shows at once" "$(ipc omanotes-test order)" "$dropped"
+release_reads
+sleep 1
+replies "the read from before the drop lands and the list still shows the drop" "$(ipc omanotes-test order)" "$dropped"
+rm -f "$cfg_dir/hold-any-write"
+expect "the drop's write lands" \
+  "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 2)" "$second,$top"
+replies "and the list shows the file's order, the same" "$(ipc omanotes-test order)" "$dropped"
 
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true

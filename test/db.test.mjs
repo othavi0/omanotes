@@ -101,12 +101,15 @@ test("wellFormed replaces each lone surrogate with U+FFFD and keeps pairs", () =
   assert.equal(Db.wellFormed("plain ação"), "plain ação")
 })
 
-test("request carries the writes and the sync, with every text well formed", () => {
-  const body = JSON.parse(Db.request([{ id: 1, by: "widget", op: "item.add", at: T0, args: { type: "note", title: "a\ud800", body: "" } }],
+test("request joins the writes, each serialized once by writeJson, with the sync, and every text is well formed", () => {
+  const write = { id: 1, by: "widget", op: "item.add", at: T0, args: { type: "note", title: "a\ud800", body: "" } }
+  const body = JSON.parse(Db.request([Db.writeJson(write), Db.writeJson({ ...write, id: 2 })],
     { since: -1, views: [{ key: "v1", filter: "all", query: "b\udc00" }] }))
+  assert.deepEqual(body.writes.map((w) => w.id), [1, 2])
   assert.equal(body.writes[0].args.title, "a�")
   assert.equal(body.sync.views[0].query, "b�")
   assert.deepEqual(Object.keys(JSON.parse(Db.request([], { since: 3, views: [] }))), ["sync"])
+  assert.deepEqual(JSON.parse(Db.request([Db.writeJson(write)], null)), { writes: [{ ...write, args: { ...write.args, title: "a�" } }] })
 })
 
 test("a lone surrogate in a title reaches the file as U+FFFD, where the raw text would be refused", (t) => {
@@ -114,7 +117,7 @@ test("a lone surrogate in a title reaches the file as U+FFFD, where the raw text
   const write = { id: 1, by: "widget", op: "item.add", at: T0, args: { type: "note", title: "x\ud800y", body: "" } }
   const raw = exec([String(Db.PROTOCOL), "run", path], JSON.stringify({ writes: [write] }))
   assert.equal(JSON.parse(raw.stdout).results[0].err, "bad_request")
-  const r = exec([String(Db.PROTOCOL), "run", path], Db.request([write], null))
+  const r = exec([String(Db.PROTOCOL), "run", path], Db.request([Db.writeJson(write)], null))
   assert.equal(r.status, 0, r.stderr)
   assert.equal(rows(path, "SELECT title FROM items")[0].title, "x�y")
 })
@@ -124,10 +127,21 @@ test("command puts no user text in argv: the binary, the protocol, the verb and 
   assert.ok(BUILD.protocol[0] <= Db.PROTOCOL && Db.PROTOCOL <= BUILD.protocol[1], "the committed binary speaks the QML's protocol")
 })
 
-test("utf8Length counts the bytes a text takes on stdin", () => {
+test("utf8Length counts the bytes a text takes on stdin, a lone surrogate as the U+FFFD that replaces it", () => {
   assert.equal(Db.utf8Length("abc"), 3)
   assert.equal(Db.utf8Length("ação"), 6)
   assert.equal(Db.utf8Length("😀"), 4)
+  for (const text of ["", "\u007f\u0080߿ࠀ￿", "a😀é中\n\"\\", "\ud800", "x\udc00y", "\ud83d", "\udc00\ud800"]) {
+    assert.equal(Db.utf8Length(text), Buffer.byteLength(Db.wellFormed(text)), JSON.stringify(text))
+  }
+  const long = "Ação 中 😀\n".repeat(100000)
+  assert.equal(Db.utf8Length(long), Buffer.byteLength(long))
+})
+
+test("MAX_WRITE_BYTES leaves room for the sync of the views in a request", () => {
+  assert.equal(Db.MAX_WRITE_BYTES, Db.MAX_REQUEST_BYTES - 16384 - 64)
+  const views = Array.from({ length: 12 }, (_, i) => ({ key: "v" + i, filter: "todo", query: "\u0001".repeat(Db.MAX_QUERY) }))
+  assert.ok(Buffer.byteLength(Db.request([], { since: 4294967295, views })) <= 16384, "twelve views with the longest search fit the room")
 })
 
 test("reply reads line 1 as the results and line 2 as the snapshot on exit 0, with stderr as the log", () => {

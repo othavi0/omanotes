@@ -16,9 +16,10 @@ import "Db.js" as Db
 // A request carries the writes queued so far, in order, and asks for the
 // snapshot after them, so a write and the reload it causes are one spawn.
 // Writes run in one lane and reads in another, so a write that waits on a
-// lock outside never holds up the list. A read that ran before a snapshot
-// already shown and reads an older file (by its change counter, the stamp)
-// is dropped, so the two lanes never take the views back in time.
+// lock outside never holds up the list. A read older than a snapshot already
+// shown is dropped, so the two lanes never take the views back in time: by
+// the file's change counter, the stamp, or in WAL, where the stamp is -1, by
+// a write whose result landed after the read was sent.
 QtObject {
     id: root
 
@@ -59,11 +60,16 @@ QtObject {
     // A read that failed, as the words to show.
     signal failed(string message)
 
-    // Attaches a view and returns its key. The first view starts the Store,
-    // which reads the file then: nothing watched it while no view was attached.
-    function attach() {
+    // Attaches a view and returns its key. `by` is the side every write of
+    // the view goes out as, "widget" or "service", and the binary refuses what
+    // that side may not write (ADR-0015, ADR-0016): a view says who it is
+    // once, here, and no caller of write() can say otherwise. The first view
+    // starts the Store, which reads the file then: nothing watched it while
+    // no view was attached.
+    function attach(by) {
+        if (by !== "widget" && by !== "service") throw new Error("a view is a widget's or the service's: " + by)
         var key = "v" + (++root._lastKey)
-        root._attached[key] = { filter: "all", query: "" }
+        root._attached[key] = { by: by, filter: "all", query: "" }
         root._clients += 1
         if (root._binary === "") root._binary = root._binaryPath()
         if (root._clients === 1 || (!root.ready && root.readLane.sent === null)) root.reload()
@@ -79,17 +85,22 @@ QtObject {
     // The search a view shows. A type filter alone needs no spawn: the view
     // narrows the rows it has. A search rides the next request.
     function setView(key, filter, query) {
-        if (key in root._attached) root._attached[key] = { filter: String(filter), query: String(query) }
+        if (!(key in root._attached)) return
+        root._attached[key].filter = String(filter)
+        root._attached[key].query = String(query)
     }
 
-    // Queues a write and returns its id. `done` gets { ok, value } or
-    // { ok: false, err, detail } once its turn has run, in the order the
-    // writes were made, and before the snapshot that follows them lands.
-    // `by` is "widget" or "service": the binary refuses what that side may
-    // not write (ADR-0015, ADR-0016).
-    function write(key, by, op, args, done) {
-        var w = { id: ++root._lastWrite, key: key, by: by, op: op, at: Db.now(), args: args, done: done }
-        w.bytes = Db.utf8Length(Db.request([root._wire(w)], null))
+    // Queues a write of view `key`, as that view's side, and returns its id.
+    // `done` gets { ok, value } or { ok: false, err, detail } once its turn
+    // has run, in the order the writes were made, and before the snapshot
+    // that follows them lands. A write over Db.MAX_WRITE_BYTES throws "text
+    // too large to save" and nothing is queued.
+    function write(key, op, args, done) {
+        if (!(key in root._attached)) throw new Error("the view is not attached")
+        var json = Db.writeJson({ id: root._lastWrite + 1, by: root._attached[key].by, op: op, at: Db.now(), args: args })
+        var bytes = Db.utf8Length(json)
+        if (bytes > Db.MAX_WRITE_BYTES) throw new Error(Db.errorText({ err: "too_large", detail: "" }))
+        var w = { id: ++root._lastWrite, key: key, json: json, bytes: bytes, done: done }
         root._queue.push(w)
         root._writesInFlight += 1
         Qt.callLater(root._pump)
@@ -130,10 +141,6 @@ QtObject {
         root._arch.path = "/proc/sys/kernel/arch"
         var machine = String(root._arch.text()).trim()
         return decodeURIComponent(String(Qt.resolvedUrl("../bin/omanotes-db." + machine)).replace(/^file:\/\//, ""))
-    }
-
-    function _wire(w) {
-        return { id: w.id, by: w.by, op: w.op, at: w.at, args: w.args }
     }
 
     // With no view the rows have no reader: they go, and the next view to
@@ -180,7 +187,7 @@ QtObject {
             views: sync ? sync.views : [],
             shownBefore: root._shown,
             covers: writes.length > 0 ? writes[writes.length - 1].id : root._doneWrite,
-            body: Db.request(writes.map(root._wire), sync)
+            body: Db.request(writes.map(function(w) { return w.json }), sync)
         }
     }
 
@@ -198,17 +205,13 @@ QtObject {
     function _pumpWrites() {
         if (root.writeLane.sent !== null || root.writeLane.running || root._queue.length === 0) return
         // The request stays under the binary's cap: what does not fit waits
-        // for the next request, and a write over the cap alone is refused.
-        var room = Db.MAX_REQUEST_BYTES - Db.utf8Length(Db.request([], root._sync())) - 64
-        var batch = []
-        while (root._queue.length > 0 && room - root._queue[0].bytes > 0) {
+        // for the next request. The first write always goes, since write()
+        // queued only what fits beside a sync.
+        var room = Db.MAX_REQUEST_BYTES - Db.utf8Length(Db.request([], root._sync())) - 64 - root._queue[0].bytes
+        var batch = [root._queue.shift()]
+        while (root._queue.length > 0 && room - root._queue[0].bytes - 1 > 0) {
             room -= root._queue[0].bytes + 1
             batch.push(root._queue.shift())
-        }
-        if (batch.length === 0) {
-            root._landWrite(root._queue.shift(), { ok: false, err: "too_large", detail: "" })
-            Qt.callLater(root._pump)
-            return
         }
         root._send(root.writeLane, batch)
     }
@@ -304,6 +307,10 @@ QtObject {
             root.covered = Math.max(root.covered, sent.covers)
             return
         }
+        // In WAL the stamp is -1 and cannot order two snapshots. A read sent
+        // before a write whose result has landed since may be older than
+        // that write's snapshot, which landed with the result: drop it.
+        if (snap.stamp < 0 && sent.writes.length === 0 && sent.covers < root._doneWrite) return
         root._shown += 1
         root._stamp = snap.stamp
         var read = Db.parseSettings(snap.settings)

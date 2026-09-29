@@ -62,7 +62,10 @@ QtObject {
     signal writeFailed(string kind, var args, string message)
 
     property string _key: ""
-    property bool _moved: false                 // items shows a drop the file has not confirmed
+    // The drop the list shows before its write lands, { write, id, anchorId,
+    // after }, laid over the rows until Store.covered reaches its write, as
+    // the settings overlay is. null with none.
+    property var _move: null
     property bool _heard: false                 // a snapshot has landed since init
     property bool _fromScript: false
     // key -> { value, id }: the settings writes still on their way.
@@ -70,7 +73,7 @@ QtObject {
 
     function init() {
         if (root._key !== "") return
-        root._key = Store.attach()
+        root._key = Store.attach("widget")
         root._showSettings()
         root._showItems()
     }
@@ -89,6 +92,7 @@ QtObject {
         for (var key in root._settingsPatch) {
             if (root._settingsPatch[key].id <= Store.covered) delete root._settingsPatch[key]
         }
+        if (root._move !== null && root._move.write <= Store.covered) root._move = null
         root._showSettings()
         var shown = root.items
         root._showItems()
@@ -108,17 +112,19 @@ QtObject {
     }
 
     // The rows of the list: every item narrowed by type, or the ids the
-    // binary matched for this view's search. A search not answered yet keeps
-    // the rows shown.
+    // binary matched for this view's search, with the drop not landed yet
+    // laid over them. A search not answered yet keeps the rows shown.
     function _showItems() {
-        root._moved = false
         var query = Db.viewQuery(root.listQuery)
+        var rows
         if (query === "") {
-            root.items = Db.typeRows(Store.allItems, root.listFilter)
-            return
+            rows = Db.typeRows(Store.allItems, root.listFilter)
+        } else {
+            var match = Store.matches[root._key]
+            if (!match || match.query !== query || match.filter !== root.listFilter) return
+            rows = Db.matchedRows(Store.itemsById, match.ids)
         }
-        var match = Store.matches[root._key]
-        if (match && match.query === query && match.filter === root.listFilter) root.items = Db.matchedRows(Store.itemsById, match.ids)
+        root.items = root._move === null ? rows : Db.movedRows(rows, root._move.id, root._move.anchorId, root._move.after)
     }
 
     // The IPC writes inside fromScript: the write reloads the panel but emits
@@ -165,17 +171,18 @@ QtObject {
     }
 
     // Queues the write that `build` makes the args of. Returns "" once it is
-    // queued, or why it was refused.
-    function _write(kind, op, build, args) {
+    // queued, or why it was refused: a bad argument, or a text too large to
+    // fit in a request. `queued` gets the Store's id of the write.
+    function _write(kind, op, build, args, queued) {
         if (!Store.ready) return root._refused(kind, args, "not ready")
-        var wire
+        var quiet = root._fromScript
+        var id = 0
         try {
-            wire = build()
+            id = Store.write(root._key, op, build(), function(r) { root._ended(kind, args, r, quiet, id) })
         } catch (e) {
             return root._refused(kind, args, e.message)
         }
-        var quiet = root._fromScript
-        Store.write(root._key, "widget", op, wire, function(r) { root._ended(kind, args, r, quiet) })
+        if (queued) queued(id)
         return ""
     }
     function _refused(kind, args, message) {
@@ -192,9 +199,16 @@ QtObject {
     }
 
     // What a finished write does. The snapshot after it lands right after,
-    // from the same request, so nothing here asks for a reload.
-    function _ended(kind, args, r, quiet) {
+    // from the same request, so nothing here asks for a reload. A drop whose
+    // write failed leaves the list as the file has it.
+    function _ended(kind, args, r, quiet, id) {
         if (!r.ok) {
+            if (root._move !== null && root._move.write === id) {
+                root._move = null
+                var shown = root.items
+                root._showItems()
+                if (!Db.sameRows(shown, root.items)) root.itemsUpdated(root.items)
+            }
             root._failWrite(kind, args, Db.errorText(r), quiet)
             return
         }
@@ -241,14 +255,13 @@ QtObject {
     // Puts the item just before `anchorId`, or just after it when `after`,
     // inside its block. The list shows the move before the write lands.
     function move(id, anchorId, after) {
-        var error = root._write("move", "item.move",
+        var args = { id: Number(id), anchorId: Number(anchorId), after: !!after }
+        return root._write("move", "item.move",
             function() { return { id: Db.wholeId(id), anchorId: Db.wholeId(anchorId), after: !!after } },
-            { id: Number(id), anchorId: Number(anchorId), after: !!after })
-        if (error === "") {
-            root._moved = true
-            root.items = Db.movedRows(root.items, id, anchorId, after)
-        }
-        return error
+            args, function(write) {
+                root._move = { write: write, id: args.id, anchorId: args.anchorId, after: args.after }
+                root.items = Db.movedRows(root.items, id, anchorId, after)
+            })
     }
 
     // Emits itemDeleted(id).
@@ -282,13 +295,12 @@ QtObject {
     // file again.
     function setSettings(patch) {
         if (!Store.ready) return root._refused("settings", null, "not ready")
-        var cells
+        var id = 0
         try {
-            cells = Db.settingsCells(patch)
+            id = Store.write(root._key, "settings.set", { values: Db.settingsCells(patch) }, function(r) { root._settingsEnded(id, r) })
         } catch (e) {
             return root._refused("settings", null, e.message)
         }
-        var id = Store.write(root._key, "widget", "settings.set", { values: cells }, function(r) { root._settingsEnded(id, r) })
         for (var key in patch) root._settingsPatch[key] = { value: patch[key], id: id }
         root._showSettings()
         return ""

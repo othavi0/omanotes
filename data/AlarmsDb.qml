@@ -2,8 +2,9 @@ import QtQuick
 import "Db.js" as Db
 
 // The service's view of the Store (data/Store.qml), and the only writer of
-// the alarms table (ADR-0015): every write it makes is sent as the service's,
-// and the binary refuses alarm writes from anyone else. It lays each alarm it
+// the alarms table (ADR-0015): it attaches as the service, so every write it
+// makes goes out as the service's, and the binary refuses alarm writes from
+// anyone else. It lays each alarm it
 // wrote over its row until a snapshot read after that write lands, and
 // retries a write that failed with back-off. It reads the settings row and
 // never writes it (ADR-0016).
@@ -33,7 +34,7 @@ QtObject {
 
     function init() {
         if (root._key !== "") return
-        root._key = Store.attach()
+        root._key = Store.attach("service")
         root._land()
     }
     Component.onDestruction: if (root._key !== "") Store.detach(root._key)
@@ -86,7 +87,7 @@ QtObject {
             return root._log(e.message)
         }
         var args = { id: Number(id), record: record, caller: caller || null }
-        var write = Store.write(root._key, "service", record === null ? "alarm.delete" : "alarm.save", wire,
+        var write = Store.write(root._key, record === null ? "alarm.delete" : "alarm.save", wire,
             function(r) { root._ended(kind, args, write, r) })
         root._pending[Number(id)] = { write: write, record: record, retry: false, unwritable: false }
         root._show(Db.mergeAlarms(Store.alarms, root._pending))
@@ -111,7 +112,7 @@ QtObject {
             return root._log(e.message)
         }
         var args = { record: record, caller: caller || null }
-        var write = Store.write(root._key, "service", "alarm.insert", wire, function(r) { root._ended("insertAlarm", args, write, r) })
+        var write = Store.write(root._key, "alarm.insert", wire, function(r) { root._ended("insertAlarm", args, write, r) })
         root._inserts = root._inserts.concat([write])
         return ""
     }

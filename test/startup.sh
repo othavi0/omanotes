@@ -251,6 +251,14 @@ replies "one write is one request that carries it and the snapshot after it, the
   "$(requests)" "write write:item.add;sync;"
 
 replies "the three widgets and the service talk to one Store" "$(ipc stores)" '{"views":4,"stores":1}'
+ipc spoof > /dev/null
+spoofed=""
+for _ in $(seq 30); do
+  spoofed="$(ipc spoofed)"
+  [[ "$spoofed" != pending ]] && break
+  sleep 0.1
+done
+replies "a widget's view cannot send the service's write: the side is the view's, set when it attached" "$spoofed" "forbidden"
 
 sleep 1
 : > "$cfg_dir/db.log"
@@ -274,8 +282,9 @@ replies "the lanes keep no text of an answer once it is read" "$(ipc storeState 
 replies "a body of 70 000 characters is queued" "$(ipc addBody BODY-70000 70000)" '{"ok":true}'
 wait_for_count BODY-70000 1
 replies "and saved whole" "$(sqlite3 "$file" "SELECT length(body) FROM items WHERE title = 'BODY-70000'")" "70000"
-replies "a body over the request cap is refused before a spawn and given back to the panel" \
-  "$(ipc addFromPanel HUGE 1100000)|$(ipc lastFailure)|$(count HUGE)" "|add:text too large to save|0"
+replies "a body over the request cap is refused at once, before a spawn, and given back to the panel" \
+  "$(ipc addFromPanel HUGE 1100000)|$(ipc lastFailure)|$(count HUGE)" "text too large to save|add:text too large to save|0"
+replies "and no request carried it" "$(grep -c "HUGE" "$cfg_dir/db.log" || true)" "0"
 
 touch "$cfg_dir/hold-sync"
 ipc loadAll > /dev/null
@@ -320,6 +329,35 @@ rm -f "$cfg_dir/hold-sync"
 ipc setSpawnLimit 30000 > /dev/null
 sleep 1.5
 replies "and no omanotes-db process is left behind" "$(pgrep -af "$probe" || true)" ""
+
+# A read that ran before a write lands after the write's own snapshot. The
+# watcher waits 5 s, so nothing else decides for it. In rollback-journal mode
+# the stamp orders the two; in WAL the stamp is -1 and the write that ended
+# after the read was sent does.
+ipc setWatcherDelay 5000 > /dev/null
+for mode in delete wal; do
+  sqlite3 "$file" "PRAGMA journal_mode = $mode" > /dev/null
+  sleep 0.5
+  sqlite3 "$file" "INSERT INTO items (type, title, status, created_at, updated_at) VALUES ('note', 'BEFORE-$mode', 0, 1, 1)"
+  : > "$cfg_dir/db.log"
+  touch "$cfg_dir/hold-reads"
+  ipc loadAll > /dev/null
+  for _ in $(seq 30); do grep -q '^[0-9]* sync ' "$cfg_dir/db.log" && break; sleep 0.1; done
+  replies "$mode: a read runs and its answer is held" "$(grep -c '^[0-9]* sync ' "$cfg_dir/db.log" || true)" "1"
+  ipc addNote "FRESH-$mode" > /dev/null
+  seen=""
+  for _ in $(seq 30); do
+    seen="$(ipc seen "FRESH-$mode")"
+    [[ "$seen" == "$monitors" ]] && break
+    sleep 0.1
+  done
+  replies "$mode: a write lands with its own snapshot" "$seen" "$monitors"
+  rm -f "$cfg_dir/hold-reads"
+  sleep 1
+  replies "$mode: the read held from before the write lands after it and is dropped" "$(ipc seen "FRESH-$mode")" "$monitors"
+done
+sqlite3 "$file" "PRAGMA journal_mode = delete" > /dev/null
+ipc setWatcherDelay 80 > /dev/null
 
 sleep 1
 replies "an add made as the plugin goes away is queued" "$(ipc addThenOff LATE)" ""

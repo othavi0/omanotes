@@ -13,6 +13,12 @@ var PROTOCOL = 1
 // the Store never sends one.
 var MAX_REQUEST_BYTES = 1048576
 
+// The largest write the Store queues. The rest of a request is kept for the
+// sync, whose searches MAX_QUERY bounds (twelve views with the longest search
+// fit), and for the envelope. A bigger write is refused at once, so the
+// editor gets its text back before anything is sent.
+var MAX_WRITE_BYTES = MAX_REQUEST_BYTES - 16384 - 64
+
 // A search goes out cut to this many UTF-16 units. Folded, the longest unit
 // takes 6 bytes, so a search stays far under the 50 000 bytes SQLite takes
 // in a LIKE pattern.
@@ -279,18 +285,39 @@ function wellFormed(s) {
     function(m) { return m.length === 2 ? m : "�" })
 }
 
-// The stdin of one spawn: the writes in order ({ id, by, op, at, args }),
-// then a sync that asks for the snapshot after them ({ since, views }).
-function request(writes, sync) {
-  var body = {}
-  if (writes.length > 0) body.writes = writes
-  if (sync) body.sync = sync
-  return JSON.stringify(body, function(key, value) { return typeof value === "string" ? wellFormed(value) : value })
+function wellFormedStrings(key, value) {
+  return typeof value === "string" ? wellFormed(value) : value
 }
 
-// The bytes `text` takes in UTF-8, for a text already well formed.
+// One write as it travels on stdin, { id, by, op, at, args }, serialized once
+// when it is queued: the Store measures it and sends it as it is.
+function writeJson(write) {
+  return JSON.stringify(write, wellFormedStrings)
+}
+
+// The stdin of one spawn: the writes in order, each from writeJson, then a
+// sync that asks for the snapshot after them ({ since, views }).
+function request(writeJsons, sync) {
+  var members = []
+  if (writeJsons.length > 0) members.push("\"writes\":[" + writeJsons.join(",") + "]")
+  if (sync) members.push("\"sync\":" + JSON.stringify(sync, wellFormedStrings))
+  return "{" + members.join(",") + "}"
+}
+
+// The bytes `text` takes in UTF-8, counted unit by unit with no copy. A lone
+// surrogate counts as the U+FFFD that wellFormed puts in its place.
 function utf8Length(text) {
-  return unescape(encodeURIComponent(text)).length
+  var bytes = 0
+  for (var i = 0; i < text.length; ++i) {
+    var c = text.charCodeAt(i)
+    if (c < 0x80) bytes += 1
+    else if (c < 0x800) bytes += 2
+    else if (c >= 0xd800 && c <= 0xdbff && (text.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
+      bytes += 4
+      ++i
+    } else bytes += 3
+  }
+  return bytes
 }
 
 // argv of a request. No user text travels here: an argument over 128 KiB
