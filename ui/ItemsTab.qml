@@ -459,8 +459,13 @@ FocusScope {
         if (items.length > 0) listView.positionViewAtIndex(0, ListView.Center)
     }
 
+    // An add's result can land long after the save, and its row later still:
+    // a user who has typed since keeps the row and the text in front of them.
+    // Focus alone is not that, since the title keeps it after a draft is saved.
     function _selectPending() {
-        if (root._selectAfterReload < 0 || ItemJs.indexOfId(root.itemList, root._selectAfterReload) < 0) return
+        if (root._selectAfterReload < 0) return
+        if (editorPane.dirty) { root._selectAfterReload = -1; return }
+        if (ItemJs.indexOfId(root.itemList, root._selectAfterReload) < 0) return
         root.selectedId = root._selectAfterReload
         root._selectAfterReload = -1
         listView.positionViewAtIndex(root.selectedIndex, ListView.Center)
@@ -478,13 +483,8 @@ FocusScope {
             root._selectAfterReload = Number(id)
             // A watcher read can list the row while a later write of the same
             // request holds the request, so no itemsUpdated comes after this
-            // result. The result can land long after the save: a user who has
-            // typed since keeps the row and the text in front of them. Focus
-            // alone is not that, since the title keeps it after a draft is saved.
-            if (ItemJs.indexOfId(root.itemList, Number(id)) >= 0) {
-                if (editorPane.dirty) root._selectAfterReload = -1
-                else if (!root.draftNew) root._selectPending()
-            }
+            // result.
+            if (!root.draftNew && ItemJs.indexOfId(root.itemList, Number(id)) >= 0) root._selectPending()
             if (root.toast) root.toast.show("Added " + type + " — " + title)
         }
         function onUpdated(id, title) {
