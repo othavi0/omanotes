@@ -253,8 +253,8 @@ Item {
     // Without $4 it plays once (the preview). With $4 it is the ring: one
     // process that plays, waits the gap and plays again, so a ring of a short
     // sound is not a new spawn every half second. The gap is a read on the
-    // service's stdin pipe, which ends when the shell is gone. Stop sends the
-    // bash TERM and the shell SIGKILLs it when it quits; either way setpriv
+    // service's stdin pipe, which ends when the shell is gone. The bash has
+    // no trap: whatever ends it, Stop or the shell's exit, setpriv
     // (util-linux) makes the player die with it. A player that fails ends the
     // ring's process with its code, for the latch in onExited.
     readonly property int unplayableExit: 3
