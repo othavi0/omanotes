@@ -701,7 +701,9 @@ stop_ring "Stop ends that ring too"
 
 # The ring's arguments name a file under $cfg_dir, so a ring of the owner's
 # own shell never counts here.
-sound_left() { { pgrep -f -- "$cfg_dir/bin/pw-play" || true; pgrep -f -- "omanotes-ring $cfg_dir/" || true; } | wc -l; }
+running_players() { { pgrep -f -- "$cfg_dir/bin/pw-play" || true; } | wc -l; }
+running_rings() { { pgrep -f -- "omanotes-ring $cfg_dir/" || true; } | wc -l; }
+sound_left() { echo $(( $(running_players) + $(running_rings) )); }
 none_left() {
   local what="$1" got=""
   for _ in $(seq 20); do
@@ -724,6 +726,7 @@ sleep 3
 replies "the sound repeats for as long as the ring lasts" "$(( $(starts) - s0 >= 3 ))" "1"
 replies "from the one process the service started for the ring" "$(( $(sound_lines chain) - c0 ))" "1"
 replies "with the same 350 ms of silence between plays" "$(gaps_after "$d0")" "ok"
+replies "the ring's process is found running while it rings" "$(running_rings)" "1"
 contains "Snooze on the card quiets the repeating sound" "$(ipc click 2 "Snooze")" '"ringing":[]'
 none_left "and leaves no player and no ring process running"
 replies "every player that started ended or was stopped" \
@@ -839,9 +842,12 @@ updater_is "and ends updated" "updated|blocked:false"
 replies "with the clone at origin/main" "$(git -C "$cfg_dir/clone" rev-parse HEAD)" "$(git -C "$cfg_dir/dev" rev-parse HEAD)"
 replies "and the shell restarted once, through the stub" "$(cat "$cfg_dir/restart.log" 2> /dev/null)" "restart"
 
+sql "UPDATE settings SET sound = 'custom', sound_file = '$sound_file'"
+settings_has "the service reads the custom file again" "\"soundFile\":\"$sound_file\""
 s0="$(starts)"; e0="$(ends)"
 contains "an alarm rings as the shell quits" "$(ring_at 98 11 56)" '"ringing":[98],"cards":3'
 sound_is "with a player that would play for 30 s" "$(( s0 + 1 ))" "$e0"
+replies "which is found running with its ring's process" "$(running_players)/$(running_rings)" "1/1"
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
 none_left "the shell gone, no player and no ring process runs on"
