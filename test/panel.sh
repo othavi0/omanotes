@@ -136,6 +136,8 @@ ShellRoot {
     // A drop, as the list makes it, and the order the list shows.
     function moveItem(id: int, anchorId: int, after: bool): string { return widget.item.panelItem.db.move(id, anchorId, after) }
     function order(): string { return widget.item.panelItem.db.items.map(function(i) { return i.id }).join(",") }
+    // How many drops are still laid over the rows, their writes not landed.
+    function drops(): int { return widget.item.panelItem.db._moves.length }
     function reloadPanel(): void { widget.item.panelItem.db.load() }
     // How long the lanes let a spawn run before they kill it.
     function setLimits(spawnMs: int, writeMs: int): void {
@@ -252,6 +254,16 @@ expect() {
 replies() {
   local what="$1" got="$2" want="$3"
   if [[ "$got" == "$want" ]]; then pass "$what"; else fail "$what: want '$want', got '$got'"; fi
+}
+# The same poll as expect, for what a command answers.
+settles() {
+  local what="$1" want="$2" got=""
+  shift 2
+  for _ in $(seq 50); do
+    got="$("$@")" && [[ "$got" == "$want" ]] && { pass "$what"; return; }
+    sleep 0.2
+  done
+  fail "$what: want '$want', got '$got'"
 }
 by_id() { node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).sort((a, b) => a.id - b.id)))' "$1"; }
 all_of() {
@@ -601,11 +613,18 @@ replies "and the list shows the file's order, the same" "$(ipc omanotes-test ord
 
 # Two drops in a row while the first one's write waits on a lock: a read sent
 # before both lands, and the list keeps both drops, in order, until the
-# snapshot of each write lands.
+# snapshot of each write lands. The second write is held on its own, so the
+# list is read with the first write's snapshot applied and the second not.
+top3_sql="SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 3)"
+top3() { sqlite3 "$db" "$top3_sql"; }
+writes_logged() { grep -c '^[0-9]* write' "$cfg_dir/db.log" || true; }
+moves_logged() { grep -c 'write:item.move' "$cfg_dir/db.log" || true; }
+drops() { ipc omanotes-test drops; }
 sleep 1
-IFS=, read -r top second third < <(sqlite3 "$db" "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 3)")
+IFS=, read -r top second third < <(top3)
 listed="$(ipc omanotes-test order)"
 dropped="$third,$second,$top,${listed#"$top,$second,$third,"}"
+moves="$(moves_logged)"
 hold_reads
 ipc omanotes-test reloadPanel > /dev/null
 all_reads_held "the reload before two drops holds its read"
@@ -616,9 +635,17 @@ replies "two drops in a row show at once, in order" "$(ipc omanotes-test order)"
 release_reads
 sleep 1
 replies "the read from before both drops lands and the list still shows both" "$(ipc omanotes-test order)" "$dropped"
+echo "$(( $(writes_logged) + 1 ))" > "$cfg_dir/hold-nth-write"
 rm -f "$cfg_dir/hold-any-write"
-expect "both drops' writes land in order" \
-  "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 3)" "$third,$second,$top"
+# The second write goes out only once the first one's answer, snapshot and
+# all, has landed.
+settles "the second drop's write goes out after the first one's answer" "$((moves + 2))" moves_logged
+replies "the first drop's write is in the file, the second's is not" "$(top3)" "$second,$top,$third"
+replies "with the first drop's snapshot applied, the list still shows both drops" "$(ipc omanotes-test order)" "$dropped"
+replies "and only the second drop is still laid over the rows" "$(drops)" "1"
+rm -f "$cfg_dir/hold-nth-write"
+expect "both drops' writes land in order" "$top3_sql" "$third,$second,$top"
+settles "once both land, no drop is laid over the rows" "0" drops
 replies "and the list shows the file's order, the same" "$(ipc omanotes-test order)" "$dropped"
 
 # A request killed part way: its first write, a new note, committed, and the
@@ -628,16 +655,6 @@ replies "and the list shows the file's order, the same" "$(ipc omanotes-test ord
 # types in it before the kill, and the note's result must leave both alone.
 kills_logged() { grep -c "omanotes db: the database helper stopped without an answer" "$cfg_dir/qs.log" || true; }
 editor_view() { ipc omanotes-test panelView | cut -d'|' -f"$1"; }
-# The same poll as expect, for what a command answers.
-settles() {
-  local what="$1" want="$2" got=""
-  shift 2
-  for _ in $(seq 50); do
-    got="$("$@")" && [[ "$got" == "$want" ]] && { pass "$what"; return; }
-    sleep 0.2
-  done
-  fail "$what: want '$want', got '$got'"
-}
 killed_mid_batch() {
   local title="$1" edit="$2" open_id picked="" typed="" kills
   open_id="$(sqlite3 "$db" "SELECT id FROM items WHERE status = 0 AND id <> 3 ORDER BY id LIMIT 1")"
