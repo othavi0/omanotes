@@ -713,6 +713,28 @@ none_left() {
   done
   fail "$what: $got processes still running"
 }
+# Each play forks a copy of the ring's bash for a moment before setpriv
+# replaces it, so one read can see two.
+settles() {
+  local what="$1" count="$2" want="$3" got=""
+  for _ in $(seq 10); do
+    got="$("$count")"
+    [[ "$got" == "$want" ]] && { pass "$what"; return; }
+    sleep 0.1
+  done
+  fail "$what: want '$want', got '$got'"
+}
+players_and_rings() { echo "$(running_players)/$(running_rings)"; }
+# Waits for a player started with `want` in its arguments.
+start_has() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(last_start)"
+    [[ "$got" == *"$want"* ]] && { pass "$what"; return; }
+    sleep 0.1
+  done
+  fail "$what: want '$want' in '$got'"
+}
 # Each gap runs from the end of one play to the start of the next.
 gaps_after() {
   grep '^done' "$cfg_dir/sound.log" | tail -n "+$(( $1 + 1 ))" | awk '{ gsub(",", ".") }
@@ -726,7 +748,7 @@ sleep 3
 replies "the sound repeats for as long as the ring lasts" "$(( $(starts) - s0 >= 3 ))" "1"
 replies "from the one process the service started for the ring" "$(( $(sound_lines chain) - c0 ))" "1"
 replies "with the same 350 ms of silence between plays" "$(gaps_after "$d0")" "ok"
-replies "the ring's process is found running while it rings" "$(running_rings)" "1"
+settles "the ring's process is found running while it rings" running_rings 1
 contains "Snooze on the card quiets the repeating sound" "$(ipc click 2 "Snooze")" '"ringing":[]'
 none_left "and leaves no player and no ring process running"
 replies "every player that started ended or was stopped" \
@@ -736,9 +758,23 @@ c0="$(sound_lines chain)"
 contains "another alarm rings with the sound of 0.2 s" "$(ring_at 97 11 26)" '"ringing":[97],"cards":3'
 sleep 1.5
 replies "again from one process" "$(( $(sound_lines chain) - c0 ))" "1"
+# Three changes inside 1.5 s of each loop's start would latch the sound as
+# broken if the restarts counted as quick failures.
+sql "UPDATE settings SET volume = 80"
+settings_has "the service reads a volume saved during the ring" '"volume":80'
+start_has "and the ring in progress plays at it" "--volume 0.80 -- /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
+sql "UPDATE settings SET sound_file = '$sound_file'"
+settings_has "the service reads a sound saved during the ring" "\"soundFile\":\"$sound_file\""
+start_has "and the ring in progress plays it" "--volume 0.80 -- $sound_file"
+sql "UPDATE settings SET volume = 60"
+start_has "and a second volume" "--volume 0.60 -- $sound_file"
+state_has "with the sound not latched as broken by the restarts" '"ringing":[97],"cards":3,"soundBroken":false'
+replies "each change restarts the one process" "$(( $(sound_lines chain) - c0 ))" "4"
 stop_ring "Stop ends the repeating ring"
 none_left "and leaves no player and no ring process running either"
 rm "$cfg_dir/sound-short"
+sql "UPDATE settings SET volume = 50, sound_file = '$cfg_dir/gone.oga'"
+settings_has "the service reads the volume and the file of before" '"volume":50'
 
 preview_is() {
   local what="$1" want="$2" got=""
@@ -847,7 +883,7 @@ settings_has "the service reads the custom file again" "\"soundFile\":\"$sound_f
 s0="$(starts)"; e0="$(ends)"
 contains "an alarm rings as the shell quits" "$(ring_at 98 11 56)" '"ringing":[98],"cards":3'
 sound_is "with a player that would play for 30 s" "$(( s0 + 1 ))" "$e0"
-replies "which is found running with its ring's process" "$(running_players)/$(running_rings)" "1/1"
+settles "which is found running with its ring's process" players_and_rings 1/1
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
 none_left "the shell gone, no player and no ring process runs on"
