@@ -47,6 +47,9 @@ ShellRoot {
 
   // False destroys the service and every widget, as a plugin reload does.
   property bool pluginOn: true
+  // The one Store, kept from stores() so the test still reaches it with no view.
+  property var store: null
+  property string spoofed: ""
 
   Loader {
     id: svc
@@ -109,8 +112,31 @@ ShellRoot {
       for (var i = 0; i < monitors.instances.length; ++i) views = views.concat(sr.dbsIn(monitors.instances[i].widget, []))
       var found = []
       for (var j = 0; j < views.length; ++j) if (found.indexOf(views[j]._store.target) < 0) found.push(views[j]._store.target)
+      if (found.length > 0) sr.store = found[0]
       return JSON.stringify({ views: views.length, stores: found.length })
     }
+    // What the Store holds: rows, and the text the lanes' collectors keep.
+    function storeState(): string {
+      var s = sr.store
+      var held = [s.writeLane, s.readLane].map(function(l) { return l.stdout ? l.stdout.text.length : 0 })
+      return JSON.stringify({ ready: s.ready, items: s.allItems.length, history: s.history.length, alarms: s.alarms.length, held: held[0] + held[1] })
+    }
+    // An add, then the plugin goes away in the same tick, before the write is sent.
+    function addThenOff(title: string): string {
+      var queued = sr.panelDb(0).add("note", title, "")
+      sr.pluginOn = false
+      return queued
+    }
+    function setSpawnLimit(ms: int): void { sr.store.spawnLimitMs = ms }
+    function setWatcherDelay(ms: int): void { sr.store.reloadDebounce.interval = ms }
+    // A widget's view sending the service's write, as any QML of the plugin could.
+    function spoof(): string {
+      var db = sr.panelDb(0)
+      sr.spoofed = "pending"
+      sr.store.write(db._key, "alarm.delete", { id: 1 }, function(r) { sr.spoofed = r.ok ? "ok" : r.err })
+      return "sent"
+    }
+    function spoofed(): string { return sr.spoofed }
     // Every panel asks for a reload at once, as opening them would.
     function loadAll(): void {
       for (var i = 0; i < monitors.instances.length; ++i) sr.panelDb(i).load()
@@ -205,6 +231,8 @@ replies "the database is at the current schema version" \
   "$(sqlite3 "$data_home/omarchy/scratchpad.db" "PRAGMA user_version")" "$current"
 replies "the refused add never lands" \
   "$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT COUNT(*) FROM items WHERE title = 'EARLY'")" "0"
+replies "the migration the binary ran on the new file is in the journal, once" \
+  "$(grep -c "omanotes-db: migrated 0 -> $current" "$cfg_dir/qs.log" || true)" "1"
 
 sleep 1
 : > "$cfg_dir/db.log"
@@ -240,6 +268,7 @@ replies "a write from outside reloads the three widgets and the service with one
 ipc loadAll > /dev/null
 sleep 1
 replies "every panel asking for a reload at once is one request" "$(requests)" "sync;"
+replies "the lanes keep no text of an answer once it is read" "$(ipc storeState | grep -o '"held":[0-9]*')" '"held":0'
 
 : > "$cfg_dir/db.log"
 replies "a body of 70 000 characters is queued" "$(ipc addBody BODY-70000 70000)" '{"ok":true}'
@@ -278,7 +307,22 @@ wait_for_count AFTER 1
 replies "the next write lands and the failed one was not sent again" "$(count AFTER)|$(count LOST)" "1|0"
 
 sleep 1
-ipc setPlugin false > /dev/null
+ipc setSpawnLimit 1000 > /dev/null
+touch "$cfg_dir/hold-sync"
+ipc loadAll > /dev/null
+killed=0
+for _ in $(seq 40); do
+  grep -q "omanotes db: read failed: the database helper stopped without an answer" "$cfg_dir/qs.log" && { killed=1; break; }
+  sleep 0.1
+done
+replies "a spawn that outlives its limit is killed, and its read fails as a crash" "$killed" "1"
+rm -f "$cfg_dir/hold-sync"
+ipc setSpawnLimit 30000 > /dev/null
+sleep 1.5
+replies "and no omanotes-db process is left behind" "$(pgrep -af "$probe" || true)" ""
+
+sleep 1
+replies "an add made as the plugin goes away is queued" "$(ipc addThenOff LATE)" ""
 gone=""
 for _ in $(seq 30); do
   gone="$(ipc loaded)"
@@ -286,6 +330,10 @@ for _ in $(seq 30); do
   sleep 0.1
 done
 replies "the service and the widgets go away, as in a plugin reload" "$gone" "0"
+wait_for_count LATE 1
+replies "and the write goes out with no view left: it was accepted" "$(count LATE)" "1"
+replies "with no view the Store holds no rows and the lanes no text" "$(ipc storeState)" \
+  '{"ready":false,"items":0,"history":0,"alarms":0,"held":0}'
 : > "$cfg_dir/db.log"
 sqlite3 "$file" "INSERT INTO items (type, title, status, created_at, updated_at) VALUES ('note', 'WHILE-DOWN', 0, 1, 1)"
 sleep 1

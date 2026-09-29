@@ -9,8 +9,9 @@ import "Db.js" as Db
 // (one per bar widget) and the service's AlarmsDb are views over it, so a
 // reload is one spawn of bin/omanotes-db whatever the number of monitors, and
 // the shell holds one copy of the rows. It keeps the write queue, the two
-// lanes, the watcher and the snapshot, and does nothing while no view is
-// attached: no watcher, no spawn.
+// lanes, the watcher and the snapshot. While no view is attached it holds no
+// rows, reads nothing and watches nothing; the writes already queued still go
+// out, since each was accepted.
 //
 // A request carries the writes queued so far, in order, and asks for the
 // snapshot after them, so a write and the reload it causes are one spawn.
@@ -47,6 +48,11 @@ QtObject {
     // laid over the rows for a write once this reaches that write's id.
     property int covered: 0
 
+    // How long a spawn may run before its lane kills it: a base, and more for
+    // each write it carries, since each may wait 5 s on a lock outside.
+    property int spawnLimitMs: 30000
+    property int writeLimitMs: 5000
+
     // Every snapshot that landed. `changed` is false when the file was as the
     // views already show it: the rows are the same objects then.
     signal snapshotApplied(bool changed)
@@ -54,8 +60,7 @@ QtObject {
     signal failed(string message)
 
     // Attaches a view and returns its key. The first view starts the Store,
-    // and after a time with no view (a plugin reload) it reads the file again:
-    // nothing watched it meanwhile.
+    // which reads the file then: nothing watched it while no view was attached.
     function attach() {
         var key = "v" + (++root._lastKey)
         root._attached[key] = { filter: "all", query: "" }
@@ -68,6 +73,7 @@ QtObject {
         if (!(key in root._attached)) return
         delete root._attached[key]
         root._clients -= 1
+        if (root._clients === 0) root._release()
     }
 
     // The search a view shows. A type filter alone needs no spawn: the view
@@ -130,10 +136,31 @@ QtObject {
         return { id: w.id, by: w.by, op: w.op, at: w.at, args: w.args }
     }
 
+    // With no view the rows have no reader: they go, and the next view to
+    // attach makes the Store read the file again.
+    function _release() {
+        root.ready = false
+        root.settings = Db.parseSettings(null).settings
+        root.dbBytes = 0
+        root.counts = Db.parseCounts(null)
+        root.allItems = []
+        root.itemsById = {}
+        root.history = []
+        root.alarms = []
+        root.matches = {}
+        root._stamp = -1
+        root._dirty = false
+        reloadDebounce.stop()
+        initRetry.stop()
+        initRetry.interval = 500
+    }
+
     // The snapshot a request asks for: after the stamp shown, with the search
     // of each view, cut as the view compares it. The binary answers the
     // searches even when the file did not move, so a search costs its ids.
+    // None while no view is attached.
     function _sync() {
+        if (root._clients === 0) return null
         var views = []
         for (var key in root._attached) {
             var v = root._attached[key]
@@ -149,18 +176,23 @@ QtObject {
         var sync = root._sync()
         return {
             writes: writes,
-            since: sync.since,
-            views: sync.views,
+            since: root._stamp,
+            views: sync ? sync.views : [],
             shownBefore: root._shown,
             covers: writes.length > 0 ? writes[writes.length - 1].id : root._doneWrite,
             body: Db.request(writes.map(root._wire), sync)
         }
     }
 
+    function _send(lane, writes) {
+        lane.send(Db.command(root._binary, root.dbPath), root._request(writes), root.spawnLimitMs + root.writeLimitMs * writes.length)
+    }
+
+    // Reads wait for a view; writes go out without one.
     function _pump() {
-        if (root._clients === 0 || root._binary === "") return
+        if (root._binary === "") return
         root._pumpWrites()
-        root._pumpReads()
+        if (root._clients > 0) root._pumpReads()
     }
 
     function _pumpWrites() {
@@ -178,19 +210,22 @@ QtObject {
             Qt.callLater(root._pump)
             return
         }
-        root.writeLane.send(Db.command(root._binary, root.dbPath), root._request(batch))
+        root._send(root.writeLane, batch)
     }
 
     function _pumpReads() {
         if (root.readLane.sent !== null || root.readLane.running || !root._dirty) return
         root._dirty = false
-        root.readLane.send(Db.command(root._binary, root.dbPath), root._request([]))
+        root._send(root.readLane, [])
     }
 
+    // The view that wrote hears the result; with that view gone, a failure
+    // still reaches the journal.
     function _landWrite(w, result) {
         root._writesInFlight -= 1
         root._doneWrite = w.id
         if (w.key in root._attached) w.done(result)
+        else if (!result.ok) root._log("write failed: " + Db.errorText(result))
     }
 
     function _result(results, id) {
@@ -203,20 +238,21 @@ QtObject {
         return { ok: false, err: "crash", detail: "no result" }
     }
 
-    // What one finished request did. The writes hear their results first,
-    // in order; then the snapshot lands, or the read failure is told and the
-    // Store asks again with back-off.
-    function _finish(lane, exitCode, crashed, out, err, neverStarted) {
+    // What one finished request did, as its lane read it (Db.reply). The
+    // binary's own lines, such as a migration it ran, go to the journal. The
+    // writes hear their results first, in order; then the snapshot lands, or
+    // the read failure is told and the Store asks again with back-off.
+    function _finish(lane, answer) {
         var sent = lane.sent
         if (sent === null) return
         lane.sent = null
-        var answer = neverStarted ? { ok: false, err: "no_binary", detail: root._binary } : Db.reply(exitCode, crashed, out, err)
+        for (var n = 0; n < answer.log.length; ++n) console.error(answer.log[n])
         for (var i = 0; i < sent.writes.length; ++i) {
             root._landWrite(sent.writes[i], answer.ok ? root._result(answer.results, sent.writes[i].id)
                 : { ok: false, err: answer.err, detail: answer.detail })
         }
         var failure = answer.ok ? answer.syncErr : answer
-        if (failure) {
+        if (failure && root._clients > 0) {
             // A request with writes that failed whole was told to the views
             // that wrote; a read that failed is told to every view.
             if (answer.ok || sent.writes.length === 0) {
@@ -225,7 +261,7 @@ QtObject {
                 root.failed(said)
             }
             initRetry.start()
-        } else if (answer.snapshot) {
+        } else if (answer.ok && answer.snapshot) {
             initRetry.interval = 500
             // A read asked for while this one ran makes its answer stale.
             if (sent.writes.length > 0 || !root._dirty) root._apply(answer.snapshot, sent)
@@ -247,6 +283,7 @@ QtObject {
     }
 
     function _apply(snap, sent) {
+        if (root._clients === 0) return
         if (snap.unchanged) {
             // Answered against the snapshot this request knew; if another
             // landed since, it no longer says anything about what is shown.
@@ -292,11 +329,11 @@ QtObject {
     // QtObject has no default property, so the lanes, the files and the
     // timers are explicit properties.
     property Lane writeLane: Lane {
-        onFinished: function(exitCode, crashed, out, err, neverStarted) { root._finish(root.writeLane, exitCode, crashed, out, err, neverStarted) }
+        onFinished: function(answer) { root._finish(root.writeLane, answer) }
         onIdle: Qt.callLater(root._pump)
     }
     property Lane readLane: Lane {
-        onFinished: function(exitCode, crashed, out, err, neverStarted) { root._finish(root.readLane, exitCode, crashed, out, err, neverStarted) }
+        onFinished: function(answer) { root._finish(root.readLane, answer) }
         onIdle: Qt.callLater(root._pump)
     }
 
