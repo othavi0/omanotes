@@ -1,5 +1,7 @@
 # Talk to SQLite through the sqlite3 CLI
 
+Superseded by [ADR-0018](0018-one-store-and-the-omanotes-db-binary.md): the plugin no longer runs `sqlite3`. This record describes the data layer until then.
+
 Omanotes reads and writes its database by running the `sqlite3` command-line tool through Quickshell's `Process`, one process per operation, with reads in `-json` mode (`data/Db.js` `sqliteCommand`, `data/DbCore.qml`). Quickshell ships no SQLite module, and `QtQuick.LocalStorage` keeps its databases under Qt's offline storage path, while Omanotes needs a known file under `$XDG_DATA_HOME/omarchy/` that scripts and the IPC can point at.
 
 ## Consequences

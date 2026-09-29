@@ -187,3 +187,9 @@ _Avoid_: reload (for loading new code), relaunch
 **Scratchpad**:
 The legacy name of the database file and of the IPC target, kept so existing notes and scripts keep working.
 _Avoid_: using it as the name of the product or of the data layer
+
+### Data
+
+**Snapshot**:
+Everything a reload reads from the database in one go: the settings, the counts, every item, the history, the alarms and what each search matched. Every panel and the service show the last one.
+_Avoid_: calling a backup a snapshot, cache

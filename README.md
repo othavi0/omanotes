@@ -21,6 +21,8 @@ Notes, todos and alarms in one panel on the Omarchy bar. Everything is stored in
 omarchy plugin add https://github.com/othavi0/omanotes.git --enable
 ```
 
+The plugin reads and writes its database through `omanotes-db`, a small program that ships built in `bin/` for x86_64 (`bin/omanotes-db.x86_64`) and aarch64 (`bin/omanotes-db.aarch64`). It needs glibc 2.34 or later and `libsqlite3.so.0` from SQLite 3.44 or later; a current Arch Linux, the base of Omarchy, has both. On another machine the panel says it cannot run the database helper and names the file it tried.
+
 ## Update
 
 From 1.1.0 on, **Update** in the Settings tab updates the plugin and restarts the shell. On an older version, run:
@@ -103,12 +105,13 @@ Writes are asynchronous. `{"ok":true}` means the write is queued. A write that f
 
 ## Data
 
-The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is the `MIGRATIONS` list in `data/Db.js`: an `items` table for notes and todos with a `position` for the order, a `history` table, a folded copy of each title and body for search, and a `settings` table with one row, an `alarms` table whose instants are epoch milliseconds and whose `days` is a bitmask of weekdays with bit 0 for Sunday. At start the plugin runs every migration above the database's `user_version` in one transaction (ADR-0011), and the test harness seeds its database the same way. An alarm row inserted with `sqlite3` is armed at its insert time, so it does not ring for a time that passed before it existed. The service writes the whole row each time it changes an alarm, so a `sqlite3` edit to that alarm made just before a service write lands, or while a failed write waits for its retry, is overwritten. A value stored out of range by hand, such as a fractional hour, is rounded into range and written back with the next change.
+The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/scratchpad.db` by default), stored as plain SQLite. The schema is the list of steps in `db/Schema.cs`: an `items` table for notes and todos with a `position` for the order, a `history` table, a folded copy of each title and body for search, and a `settings` table with one row, an `alarms` table whose instants are epoch milliseconds and whose `days` is a bitmask of weekdays with bit 0 for Sunday. Each run of `omanotes-db` first runs every step above the database's `user_version`, in one transaction (ADR-0011), so a file created or restored by hand is brought up to date the next time the plugin reads it. The panels, the IPC and the service share one copy of what the plugin read, and a change to the file is one run of `omanotes-db` whatever the number of monitors (ADR-0018). An alarm row inserted with `sqlite3` is armed at its insert time, so it does not ring for a time that passed before it existed. The service writes the whole row each time it changes an alarm, so a `sqlite3` edit to that alarm made just before a service write lands, or while a failed write waits for its retry, is overwritten. A value stored out of range by hand, such as a fractional hour, is rounded into range and written back with the next change.
 
 ## Development
 
 - `npm run validate` runs `omarchy plugin validate .`.
-- `npm test` runs `node --test test/`, then `test/update.sh`, `test/render.sh`, `test/behavior.sh`, `test/panel.sh`, `test/alarm.sh`, `test/startup.sh` and `test/teardown.sh`. The unit tests need `sqlite3`, and `test/update.sh` needs `git` and `flock`. The other six start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
+- `npm test` runs `node --test test/`, then `test/update.sh`, `test/render.sh`, `test/behavior.sh`, `test/panel.sh`, `test/alarm.sh`, `test/startup.sh` and `test/teardown.sh`. The unit tests need `sqlite3` and run the committed binary for this machine; one of them runs `tools/verify-bin.sh --check`, which fails when `bin/` does not match `db/`. `test/update.sh` needs `git` and `flock`. The other six start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
+- The source of `omanotes-db` is in `db/` (C#, NativeAOT). `npm run build:db` runs `tools/build.sh`, the only writer of `bin/`: it builds both architectures and records their hashes in `bin/BUILD.json`. It needs the .NET SDK named in `db/global.json`, and for aarch64 a sysroot that `tools/sysroot.sh` unpacks from the packages `tools/sysroot.lock` pins. Commit a change to `db/` together with the rebuilt `bin/`.
 
 Design decisions are in [`docs/adr/`](docs/adr/) and the project vocabulary is in [`CONTEXT.md`](CONTEXT.md).
 
