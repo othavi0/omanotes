@@ -193,3 +193,27 @@ _Avoid_: using it as the name of the product or of the data layer
 **Snapshot**:
 Everything a reload reads from the database in one go: the settings, the counts, every item, the history, the alarms and what each search matched. Every panel and the service show the last one.
 _Avoid_: calling a backup a snapshot, cache
+
+**Store**:
+The one door to the database for the whole shell. It holds the last snapshot, queues the writes and watches the file, and every spawn of the database helper goes through it. It holds nothing while no view is attached.
+_Avoid_: cache, repository, manager
+
+**Lane**:
+One of the Store's two lines of spawns, one for writes and one for reads. Each runs one request at a time, so a write that waits on a lock outside never holds up the list.
+_Avoid_: channel, worker, thread
+
+**View**:
+What a bar widget or the service holds of the Store: its filter and search, and what it lays over the rows. A view says once, when it attaches, whether it writes as a widget or as the service.
+_Avoid_: client, subscriber; the filter is not a view
+
+**Overlay**:
+What a view shows over the snapshot for one of its own writes still on its way: a setting, an alarm, a row dropped in a new place. It goes when a snapshot that includes that write lands.
+_Avoid_: optimistic update, patch (in user-facing text)
+
+**Stamp**:
+The file's change counter when a snapshot was read. A request sends the stamp shown, and the helper answers that nothing changed when the file has not moved since. A file in WAL mode has no stamp.
+_Avoid_: version, revision, timestamp
+
+**Covered**:
+The last write a shown snapshot includes. A view drops the overlay of a write once the covered write reaches it.
+_Avoid_: acknowledged, confirmed
