@@ -36,6 +36,14 @@ ShellRoot {
     return found
   }
   function dbsIn(obj, found) { return sr.typesIn(obj, ["ItemsDb", "AlarmsDb"], found) }
+  function panelDb(n) { return monitors.instances[n].widget.panelItem.db }
+
+  property string lastFailure: ""
+  Connections {
+    target: monitors.instances.length > 0 && monitors.instances[0].widget && monitors.instances[0].widget.panelItem
+      ? monitors.instances[0].widget.panelItem.db : null
+    function onWriteFailed(kind, args, message) { sr.lastFailure = kind + ":" + message }
+  }
 
   Loader {
     id: svc
@@ -89,6 +97,34 @@ ShellRoot {
     function readCalls(): string {
       var w = monitors.instances[0].widget
       return [w.ipcToggle(1), w.ipcRemove(1), w.ipcList("note"), w.ipcList("todo")].join(" ")
+    }
+    // The Store every view talks to, counted by identity.
+    function stores(): string {
+      var views = sr.dbsIn(svc.item, [])
+      for (var i = 0; i < monitors.instances.length; ++i) views = views.concat(sr.dbsIn(monitors.instances[i].widget, []))
+      var found = []
+      for (var j = 0; j < views.length; ++j) if (found.indexOf(views[j]._store.target) < 0) found.push(views[j]._store.target)
+      return JSON.stringify({ views: views.length, stores: found.length })
+    }
+    // Every panel asks for a reload at once, as opening them would.
+    function loadAll(): void {
+      for (var i = 0; i < monitors.instances.length; ++i) sr.panelDb(i).load()
+    }
+    function addBody(title: string, size: int): string {
+      return monitors.instances[0].widget.ipcAdd("note", title, "x".repeat(size))
+    }
+    // An add from the panel, which hears a failure as its user's.
+    function addFromPanel(title: string, size: int): string {
+      return sr.panelDb(0).add("note", title, "x".repeat(size))
+    }
+    function lastFailure(): string { return sr.lastFailure }
+    // How many widgets list an item with this title.
+    function seen(title: string): int {
+      var n = 0
+      for (var i = 0; i < monitors.instances.length; ++i) {
+        if (sr.panelDb(i).allItems.some(function(item) { return item.title === title })) n++
+      }
+      return n
     }
     function quit(): void { Qt.exit(0) }
   }
@@ -165,15 +201,77 @@ replies "addNote answers ok" "$(ipc addNote "ONE-WRITE")" '{"ok":true}'
 sleep 1.5
 replies "the note reached the database" \
   "$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT COUNT(*) FROM items WHERE title = 'ONE-WRITE'")" "1"
-replies "one write is one request that carries it, whatever the number of monitors" "$(grep -c 'write:item.add' "$cfg_dir/db.log" || true)" "1"
-replies "and everything after it, the reload of every monitor and of the alarm store included, is at most one more request" \
-  "$(( $(wc -l < "$cfg_dir/db.log") <= 2 ? 1 : 0 ))" "1"
+# The requests db.log holds, each as its kinds: "sync" or "write write:<op>...".
+requests() { cut -d' ' -f2- "$cfg_dir/db.log" | sed 's/ {.*//' | tr '\n' ';'; }
+file="$data_home/omarchy/scratchpad.db"
+count() { sqlite3 "$file" "SELECT COUNT(*) FROM items WHERE title = '$1'"; }
+wait_for_count() {
+  for _ in $(seq 50); do [[ "$(count "$1")" == "$2" ]] && return; sleep 0.1; done
+}
+replies "one write is one request that carries it and the snapshot after it, then one read the watcher asks for" \
+  "$(requests)" "write write:item.add;sync;"
+
+replies "the three widgets and the service talk to one Store" "$(ipc stores)" '{"views":4,"stores":1}'
+
+sleep 1
+: > "$cfg_dir/db.log"
+sqlite3 "$file" "INSERT INTO items (type, title, status, created_at, updated_at) VALUES ('note', 'OUTSIDE', 0, 1, 1)"
+seen=""
+for _ in $(seq 30); do
+  seen="$(ipc seen OUTSIDE)"
+  [[ "$seen" == "$monitors" ]] && break
+  sleep 0.1
+done
+replies "every widget lists the note written outside" "$seen" "$monitors"
+sleep 1
+replies "a write from outside reloads the three widgets and the service with one request" "$(requests)" "sync;"
+: > "$cfg_dir/db.log"
+ipc loadAll > /dev/null
+sleep 1
+replies "every panel asking for a reload at once is one request" "$(requests)" "sync;"
+
+: > "$cfg_dir/db.log"
+replies "a body of 70 000 characters is queued" "$(ipc addBody BODY-70000 70000)" '{"ok":true}'
+wait_for_count BODY-70000 1
+replies "and saved whole" "$(sqlite3 "$file" "SELECT length(body) FROM items WHERE title = 'BODY-70000'")" "70000"
+replies "a body over the request cap is refused before a spawn and given back to the panel" \
+  "$(ipc addFromPanel HUGE 1100000)|$(ipc lastFailure)|$(count HUGE)" "|add:text too large to save|0"
+
+touch "$cfg_dir/hold-sync"
+ipc loadAll > /dev/null
+probe="run $file"
+held=""
+for _ in $(seq 30); do
+  held="$(pgrep -f "$probe" | wc -l)"
+  (( held > 0 )) && break
+  sleep 0.1
+done
+replies "a request held open is a process the probe sees" "$(( held > 0 ))" "1"
+rm -f "$cfg_dir/hold-sync"
+sleep 1
+replies "no omanotes-db process outlives the requests" "$(pgrep -af "$probe" || true)" ""
+logged_so_far="$(grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | tr '\n' ';' || true)"
+
+mv "$cfg_dir/bin/omanotes-db.$arch" "$cfg_dir/bin/away"
+replies "an add while the binary is missing is queued" "$(ipc addFromPanel LOST 1)" ""
+failure=""
+for _ in $(seq 30); do
+  failure="$(ipc lastFailure)"
+  [[ "$failure" == "add:cannot run"* ]] && break
+  sleep 0.1
+done
+mv "$cfg_dir/bin/away" "$cfg_dir/bin/omanotes-db.$arch"
+replies "and fails in the panel, naming the file that did not start" "$failure" "add:cannot run the database helper $stub_tree/bin/omanotes-db.$arch"
+replies "the queue moves on once the binary is back" "$(ipc addNote AFTER)" '{"ok":true}'
+wait_for_count AFTER 1
+replies "the next write lands and the failed one was not sent again" "$(count AFTER)|$(count LOST)" "1|0"
 
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
-replies "only the refused writes and the injected failure are logged" \
-  "$(grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | tr '\n' ';' || true)" \
-  "not ready;not ready;database is locked;"
+replies "only the refused writes and the injected failures are logged" \
+  "$logged_so_far" "not ready;not ready;database is locked;text too large to save;"
+replies "and the missing binary is in the journal" \
+  "$(grep -c "omanotes db: cannot run the database helper $stub_tree/bin/omanotes-db.$arch" "$cfg_dir/qs.log" || true)" "1"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
 echo "startup: $checks checks, $failures failed"

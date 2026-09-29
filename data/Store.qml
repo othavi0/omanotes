@@ -271,7 +271,11 @@ QtObject {
         }
         root.matches = matches
         root.covered = Math.max(root.covered, sent.covers)
-        root.ready = true
+        if (!root.ready) {
+            root.ready = true
+            // A watch set while the folder did not exist yet watches nothing.
+            dbFile.reload()
+        }
         root.snapshotApplied(true)
     }
 
