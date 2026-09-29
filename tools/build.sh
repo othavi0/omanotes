@@ -16,8 +16,18 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 # moved dl* and pthread* into libc; going lower needs an older libc to link against.
 glibc_max="2.34"
 
+# Runs a build step quietly and shows its output only when it fails.
+quiet() {
+  local log
+  log="$("$@" 2>&1)" || {
+    echo "$log" >&2
+    echo "build: failed: $*" >&2
+    return 1
+  }
+}
+
 "$root/tools/sysroot.sh" --check
-BUILD_ROOT="$work" "$root/tools/analyze.sh" -nologo -v:q > /dev/null
+BUILD_ROOT="$work" quiet "$root/tools/analyze.sh" -nologo
 [[ "${SKIP_CANARIES:-0}" == 1 ]] || BUILD_ROOT="$work" "$root/tools/canaries.sh"
 
 source_hash="$("$root/tools/source-hash.sh")"
@@ -28,10 +38,11 @@ for arch in x86_64 aarch64; do
     aarch64) rid=linux-arm64 machine=AArch64 extra=("-p:SysRoot=$SYSROOT_AARCH64") ;;
   esac
   rm -rf -- "$work/$arch" "$work/out-$arch"
-  (cd "$root/db" && dotnet publish -c Release -r "$rid" -nologo -v:q \
+  # From db/, so global.json pins the SDK.
+  (cd "$root/db" && quiet dotnet publish -c Release -r "$rid" -nologo \
     -p:InvariantGlobalization=true -p:SourceHash="$source_hash" \
     -p:LinkerFlavor=lld -p:ObjCopyName=llvm-objcopy \
-    -p:BuildRoot="$work/$arch/" -o "$work/out-$arch" "${extra[@]}") > /dev/null
+    -p:BuildRoot="$work/$arch/" -o "$work/out-$arch" "${extra[@]}")
   file="$work/out-$arch/omanotes-db"
   floor="$(readelf -V "$file" | grep -o 'GLIBC_[0-9.]*' | cut -c7- | sort -uV | tail -n 1)"
   if [[ "$(printf '%s\n%s\n' "$floor" "$glibc_max" | sort -V | tail -n 1)" != "$glibc_max" ]]; then
