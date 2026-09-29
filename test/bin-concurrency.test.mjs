@@ -109,6 +109,87 @@ test("the stamp answers unchanged until the file changes, and never in WAL", (t)
   assert.equal(cli(path, "PRAGMA journal_mode").trim(), "wal", "the binary leaves the journal mode it found")
 })
 
+// A writer outside that commits in a loop until stop(). Each commit gives
+// items 1 and `last` the same new title, deletes one row and inserts another,
+// so the B-tree pages move under any read that is not locked.
+function writerOutside(path, last) {
+  const child = spawn("sqlite3", ["-init", "/dev/null", path], { stdio: ["pipe", "ignore", "pipe"] })
+  let n = 0
+  let stopped = false
+  let stderr = ""
+  child.stderr.on("data", (d) => { stderr += d })
+  child.stdin.on("error", () => {})
+  child.stdin.write(".timeout 20000\nPRAGMA synchronous = OFF;\n")
+  const feed = () => {
+    while (!stopped) {
+      n += 1
+      const more = child.stdin.write(`BEGIN IMMEDIATE; UPDATE items SET title = 'gen ${n}' WHERE id IN (1, ${last});`
+        + ` DELETE FROM items WHERE id = (SELECT min(id) FROM items WHERE id > 1 AND id < ${last});`
+        + ` INSERT INTO items (type, title, body, status, position, created_at, updated_at) VALUES ('note', 'churn', '${"c".repeat(100 + n % 400)}', 0, -${n}, 1, 1); COMMIT;\n`)
+      if (!more) return child.stdin.once("drain", feed)
+    }
+  }
+  feed()
+  return async () => {
+    stopped = true
+    const closed = new Promise((resolve) => child.on("close", resolve))
+    child.kill()
+    await closed
+    return stderr
+  }
+}
+
+// One request through a spawn that does not block the event loop, so the writer keeps being fed.
+function callAsync(path, request) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(BIN, [PROTOCOL, "run", path], { env: {} })
+    const out = []
+    let err = ""
+    child.stdout.on("data", (d) => out.push(d))
+    child.stderr.on("data", (d) => { err += d })
+    child.on("error", reject)
+    child.on("close", (status) => resolve({ status, stdout: Buffer.concat(out).toString("utf8"), stderr: err }))
+    child.stdin.end(JSON.stringify(request))
+  })
+}
+
+test("a snapshot is one read transaction: a writer committing outside never shows through it", async (t) => {
+  const path = tempDb(t)
+  const last = 2000
+  for (let start = 0; start < last; start += 500) {
+    const res = call(path, { writes: Array.from({ length: 500 }, (_, i) => write("item.add", { type: "note", title: "gen 0", body: "x".repeat(300) }, { id: start + i + 1 })) })
+    assert.ok(res.results.every((r) => r.value !== undefined), JSON.stringify(res.results[0]))
+  }
+  const stop = writerOutside(path, last)
+  const seen = { consistent: 0, torn: [], failed: [] }
+  try {
+    for (let i = 0; i < 40; i++) {
+      const r = await callAsync(path, { sync: { since: -1, views: [] } })
+      const answer = r.status === 0 ? JSON.parse(r.stdout) : null
+      if (!answer || answer.syncErr) {
+        seen.failed.push(answer ? JSON.stringify(answer.syncErr) : `exit ${r.status} ${r.stderr.trim()}`)
+        continue
+      }
+      const snap = answer.snapshot
+      const ids = snap.items.map((item) => item.id)
+      const title = (id) => snap.items.find((item) => item.id === id)?.title
+      if (title(1) !== title(last) || new Set(ids).size !== ids.length || snap.counts.notes !== ids.length) {
+        seen.torn.push(`item 1 ${title(1)}, item ${last} ${title(last)}, ${ids.length} rows, counts.notes ${snap.counts.notes}`)
+      } else {
+        seen.consistent += 1
+      }
+    }
+  } finally {
+    const stderr = await stop()
+    assert.equal(stderr, "", "the writer outside never failed")
+  }
+  assert.deepEqual(seen.failed, [], "no snapshot failed")
+  assert.deepEqual(seen.torn, [], "no snapshot mixed two commits")
+  assert.equal(seen.consistent, 40)
+  const gens = rows(path, `SELECT title FROM items WHERE id = ${last}`)[0].title
+  assert.notEqual(gens, "gen 0", "the writer committed while the snapshots ran")
+})
+
 test("a snapshot that cannot be read keeps the results of the writes before it", (t) => {
   const path = tempDb(t)
   sync(path)

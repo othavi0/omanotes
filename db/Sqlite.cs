@@ -95,7 +95,7 @@ internal sealed partial class Conn : IDisposable
         Path = path;
     }
 
-    /// <summary>The file this connection opened; the snapshot reads its header and a backup goes beside it.</summary>
+    /// <summary>The file this connection opened; a backup goes beside it.</summary>
     public string Path { get; }
 
     public static Conn Open(string path)
@@ -208,6 +208,34 @@ internal sealed partial class Conn : IDisposable
     {
         _ = Run($"BEGIN");
         return new Tx(this);
+    }
+
+    /// <summary>
+    /// The first bytes of the database file, read through SQLite's own file
+    /// handle; false when the file is shorter. A second descriptor would not
+    /// do: closing it drops every POSIX lock this process holds on the file
+    /// (fcntl(2)), the SHARED lock of a read transaction included, and the
+    /// reads after it run unlocked (sqlite.org/howtocorrupt.html, 2.2).
+    /// </summary>
+    public unsafe bool ReadHeader(Span<byte> header)
+    {
+        if (Native.sqlite3_file_control(_db, "main", Native.FcntlFilePointer, out Native.SqliteFile* file) != Native.Ok || file == null || file->Methods == null)
+        {
+            throw new OpException(ErrorCode.Io, "cannot read the database header");
+        }
+
+        int rc;
+        fixed (byte* p = header)
+        {
+            rc = file->Methods->Read(file, p, header.Length, 0);
+        }
+
+        return rc switch
+        {
+            Native.Ok => true,
+            Native.IoErrShortRead => false,
+            _ => throw new OpException(ErrorCode.Io, "cannot read the database header"),
+        };
     }
 
     /// <summary>PRAGMA takes no bound value, so this is the one statement built from a number, and the number is Schema.Current.</summary>
@@ -623,6 +651,8 @@ internal sealed partial class Conn : IDisposable
         public const int Done = 101;
         public const int OpenReadWrite = 2;
         public const int OpenCreate = 4;
+        public const int IoErrShortRead = IoErr | (2 << 8);
+        public const int FcntlFilePointer = 7;
 
         private const string Lib = "libsqlite3.so.0";
 
@@ -694,5 +724,24 @@ internal sealed partial class Conn : IDisposable
 
         [LibraryImport(Lib)]
         public static partial byte* sqlite3_errmsg(DbHandle db);
+
+        [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+        public static partial int sqlite3_file_control(DbHandle db, string dbName, int op, out SqliteFile* file);
+
+        /// <summary>sqlite3_file: its methods come first.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct SqliteFile
+        {
+            public IoMethods* Methods;
+        }
+
+        /// <summary>The head of sqlite3_io_methods, up to xRead.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IoMethods
+        {
+            public int Version;
+            public delegate* unmanaged<SqliteFile*, int> Close;
+            public delegate* unmanaged<SqliteFile*, byte*, int, long, int> Read;
+        }
     }
 }

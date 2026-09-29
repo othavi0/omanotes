@@ -19,7 +19,7 @@ internal static class Snapshot
         // A deferred BEGIN takes no lock until the first read. With the SHARED
         // lock held no writer can commit, so the stamp and the rows agree.
         _ = db.Scalar($"SELECT count(*) FROM sqlite_schema");
-        long stamp = Stamp(db.Path);
+        long stamp = Stamp(db);
         bool unchanged = stamp >= 0 && stamp == req.Since;
         w.WriteStartObject();
         w.WriteNumber("stamp", stamp);
@@ -62,26 +62,11 @@ internal static class Snapshot
     /// which every commit moves; -1 in WAL, where it does not move, so a stamp
     /// of -1 never skips a read.
     /// </summary>
-    private static long Stamp(string path)
+    private static long Stamp(Conn db)
     {
         Span<byte> header = stackalloc byte[100];
-        try
-        {
-            using Microsoft.Win32.SafeHandles.SafeFileHandle h = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            if (RandomAccess.Read(h, header, 0) < 100 || header[18] != 1 || header[19] != 1)
-            {
-                return -1;
-            }
-        }
-        catch (IOException)
-        {
-            throw new OpException(ErrorCode.Io, "cannot read the database header");
-        }
-        catch (UnauthorizedAccessException)
-        {
-            throw new OpException(ErrorCode.Io, "cannot read the database header");
-        }
-
-        return BinaryPrimitives.ReadUInt32BigEndian(header[24..28]);
+        return db.ReadHeader(header) && header[18] == 1 && header[19] == 1
+            ? BinaryPrimitives.ReadUInt32BigEndian(header[24..28])
+            : -1;
     }
 }
