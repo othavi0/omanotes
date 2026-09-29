@@ -253,10 +253,10 @@ Item {
     // Without $4 it plays once (the preview). With $4 it is the ring: one
     // process that plays, waits the gap and plays again, so a ring of a short
     // sound is not a new spawn every half second. The gap is a read on the
-    // service's stdin pipe, which ends when the shell is gone. The shell
-    // SIGKILLs the process when it quits, so no trap runs then: setpriv makes
-    // the player die with it. A player that fails ends the ring's process
-    // with its code, for the latch in onExited.
+    // service's stdin pipe, which ends when the shell is gone. Stop sends the
+    // bash TERM and the shell SIGKILLs it when it quits; either way setpriv
+    // (util-linux) makes the player die with it. A player that fails ends the
+    // ring's process with its code, for the latch in onExited.
     readonly property int unplayableExit: 3
     readonly property int repeatGapMs: 350
     readonly property string soundScript: 'export LC_ALL=C; f="$1"; v="${2:-100}"; '
@@ -268,9 +268,8 @@ Item {
         + 'elif command -v ffplay >/dev/null 2>&1; then p=(ffplay -nodisp -autoexit -loglevel quiet -volume "$v" "$f"); '
         + 'else sleep 2; exit ' + unplayableExit + '; fi; '
         + '[[ -n "${4:-}" ]] || exec "${p[@]}"; '
-        + '! command -v setpriv >/dev/null 2>&1 || p=(setpriv --pdeathsig TERM -- "${p[@]}"); '
-        + "k=; trap 'exit 143' TERM; trap '[[ -z \"$k\" ]] || kill \"$k\" 2>/dev/null' EXIT; "
-        + 'while :; do "${p[@]}" & k=$!; wait "$k" || exit; k=; '
+        + 'p=(setpriv --pdeathsig TERM -- "${p[@]}"); '
+        + 'while :; do "${p[@]}" || exit; '
         + 'read -rt ' + (repeatGapMs / 1000) + '; (( $? > 128 )) || exit 0; done'
     readonly property int quickFailureMs: 1500
     readonly property int maxQuickFailures: 3
