@@ -53,13 +53,15 @@ QtObject {
     // A read that failed, as the words to show.
     signal failed(string message)
 
-    // Attaches a view and returns its key. The first view starts the Store.
+    // Attaches a view and returns its key. The first view starts the Store,
+    // and after a time with no view (a plugin reload) it reads the file again:
+    // nothing watched it meanwhile.
     function attach() {
         var key = "v" + (++root._lastKey)
         root._attached[key] = { filter: "all", query: "" }
         root._clients += 1
         if (root._binary === "") root._binary = root._binaryPath()
-        if (!root.ready && root.readLane.sent === null) root.reload()
+        if (root._clients === 1 || (!root.ready && root.readLane.sent === null)) root.reload()
         return key
     }
     function detach(key) {
