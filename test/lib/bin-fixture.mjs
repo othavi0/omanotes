@@ -1,8 +1,8 @@
 // The fixture of the omanotes-db tests: the committed binary for this machine,
 // driven over its wire, and the sqlite3 CLI as the oracle and as someone
-// editing the file by hand. data/Db.js still builds the SQL of today, so a
-// parity test runs that SQL on one copy of a database and the binary on the
-// other and compares the tables.
+// editing the file by hand. test/lib/legacy-db.js keeps the SQL of before the
+// binary, so a parity test runs that SQL on one copy of a database and the
+// binary on the other and compares the tables.
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"

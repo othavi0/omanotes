@@ -1,4 +1,4 @@
-// Every write of the binary leaves the tables the SQL of data/Db.js leaves.
+// Every write of the binary leaves the tables the SQL of before it (test/lib/legacy-db.js) leaves.
 // Two copies of one database: the old builders run on one through the CLI with
 // the clock frozen at T0, the binary runs the same op on the other with at = T0,
 // and after each step every table and sqlite_sequence must be equal, and the
