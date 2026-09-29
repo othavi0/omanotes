@@ -7,7 +7,7 @@ import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { BIN, PROTOCOL, ROOT, V0_SCHEMA, call, cli, fixture, rows, sync, tempDb, v0Db } from "./lib/bin-fixture.mjs"
+import { BIN, PROTOCOL, ROOT, V0_SCHEMA, call, cli, fixture, projectedRows, rows, sync, tempDb, v0Db } from "./lib/bin-fixture.mjs"
 
 const S = fixture("schema.json")
 
@@ -25,6 +25,23 @@ function master(dbPath) {
   return rows(dbPath, "SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name")
 }
 
+// Every frozen sqlite_master entry is in the file, with the same text. A table
+// may end in columns a later step added: ALTER TABLE ADD COLUMN appends each to
+// the frozen text. A table or index a later step made is not the old SQL's.
+function masterHolds(dbPath, frozen) {
+  const live = new Map(master(dbPath).map((e) => [e.type + " " + e.name, e]))
+  for (const f of frozen) {
+    const e = live.get(f.type + " " + f.name)
+    assert.ok(e, `${f.type} ${f.name} is in the file`)
+    assert.equal(e.tbl_name, f.tbl_name, f.name)
+    if (f.type === "table" && e.sql !== f.sql) {
+      assert.ok(e.sql.startsWith(f.sql.slice(0, -1) + ", "), `${f.name} keeps its frozen columns: ${e.sql}`)
+    } else {
+      assert.equal(e.sql, f.sql, f.name)
+    }
+  }
+}
+
 test("the versioned fold table is the searchText of before the binary, and its sha256 is the live database's", () => {
   // The TSV is the searchText of before, frozen: the sha256 is the one the old fold's table had.
   const file = readFileSync(join(ROOT, "db", "Schema", "search_map.tsv"), "utf8")
@@ -37,11 +54,11 @@ test("the versioned fold table is the searchText of before the binary, and its s
 test("a new file migrates to the schema and the search_map the JS migrations make", (t) => {
   const bin = tempDb(t)
   sync(bin)
-  assert.deepEqual(master(bin), S.newFile.master)
-  assert.equal(rows(bin, "PRAGMA user_version")[0].user_version, S.newFile.userVersion)
+  masterHolds(bin, S.newFile.master)
+  assert.ok(rows(bin, "PRAGMA user_version")[0].user_version >= S.newFile.userVersion)
   assert.equal(S.newFile.userVersion, S.version)
   assert.equal(sha256(foldTable(bin)), SEARCH_MAP_SHA256)
-  assert.deepEqual(rows(bin, "SELECT * FROM settings"), S.newFile.settings)
+  assert.deepEqual(projectedRows(rows(bin, "SELECT * FROM settings"), S.newFile.settings), S.newFile.settings)
   assert.equal(cli(bin, "PRAGMA journal_mode").trim(), "delete", "the binary never turns WAL on")
 })
 
@@ -53,11 +70,11 @@ test("a v0 file with rows migrates to the rows the JS migrations leave", (t) => 
   const bin = v0Db(t)
   const res = call(bin, { sync: { since: -1, views: [] } })
   assert.ok(res.snapshot)
-  assert.deepEqual(master(bin), S.v0WithRows.master)
-  assert.equal(rows(bin, "PRAGMA user_version")[0].user_version, S.v0WithRows.userVersion)
+  masterHolds(bin, S.v0WithRows.master)
+  assert.ok(rows(bin, "PRAGMA user_version")[0].user_version >= S.v0WithRows.userVersion)
   assert.deepEqual(Object.keys(S.v0WithRows.tables), ["items", "history", "alarms", "settings", "sqlite_sequence"])
   for (const [table, frozen] of Object.entries(S.v0WithRows.tables)) {
-    assert.deepEqual(rows(bin, `SELECT * FROM ${table} ORDER BY 1`), frozen, table)
+    assert.deepEqual(projectedRows(rows(bin, `SELECT * FROM ${table} ORDER BY 1`), frozen), frozen, table)
   }
   assert.equal(sha256(foldTable(bin)), SEARCH_MAP_SHA256)
   assert.ok(rows(bin, "SELECT count(*) AS n FROM items WHERE search_title IS NOT NULL")[0].n >= 5, "the backfill folded the rows")
@@ -84,7 +101,7 @@ test("six processes opening one new file migrate it once", async (t) => {
     child.stdin.end(JSON.stringify({ writes: [{ id: i, by: "widget", op: "item.add", at: 1, args: { type: "note", title: "n" + i } }], sync: { since: -1, views: [] } }))
   })))
   for (const r of runs) assert.equal(r.status, 0, r.err)
-  assert.equal(runs.filter((r) => r.err.includes("migrated 0 -> 5")).length, 1, runs.map((r) => r.err).join("|"))
+  assert.equal(runs.filter((r) => /migrated 0 -> \d+\n/.test(r.err)).length, 1, runs.map((r) => r.err).join("|"))
   assert.equal(rows(path, "SELECT count(*) AS n FROM search_map")[0].n, 2299)
   assert.equal(rows(path, "SELECT count(*) AS n FROM items")[0].n, 6)
   assert.equal(rows(path, "SELECT count(*) AS n FROM settings")[0].n, 1)

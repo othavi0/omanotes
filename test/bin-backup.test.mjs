@@ -4,7 +4,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { chmodSync, existsSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
-import { fixture, rows, run, seeded } from "./lib/bin-fixture.mjs"
+import { rows, run, seeded } from "./lib/bin-fixture.mjs"
 
 test("a backup copies every row beside the database, and a second one the same day replaces it", (t) => {
   const path = seeded(t)
@@ -15,7 +15,7 @@ test("a backup copies every row beside the database, and a second one the same d
   for (const table of ["items", "history", "settings", "alarms"]) {
     assert.deepEqual(rows(copy, `SELECT * FROM ${table} ORDER BY id`), rows(path, `SELECT * FROM ${table} ORDER BY id`), table)
   }
-  assert.equal(rows(copy, "PRAGMA user_version")[0].user_version, fixture("schema.json").version)
+  assert.equal(rows(copy, "PRAGMA user_version")[0].user_version, rows(path, "PRAGMA user_version")[0].user_version)
   run(path, "item.add", { type: "note", title: "after the first backup" })
   run(path, "backup", { day: "2026-09-28" })
   assert.equal(rows(copy, "SELECT count(*) AS n FROM items WHERE title = 'after the first backup'")[0].n, 1)

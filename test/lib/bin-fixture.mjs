@@ -185,7 +185,7 @@ export const TABLES = {
   history: "SELECT * FROM history ORDER BY id",
   alarms: "SELECT * FROM alarms ORDER BY id",
   settings: "SELECT * FROM settings ORDER BY id",
-  sequence: "SELECT * FROM sqlite_sequence ORDER BY name"
+  sequence: "SELECT * FROM sqlite_sequence WHERE name IN ('items', 'history', 'alarms', 'settings') ORDER BY name"
 }
 
 // What the SQL of before the binary left and read, frozen in test/fixtures/parity/.
@@ -193,11 +193,24 @@ export function fixture(name) {
   return JSON.parse(readFileSync(new URL("../fixtures/parity/" + name, import.meta.url), "utf8"))
 }
 
-// Every table of `dbPath` equal to `expected`, a frozen { items, history, … }.
+// A live row cut to the columns of its frozen row. The old SQL never knew a
+// column a later step adds, so the frozen rows say nothing of it and its own
+// tests do; a frozen column the live row lost reads as undefined and fails.
+export function projected(live, frozen) {
+  if (live === null || frozen === null || typeof live !== "object" || typeof frozen !== "object") return live
+  return Object.fromEntries(Object.keys(frozen).map((key) => [key, live[key]]))
+}
+
+export function projectedRows(live, frozen) {
+  return live.map((row, i) => (i < frozen.length ? projected(row, frozen[i]) : row))
+}
+
+// Every table of `dbPath` equal to `expected`, a frozen { items, history, … },
+// in the columns the frozen rows have.
 export function tablesAre(dbPath, expected, label) {
   assert.deepEqual(Object.keys(expected), Object.keys(TABLES), `${label}: the frozen tables`)
   for (const [name, sql] of Object.entries(TABLES)) {
-    assert.deepEqual(rows(dbPath, sql), expected[name], `${label}: ${name}`)
+    assert.deepEqual(projectedRows(rows(dbPath, sql), expected[name]), expected[name], `${label}: ${name}`)
   }
 }
 

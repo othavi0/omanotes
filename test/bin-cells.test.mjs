@@ -6,7 +6,7 @@
 // parsers made of it, is frozen in test/fixtures/parity/cells.json.
 import test from "node:test"
 import assert from "node:assert/strict"
-import { Db, PROTOCOL, call, cli, exec, fixture, rows, run, sync, tempDb, write } from "./lib/bin-fixture.mjs"
+import { Db, PROTOCOL, call, cli, exec, fixture, projected, rows, run, sync, tempDb, write } from "./lib/bin-fixture.mjs"
 
 const C = fixture("cells.json")
 
@@ -77,7 +77,8 @@ for (const [name, cell] of Object.entries(HOSTILE)) {
     const frozen = C.cases[name]
 
     const settings = withoutBytes(snap.settings)
-    assert.deepEqual(settings.rest, cliRows(frozen.text.settings)[0], "settings cells")
+    const frozenSettings = cliRows(frozen.text.settings)[0]
+    assert.deepEqual(projected(settings.rest, frozenSettings), frozenSettings, "settings cells")
     assert.equal(settings.bytes, fileBytes(path), "the size of the file")
     assert.deepEqual(snap.alarms, cliRows(frozen.text.alarms), "alarm cells")
     assert.deepEqual(snap.counts, cliRows(frozen.text.counts)[0], "count cells")
@@ -123,7 +124,8 @@ test("a settings row deleted by hand reads as NULL cells, which fall back to the
   cli(path, "DELETE FROM settings")
   const snap = sync(path)
   const cells = withoutBytes(snap.settings)
-  assert.deepEqual(cells.rest, cliRows(C.deletedSettings)[0])
+  const frozenCells = cliRows(C.deletedSettings)[0]
+  assert.deepEqual(projected(cells.rest, frozenCells), frozenCells)
   assert.equal(cells.bytes, fileBytes(path))
   assert.equal(snap.settings.volume, null)
   assert.ok(snap.settings.db_bytes > 0)
