@@ -599,6 +599,28 @@ expect "the drop's write lands" \
   "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 2)" "$second,$top"
 replies "and the list shows the file's order, the same" "$(ipc omanotes-test order)" "$dropped"
 
+# Two drops in a row while the first one's write waits on a lock: a read sent
+# before both lands, and the list keeps both drops, in order, until the
+# snapshot of each write lands.
+sleep 1
+IFS=, read -r top second third < <(sqlite3 "$db" "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 3)")
+listed="$(ipc omanotes-test order)"
+dropped="$third,$second,$top,${listed#"$top,$second,$third,"}"
+hold_reads
+ipc omanotes-test reloadPanel > /dev/null
+all_reads_held "the reload before two drops holds its read"
+touch "$cfg_dir/hold-any-write"
+ipc omanotes-test moveItem "$second" "$top" false > /dev/null
+ipc omanotes-test moveItem "$third" "$second" false > /dev/null
+replies "two drops in a row show at once, in order" "$(ipc omanotes-test order)" "$dropped"
+release_reads
+sleep 1
+replies "the read from before both drops lands and the list still shows both" "$(ipc omanotes-test order)" "$dropped"
+rm -f "$cfg_dir/hold-any-write"
+expect "both drops' writes land in order" \
+  "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 3)" "$third,$second,$top"
+replies "and the list shows the file's order, the same" "$(ipc omanotes-test order)" "$dropped"
+
 # A request killed part way: its first write, a new note, committed, and the
 # second hung on the disk until the lane killed the request. The note is in
 # the file, so it must not come back to the editor, where saving it again
