@@ -758,8 +758,9 @@ c0="$(sound_lines chain)"
 contains "another alarm rings with the sound of 0.2 s" "$(ring_at 97 11 26)" '"ringing":[97],"cards":3'
 sleep 1.5
 replies "again from one process" "$(( $(sound_lines chain) - c0 ))" "1"
-# Three changes inside 1.5 s of each loop's start would latch the sound as
-# broken if the restarts counted as quick failures.
+# Each change after the first comes well inside 1.5 s of the loop's start,
+# so three of them would latch the sound as broken if the restarts counted as
+# quick failures.
 sql "UPDATE settings SET volume = 80"
 settings_has "the service reads a volume saved during the ring" '"volume":80'
 start_has "and the ring in progress plays at it" "--volume 0.80 -- /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
@@ -768,8 +769,10 @@ settings_has "the service reads a sound saved during the ring" "\"soundFile\":\"
 start_has "and the ring in progress plays it" "--volume 0.80 -- $sound_file"
 sql "UPDATE settings SET volume = 60"
 start_has "and a second volume" "--volume 0.60 -- $sound_file"
+sql "UPDATE settings SET volume = 70"
+start_has "and a third" "--volume 0.70 -- $sound_file"
 state_has "with the sound not latched as broken by the restarts" '"ringing":[97],"cards":3,"soundBroken":false'
-replies "each change restarts the one process" "$(( $(sound_lines chain) - c0 ))" "4"
+replies "each change restarts the one process" "$(( $(sound_lines chain) - c0 ))" "5"
 stop_ring "Stop ends the repeating ring"
 none_left "and leaves no player and no ring process running either"
 rm "$cfg_dir/sound-short"
