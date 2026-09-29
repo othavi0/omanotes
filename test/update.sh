@@ -6,7 +6,8 @@
 # validates before it touches the folder, that `status` calls running at the
 # same time never break a merge, the lock, an update that rewrites the
 # script itself, and the smoke of the new omanotes-db, which runs the
-# committed binary of this machine. Needs git and flock, not qs.
+# committed binary of this machine with the protocol of the new data/Db.js
+# and of the installed one. Needs git and flock, not qs.
 
 set -euo pipefail
 worktree="$(cd "$(dirname "$0")/.." && pwd)"
@@ -407,6 +408,27 @@ DOTNET_GCHeapHardLimit=600000 run "$plugin" apply || code=$?
 replies "the same version with a good omanotes-db, a reformatted PROTOCOL line and DOTNET_* in the environment ends updated" "$code|$(field phase)|$(field error)|$(head_of "$plugin")" "0|updated||$(head_of "$tmp/dev")"
 replies "with the binary in place and executable, and no copy left beside the state file" \
   "$([[ -f "$plugin/$name" && -x "$plugin/$name" ]] && echo executable)|$(compgen -G "$tmp/state/omanotes/validate.*" | wc -l)" "executable|0"
+
+# The shell keeps the installed data/Db.js until it restarts, so the installed
+# version is planted by a plain fast-forward, past the smoke.
+install_db_js() {
+  publish_broken "$1" "${@:2}"
+  git -C "$plugin" fetch --quiet origin
+  git -C "$plugin" merge --quiet --ff-only origin/main
+}
+install_db_js "feat: shell no protocolo 0" sed -i 's/^var PROTOCOL = .*/var PROTOCOL = 0/' "$tmp/dev/data/Db.js"
+publish_broken "feat: versão nova sobre o shell no protocolo 0" true
+: > "$tmp/order.log"
+refused "an update whose omanotes-db refuses the protocol of the installed data/Db.js is invalid" \
+  "omanotes-db does not speak protocol 0 of the installed data/Db.js"
+replies "and does not restart the shell" "$(wc -l < "$tmp/order.log")" "0"
+
+install_db_js "feat: Db.js de antes do binário" sed -i '/^var PROTOCOL = /d' "$tmp/dev/data/Db.js"
+publish_broken "feat: versão nova sobre um Db.js sem PROTOCOL" true
+code=0
+run "$plugin" apply || code=$?
+replies "an installed data/Db.js with no PROTOCOL skips that check and the update ends updated" \
+  "$code|$(field phase)|$(field error)|$(head_of "$plugin")" "0|updated||$(head_of "$tmp/dev")"
 
 echo "update: $checks checks, $failures failed"
 exit $(( failures > 0 ))
