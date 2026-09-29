@@ -648,6 +648,28 @@ expect "both drops' writes land in order" "$top3_sql" "$third,$second,$top"
 settles "once both land, no drop is laid over the rows" "0" drops
 replies "and the list shows the file's order, the same" "$(ipc omanotes-test order)" "$dropped"
 
+# Two drops in a row, and the first one's write dies with no answer: only the
+# first drop is taken off, and the list shows the second one laid over the
+# file's order while its write is held.
+IFS=, read -r top second third < <(top3)
+listed="$(ipc omanotes-test order)"
+kept="$top,$third,$second,${listed#"$top,$second,$third,"}"
+moves="$(moves_logged)"
+touch "$cfg_dir/hold-any-write"
+ipc omanotes-test moveItem "$second" "$top" false > /dev/null
+ipc omanotes-test moveItem "$third" "$second" false > /dev/null
+replies "two more drops show at once, in order" "$(ipc omanotes-test order)" "$third,$second,$top,${listed#"$top,$second,$third,"}"
+echo "$(( $(writes_logged) + 1 ))" > "$cfg_dir/hold-nth-write"
+touch "$cfg_dir/crash"; rm -f "$cfg_dir/hold-any-write"
+settles "the second drop's write goes out after the first one dies" "$((moves + 2))" moves_logged
+replies "the first drop's write never reached the file" "$(top3)" "$top,$second,$third"
+replies "the list shows the second drop laid over the file's order" "$(ipc omanotes-test order)" "$kept"
+replies "and only the second drop is still laid over the rows" "$(drops)" "1"
+rm -f "$cfg_dir/hold-nth-write"
+expect "the second drop's write lands" "$top3_sql" "$top,$third,$second"
+settles "once it lands, no drop is laid over the rows" "0" drops
+replies "and the list shows the file's order, the same" "$(ipc omanotes-test order)" "$kept"
+
 # A request killed part way: its first write, a new note, committed, and the
 # second hung on the disk until the lane killed the request. The note is in
 # the file, so it must not come back to the editor, where saving it again
@@ -707,7 +729,7 @@ fi
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
 replies "only the failure cases are logged" "$(logged_failures)" \
-  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;$kill_failures"
+  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;the database helper stopped without an answer;$kill_failures"
 
 # A Panel.qml that fails to load, as a broken update could leave it: the
 # engine keeps the failed compile, so the widget must stay usable without it.
