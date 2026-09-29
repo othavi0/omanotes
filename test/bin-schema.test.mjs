@@ -1,12 +1,15 @@
 // The binary migrates to the schema the JS migrations built, character for
 // character, with the same search_map, and only one process migrates a file.
+// What the JS migrations built is frozen in test/fixtures/parity/schema.json.
 import test from "node:test"
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { BIN, Legacy, PROTOCOL, ROOT, V0_SCHEMA, call, cli, legacyDb, legacyNewDb, rows, sync, tempDb, v0Db } from "./lib/bin-fixture.mjs"
+import { BIN, PROTOCOL, ROOT, V0_SCHEMA, call, cli, fixture, rows, sync, tempDb, v0Db } from "./lib/bin-fixture.mjs"
+
+const S = fixture("schema.json")
 
 const SEARCH_MAP_SHA256 = "406fc008e11b15b16017733b3afa05e9060b166340dbf01d238996b07d371382"
 
@@ -23,44 +26,40 @@ function master(dbPath) {
 }
 
 test("the versioned fold table is the searchText of before the binary, and its sha256 is the live database's", () => {
+  // The TSV is the searchText of before, frozen: the sha256 is the one the old fold's table had.
   const file = readFileSync(join(ROOT, "db", "Schema", "search_map.tsv"), "utf8")
   assert.equal(sha256(file), SEARCH_MAP_SHA256)
-  const hex = (s) => [...s].map((c) => c.codePointAt(0).toString(16).padStart(4, "0")).join(" ")
-  const lines = []
-  for (let u = 0; u < 0x10000; u++) {
-    const c = String.fromCharCode(u)
-    const folded = Legacy.searchText(c)
-    if (folded !== c) lines.push(u.toString(16).padStart(4, "0") + "\t" + hex(folded))
-  }
+  const lines = file.split("\n").slice(0, -1)
   assert.equal(lines.length, 2299)
-  assert.equal(lines.join("\n") + "\n", file)
+  for (const line of lines) assert.match(line, /^[0-9a-f]{4}\t([0-9a-f]{4,5}( [0-9a-f]{4,5})*)?$/, line)
 })
 
 test("a new file migrates to the schema and the search_map the JS migrations make", (t) => {
   const bin = tempDb(t)
   sync(bin)
-  const old = legacyNewDb(t)
-  assert.deepEqual(master(bin), master(old))
-  assert.equal(rows(bin, "PRAGMA user_version")[0].user_version, Legacy.MIGRATIONS.length)
+  assert.deepEqual(master(bin), S.newFile.master)
+  assert.equal(rows(bin, "PRAGMA user_version")[0].user_version, S.newFile.userVersion)
+  assert.equal(S.newFile.userVersion, S.version)
   assert.equal(sha256(foldTable(bin)), SEARCH_MAP_SHA256)
-  assert.equal(foldTable(bin), foldTable(old))
-  assert.deepEqual(rows(bin, "SELECT * FROM settings"), rows(old, "SELECT * FROM settings"))
+  assert.deepEqual(rows(bin, "SELECT * FROM settings"), S.newFile.settings)
   assert.equal(cli(bin, "PRAGMA journal_mode").trim(), "delete", "the binary never turns WAL on")
 })
 
 test("test/lib/v0.sql is the first migration of before the binary, statement for statement", () => {
-  assert.deepEqual(V0_SCHEMA.trim().split(";\n").map((s) => s.replace(/;$/, "")), Legacy.MIGRATIONS[0])
+  assert.deepEqual(V0_SCHEMA.trim().split(";\n").map((s) => s.replace(/;$/, "")), S.firstMigration)
 })
 
 test("a v0 file with rows migrates to the rows the JS migrations leave", (t) => {
   const bin = v0Db(t)
-  const old = legacyDb(t)
   const res = call(bin, { sync: { since: -1, views: [] } })
   assert.ok(res.snapshot)
-  assert.deepEqual(master(bin), master(old))
-  for (const table of ["items", "history", "alarms", "settings", "sqlite_sequence"]) {
-    assert.deepEqual(rows(bin, `SELECT * FROM ${table} ORDER BY 1`), rows(old, `SELECT * FROM ${table} ORDER BY 1`), table)
+  assert.deepEqual(master(bin), S.v0WithRows.master)
+  assert.equal(rows(bin, "PRAGMA user_version")[0].user_version, S.v0WithRows.userVersion)
+  assert.deepEqual(Object.keys(S.v0WithRows.tables), ["items", "history", "alarms", "settings", "sqlite_sequence"])
+  for (const [table, frozen] of Object.entries(S.v0WithRows.tables)) {
+    assert.deepEqual(rows(bin, `SELECT * FROM ${table} ORDER BY 1`), frozen, table)
   }
+  assert.equal(sha256(foldTable(bin)), SEARCH_MAP_SHA256)
   assert.ok(rows(bin, "SELECT count(*) AS n FROM items WHERE search_title IS NOT NULL")[0].n >= 5, "the backfill folded the rows")
 })
 

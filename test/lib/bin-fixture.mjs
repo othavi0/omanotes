@@ -130,8 +130,13 @@ export function cli(dbPath, sql, { json = false } = {}) {
   return r.stdout
 }
 
+// The rows of `sqlite3 -json`, which prints nothing for no rows.
 export function rows(dbPath, sql) {
-  return Legacy.parseRows(cli(dbPath, sql, { json: true }))
+  const text = cli(dbPath, sql, { json: true }).trim()
+  if (text === "") return []
+  const parsed = JSON.parse(text)
+  assert.ok(Array.isArray(parsed), "sqlite3 -json prints an array")
+  return parsed
 }
 
 // The start-up of before the binary: the version read, then the migrations
@@ -235,4 +240,31 @@ export function sameTables(a, b, label) {
   for (const [name, sql] of Object.entries(TABLES)) {
     assert.deepEqual(rows(b, sql), rows(a, sql), `${label}: ${name}`)
   }
+}
+
+// What the SQL of before the binary left and read, frozen in test/fixtures/parity/.
+export function fixture(name) {
+  return JSON.parse(readFileSync(new URL("../fixtures/parity/" + name, import.meta.url), "utf8"))
+}
+
+// Every table of `dbPath` equal to `expected`, a frozen { items, history, … }.
+export function tablesAre(dbPath, expected, label) {
+  assert.deepEqual(Object.keys(expected), Object.keys(TABLES), `${label}: the frozen tables`)
+  for (const [name, sql] of Object.entries(TABLES)) {
+    assert.deepEqual(rows(dbPath, sql), expected[name], `${label}: ${name}`)
+  }
+}
+
+// The search fold of before the binary, one UTF-16 unit at a time, read from
+// db/Schema/search_map.tsv: the table holds every unit the old fold changed,
+// and bin-schema.test.mjs pins its sha256.
+const FOLD = new Map(readFileSync(join(ROOT, "db", "Schema", "search_map.tsv"), "utf8").split("\n").filter((line) => line !== "").map((line) => {
+  const [unit, folded] = line.split("\t")
+  // A combining mark folds to nothing, an empty second field.
+  const units = folded === "" ? [] : folded.split(" ")
+  return [String.fromCharCode(parseInt(unit, 16)), units.map((h) => String.fromCodePoint(parseInt(h, 16))).join("")]
+}))
+
+export function fold(text) {
+  return String(text).replace(/[\s\S]/g, (c) => FOLD.get(c) ?? c)
 }
