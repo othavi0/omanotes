@@ -46,9 +46,9 @@ BarWidget {
         if ("service" in target) target.service = root.service
     }
 
-    // Mutations go through the async sqlite3 Process, so `ok: true` means the
-    // write is queued, and the FileView watcher's reload converges the change
-    // onto the panels + allItems cache afterwards.
+    // Mutations are queued in the Store and run by the binary later, so
+    // `ok: true` means the write is queued, and the snapshot after it
+    // converges the change onto the panels and allItems.
     function ipcReply(error) {
         return JSON.stringify(error ? { ok: false, error: error } : { ok: true })
     }
