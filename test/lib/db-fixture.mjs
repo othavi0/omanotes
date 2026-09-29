@@ -1,5 +1,6 @@
-// The database fixture the db tests share: Db.js loaded under Node, and
-// throwaway databases started the way DbCore starts them.
+// The database fixture the db tests share: the SQL of before omanotes-db
+// (legacy-db.js) loaded under Node, and throwaway databases started the way
+// the sqlite3 CLI started them.
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
@@ -7,7 +8,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { loadQmlLib } from "./load-qml-lib.mjs"
 
-export const DB_JS = new URL("../../data/Db.js", import.meta.url)
+export const DB_JS = new URL("./legacy-db.js", import.meta.url)
 export const NAMES = [
   "q", "likeEscape", "now", "listSql", "countsSql", "addSql", "setStatusSql",
   "updateSql", "deleteItemSql", "convertTypeSql", "historySql", "deleteHistorySql",

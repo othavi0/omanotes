@@ -22,7 +22,7 @@ function master(dbPath) {
   return rows(dbPath, "SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name")
 }
 
-test("the versioned fold table is searchText of data/Db.js, and its sha256 is the live database's", () => {
+test("the versioned fold table is the searchText of before the binary, and its sha256 is the live database's", () => {
   const file = readFileSync(join(ROOT, "db", "Schema", "search_map.tsv"), "utf8")
   assert.equal(sha256(file), SEARCH_MAP_SHA256)
   const hex = (s) => [...s].map((c) => c.codePointAt(0).toString(16).padStart(4, "0")).join(" ")
