@@ -1,0 +1,8 @@
+//! expect: RS0030
+// One thread: an exception on another aborts the process.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static void Spawn() => new System.Threading.Thread(() => { }).Start();
+}

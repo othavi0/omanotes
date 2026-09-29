@@ -1,0 +1,8 @@
+//! expect: RS0030
+// UseSystemResourceKeys turns Message into a resource id; a detail is sqlite3_errmsg or a constant.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static string Detail(Exception e) => e.Message;
+}

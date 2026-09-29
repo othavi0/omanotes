@@ -1,0 +1,8 @@
+//! expect: CS0122
+// A Row only comes from Conn.Row.Of, which checks each column against pragma_table_info.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static Conn.Row Forge() => new Conn.Row(RowTable.Settings, [("volume = 0; DROP TABLE items; --", Value.Of(1))], 1);
+}

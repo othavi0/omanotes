@@ -1,0 +1,3 @@
+bin/omanotes-db.* binary
+bin/BUILD.json text eol=lf
+db/Schema/search_map.tsv text eol=lf

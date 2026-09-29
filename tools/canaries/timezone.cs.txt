@@ -1,0 +1,8 @@
+//! expect: RS0030
+// The caller sends the backup day in its own zone.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static string Zone() => TimeZoneInfo.Local.Id;
+}

@@ -1,0 +1,8 @@
+//! expect: CA1310
+// Comparison is ordinal; the analysis build refuses a culture-sensitive one.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static int Order(string a, string b) => string.Compare(a, b);
+}

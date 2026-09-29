@@ -1,0 +1,8 @@
+//! expect: RS0030
+// Reads TMPDIR: every path comes in argv.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static string Scratch() => Path.GetTempPath();
+}

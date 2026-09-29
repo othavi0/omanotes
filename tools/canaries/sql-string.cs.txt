@@ -1,0 +1,8 @@
+//! expect: CS1503
+// A string built at run time is not Sql: only literal text converts.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static long Delete(Conn db, string where) => db.Run("DELETE FROM items WHERE " + where);
+}

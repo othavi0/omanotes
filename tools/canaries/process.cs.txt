@@ -1,0 +1,8 @@
+//! expect: RS0030
+// The binary starts nothing.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static void Shell() => System.Diagnostics.Process.Start("sh")?.Dispose();
+}

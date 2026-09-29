@@ -1,0 +1,8 @@
+//! expect: IL2026
+// JSON by reflection does not survive trimming; JsonDocument in, Utf8JsonWriter out.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static string Dump(object o) => System.Text.Json.JsonSerializer.Serialize(o);
+}

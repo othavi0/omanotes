@@ -1,0 +1,11 @@
+//! expect: CS8509
+// A switch over ErrorCode names every member: a new code without a case does not build.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static string Name(ErrorCode c) => c switch
+    {
+        ErrorCode.Busy => "busy",
+    };
+}

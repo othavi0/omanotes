@@ -1,0 +1,8 @@
+//! expect: CS0619
+// SQL takes no interpolation: a value is bound, never spliced into the text.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static long Delete(Conn db, string title) => db.Run($"DELETE FROM items WHERE title = '{title}'");
+}

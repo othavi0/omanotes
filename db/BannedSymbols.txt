@@ -1,0 +1,85 @@
+# Each line removes a way to fail. RS0030 turns a use into an error, and
+# tools/canaries.sh proves a sample of them still fires.
+
+# No clock: every write carries "at" (seconds) and a backup its "day", so the
+# file is a function of the request and a test passes any time it wants.
+P:System.DateTime.Now;The binary has no clock: use the write's "at"
+P:System.DateTime.UtcNow;The binary has no clock: use the write's "at"
+P:System.DateTime.Today;The binary has no clock: use the write's "at"
+P:System.DateTimeOffset.Now;The binary has no clock: use the write's "at"
+P:System.DateTimeOffset.UtcNow;The binary has no clock: use the write's "at"
+P:System.TimeProvider.System;The binary has no clock: use the write's "at"
+P:System.Environment.TickCount;The binary has no clock
+P:System.Environment.TickCount64;The binary has no clock
+T:System.TimeZoneInfo;The caller sends the backup day in its own zone
+T:System.Diagnostics.Stopwatch;The binary has no clock
+
+# No environment: the caller spawns with an empty one, and nothing here may
+# depend on what a session exported.
+M:System.Environment.GetEnvironmentVariable(System.String);The request carries every input
+M:System.Environment.GetEnvironmentVariable(System.String,System.EnvironmentVariableTarget);The request carries every input
+M:System.Environment.GetEnvironmentVariables;The request carries every input
+M:System.Environment.GetFolderPath(System.Environment.SpecialFolder);Paths come in argv
+M:System.IO.Path.GetTempPath;Reads TMPDIR: paths come in argv
+M:System.IO.Path.GetTempFileName;Reads TMPDIR: paths come in argv
+M:System.Environment.Exit(System.Int32);Return from Main
+T:System.Diagnostics.Process;The binary starts nothing
+
+# One thread, no tasks: an exception on another thread aborts the process,
+# an unobserved Task is swallowed, and async void escapes every catch.
+T:System.Threading.Thread;The binary is single threaded
+T:System.Threading.ThreadPool;The binary is single threaded
+T:System.Threading.Timer;The binary is single threaded
+T:System.Threading.Tasks.Task;No async: one synchronous request
+T:System.Threading.Tasks.Task`1;No async: one synchronous request
+T:System.Threading.Tasks.ValueTask;No async: one synchronous request
+T:System.Threading.Tasks.ValueTask`1;No async: one synchronous request
+T:System.Threading.Tasks.Parallel;The binary is single threaded
+
+# Case and Unicode: text folds only through the versioned table (Fold.cs),
+# never through .NET's Unicode data, which a runtime update can change under
+# the copies already stored (ADR-0012).
+M:System.String.ToLower;Fold through Fold.Text
+M:System.String.ToLower(System.Globalization.CultureInfo);Fold through Fold.Text
+M:System.String.ToLowerInvariant;Fold through Fold.Text
+M:System.String.ToUpper;Fold through Fold.Text
+M:System.String.ToUpper(System.Globalization.CultureInfo);Fold through Fold.Text
+M:System.String.ToUpperInvariant;Fold through Fold.Text
+M:System.String.Normalize;Fold through Fold.Text
+M:System.String.Normalize(System.Text.NormalizationForm);Fold through Fold.Text
+M:System.Char.ToLower(System.Char);Fold through Fold.Text
+M:System.Char.ToLowerInvariant(System.Char);Fold through Fold.Text
+M:System.Char.ToUpper(System.Char);Fold through Fold.Text
+M:System.Char.ToUpperInvariant(System.Char);Fold through Fold.Text
+M:System.String.Trim;The caller trims with String.prototype.trim, whose set of spaces differs
+T:System.Globalization.CompareInfo;Ordinal comparison only
+P:System.Globalization.CultureInfo.CurrentCulture;Culture is never the user's
+P:System.Globalization.CultureInfo.CurrentUICulture;Culture is never the user's
+P:System.Globalization.CultureInfo.DefaultThreadCurrentCulture;Culture is never the user's
+
+# Numbers arrive as JSON numbers or SQLite integers. Text never becomes a
+# number here: in invariant mode TryParse("1,5") gives 15.
+M:System.Double.Parse(System.String);Numbers come from JSON tokens or SQLite columns
+M:System.Double.Parse(System.String,System.IFormatProvider);Numbers come from JSON tokens or SQLite columns
+M:System.Double.TryParse(System.String,System.Double@);Numbers come from JSON tokens or SQLite columns
+M:System.Double.TryParse(System.ReadOnlySpan{System.Char},System.Double@);Numbers come from JSON tokens or SQLite columns
+M:System.Int32.Parse(System.String);Numbers come from JSON tokens or SQLite columns
+M:System.Int32.TryParse(System.String,System.Int32@);Numbers come from JSON tokens or SQLite columns
+M:System.Int64.Parse(System.String);Numbers come from JSON tokens or SQLite columns
+M:System.Int64.TryParse(System.String,System.Int64@);Numbers come from JSON tokens or SQLite columns
+M:System.Convert.ToDouble(System.String);Numbers come from JSON tokens or SQLite columns
+M:System.Convert.ToInt32(System.String);Numbers come from JSON tokens or SQLite columns
+M:System.Convert.ToInt64(System.String);Numbers come from JSON tokens or SQLite columns
+
+# JSON: JsonDocument in, Utf8JsonWriter out. Reflection is off, and the
+# serializer would put wire types on the domain.
+T:System.Text.Json.JsonSerializer;JsonDocument in, Utf8JsonWriter out
+T:System.Text.Json.Nodes.JsonNode;JsonDocument in, Utf8JsonWriter out
+
+# Raw file descriptors only (Program.cs): Console's readers and writers
+# follow LANG, and Console.In has no timeout.
+T:System.Console;Use the raw descriptors of Program.Fd
+
+# UseSystemResourceKeys turns Message into a resource id. A detail is
+# sqlite3_errmsg or a constant.
+P:System.Exception.Message;A detail is sqlite3_errmsg or a constant

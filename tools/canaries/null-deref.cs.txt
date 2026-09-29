@@ -1,0 +1,8 @@
+//! expect: CS8602
+// Nullable reference types, warnings as errors.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static int Length(string? s) => s.Length;
+}

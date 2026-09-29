@@ -1,0 +1,8 @@
+//! expect: RS0030
+// No tasks: an unobserved Task swallows its exception.
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static object Run() => System.Threading.Tasks.Task.Run(() => 1);
+}

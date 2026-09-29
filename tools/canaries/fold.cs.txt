@@ -1,0 +1,8 @@
+//! expect: RS0030
+// Text folds only through the versioned table (Fold.Text).
+namespace Omanotes.Db;
+
+internal static class Canary
+{
+    public static string Fold(string s) => s.ToLowerInvariant();
+}
