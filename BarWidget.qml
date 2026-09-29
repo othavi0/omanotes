@@ -23,21 +23,40 @@ BarWidget {
     // root (not the nested panel), so the widget is the popout identity.
     readonly property bool opened: panelItem ? panelItem.opened === true : false
 
-    function open() { if (panelItem) panelItem.open() }
+    // The panel is created on demand (ADR-0019): in the background when the
+    // pointer enters the button, at once when something opens it. Then it
+    // stays. It gets the Db as it is created, so its first frame already
+    // shows the rows the Db holds.
+    readonly property QtObject panelItem: panelLoader.item
+
+    function preparePanel() {
+        if (panelLoader.status !== Loader.Null) return
+        panelLoader.setSource(Qt.resolvedUrl("Panel.qml"), {
+            bar: root.bar, settings: root.settings, anchorItem: button,
+            hostWidget: root, db: db, service: root.service
+        })
+    }
+    // Turning `asynchronous` off also ends at once a load that the pointer
+    // started in the background, so the open is never lost. A Panel.qml that
+    // failed to compile stays failed until the shell restarts.
+    function open() {
+        if (!panelItem) {
+            panelLoader.asynchronous = false
+            root.preparePanel()
+        }
+        if (panelItem) panelItem.open()
+    }
     function close() { if (panelItem) panelItem.close() }
-    function togglePanel() { if (panelItem) panelItem.toggle() }
+    function togglePanel() { root.opened ? root.close() : root.open() }
 
     // Forwarded: Bar.requestPopout prefers closeForPopoutSwitch over close,
     // and KeyboardPanel reads popoutSwitchClosing back off its owner.
     readonly property bool popoutSwitchClosing: panelItem ? panelItem.popoutSwitchClosing === true : false
     function closeForPopoutSwitch() { if (panelItem) panelItem.closeForPopoutSwitch() }
 
-    property var panelItem: null
-
     function injectPanel() {
         var target = panelLoader.item
         if (!target) return
-        panelItem = target
         if ("bar" in target) target.bar = root.bar
         if ("settings" in target) target.settings = root.settings
         if ("anchorItem" in target) target.anchorItem = button
@@ -115,13 +134,13 @@ BarWidget {
 
     Loader {
         id: panelLoader
-        active: true
-        source: Qt.resolvedUrl("Panel.qml")
+        asynchronous: true
         visible: false
         onLoaded: {
             root.injectPanel()
             Qt.callLater(root.injectPanel)
         }
+        onStatusChanged: if (status === Loader.Error) console.warn("omanotes: Panel.qml failed to load, the panel cannot open")
     }
 
     IpcHandler {
@@ -158,6 +177,7 @@ BarWidget {
         text: button.vertical ? (root.ringing ? Icons.bell : Icons.noteFilled) : root.chipText
         fixedWidth: root.ringing || root.nextLabel !== "" ? -1 : Style.bar.iconSlot
         active: root.ringing
+        onTooltipHoveredChanged: if (button.tooltipHovered) root.preparePanel()
         tooltipText: root.ringing ? "Omanotes: " + root.service.ringTitle + " is ringing · click to stop"
             : "Omanotes: " + db.unreadNotes + " unread · " + db.pendingTodos + " pending"
                 + (root.nextLabel !== "" ? " · next alarm " + root.nextLabel : "")

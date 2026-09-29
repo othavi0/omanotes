@@ -20,11 +20,31 @@ cat > "$cfg_dir/shell.qml" <<'QML'
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import QtTest
 import "ui/Icons.js" as Icons
 import "ui/Tabs.js" as Tabs
 
 ShellRoot {
   id: sr
+
+  function panelState() {
+    var w = widget.item
+    return (w.panelItem ? "loaded" : "none") + "|" + (w.opened ? "open" : "closed")
+  }
+  // The Items tab and the History tab as they stand, with no turn run.
+  function panelView() {
+    var panel = widget.item.panelItem
+    var itemsTab = sr.find(panel, "ItemsTab")
+    return ["items", "alarms", "history", "settings"][panel.activeTab] + "|" + itemsTab.itemList.length + "|" + itemsTab.selectedId + "|" + itemsTab.editorTitle + "|draft:" + itemsTab.draftNew
+      + "|history:" + sr.find(panel, "HistoryTab").selectedId
+  }
+  // What the panel shows in the turn it is created, before any event runs.
+  property string viewAtLoad: ""
+  Connections {
+    target: widget.item
+    function onPanelItemChanged() { if (widget.item.panelItem) sr.viewAtLoad = sr.panelView() }
+  }
+  function button() { return sr.find(widget.item, "WidgetButton") }
 
   function find(obj, typeName) {
     if (!obj) return null
@@ -55,14 +75,50 @@ ShellRoot {
     return null
   }
 
+  // The button away from the corner where offscreen puts the pointer at the
+  // start, whose hover would load the panel.
   FloatingWindow {
-    implicitWidth: 40; implicitHeight: 40
-    Loader { id: widget; anchors.fill: parent; source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml" }
+    implicitWidth: 200; implicitHeight: 40
+    Loader {
+      id: widget
+      x: 100
+      width: item ? item.implicitWidth : 0
+      height: 40
+      source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml"
+    }
   }
+  TestEvent { id: pointer }
 
   // Typing into the editor has no IPC, so the test reaches the panel's ItemsTab.
   IpcHandler {
     target: "omanotes-test"
+    function panelState(): string { return sr.panelState() }
+    function hover(): string {
+      var b = sr.button()
+      pointer.mouseMove(b, b.width / 2, b.height / 2, -1, Qt.NoButton, Qt.NoModifier)
+      return sr.panelState()
+    }
+    function click(): string {
+      var b = sr.button()
+      pointer.mouseClick(b, b.width / 2, b.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
+      return sr.panelState()
+    }
+    // The click comes in the same turn as the hover, before the load it
+    // started can finish.
+    function hoverAndClick(): string {
+      var b = sr.button()
+      pointer.mouseMove(b, b.width / 2, b.height / 2, -1, Qt.NoButton, Qt.NoModifier)
+      var before = sr.panelState()
+      pointer.mouseClick(b, b.width / 2, b.height / 2, Qt.LeftButton, Qt.NoModifier, -1)
+      return before + ">" + sr.panelState()
+    }
+    // A new BarWidget in place of the old one, with its own Db and no panel.
+    // Two calls, so the old widget's scratchpad handler is gone before the
+    // new one registers.
+    function dropWidget(): void { widget.active = false }
+    function newWidget(): void { widget.active = true }
+    function panelView(): string { return sr.panelView() }
+    function viewAtLoad(): string { return sr.viewAtLoad }
     function typeDraft(title: string): string {
       var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
       if (!itemsTab) return "no ItemsTab"
@@ -191,6 +247,62 @@ all_of() {
 }
 
 replies "ping answers JSON" "$(ipc scratchpad ping)" '{"ok":true}'
+
+# The panel is created on demand and then kept (ADR-0019).
+panel_is() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(ipc omanotes-test panelState)"
+    [[ "$got" == "$want" ]] && break
+    sleep 0.1
+  done
+  replies "$what" "$got" "$want"
+}
+# The panel as it shows right after it is created: the Items tab, every row,
+# the first one selected and in the editor, and the newest history entry
+# selected.
+view_now() {
+  local first newest
+  first="$(sqlite3 "$db" "SELECT id || '|' || title FROM items ORDER BY status, position, id DESC LIMIT 1")"
+  newest="$(sqlite3 "$db" "SELECT id FROM history ORDER BY ts DESC, id DESC LIMIT 1")"
+  echo "items|$(sqlite3 "$db" "SELECT COUNT(*) FROM items")|$first|draft:false|history:$newest"
+}
+# A new widget, after its Db has loaded and its first reads are done.
+new_widget() {
+  ipc omanotes-test dropWidget > /dev/null
+  ipc omanotes-test newWidget > /dev/null
+  for _ in $(seq 50); do
+    [[ "$(ipc scratchpad listNotes)" == '[{'* ]] && break
+    sleep 0.1
+  done
+  sleep 0.5
+}
+sleep 1
+replies "no panel exists after the start, and the list IPC and a close load none" \
+  "$(ipc scratchpad listNotes > /dev/null; ipc scratchpad close; ipc omanotes-test panelState)" "none|closed"
+replies "an IPC open with no hover loads the panel and opens it at once" "$(ipc scratchpad open; ipc omanotes-test panelState)" "loaded|open"
+replies "in the turn it is created, the panel shows the rows its Db already held, the first selected" \
+  "$(ipc omanotes-test viewAtLoad)" "$(view_now)"
+ipc scratchpad close > /dev/null
+replies "closed, the panel stays loaded" "$(sleep 0.5; ipc omanotes-test panelState)" "loaded|closed"
+
+new_widget
+replies "a new widget has no panel" "$(ipc omanotes-test panelState)" "none|closed"
+reads="$(wc -l < "$cfg_dir/db.log")"
+replies "the pointer entering the button loads the panel without opening it" "$(ipc omanotes-test hover)" "none|closed"
+panel_is "the load in the background ends" "loaded|closed"
+replies "loaded in the background, the panel shows the rows its Db already held, the first selected" \
+  "$(ipc omanotes-test viewAtLoad)" "$(view_now)"
+replies "and the hover read nothing from the database" "$(sleep 0.5; wc -l < "$cfg_dir/db.log")" "$reads"
+replies "a click then opens it" "$(ipc omanotes-test click)" "loaded|open"
+replies "on the Items tab with every row, the first selected" "$(ipc omanotes-test panelView)" "$(view_now)"
+ipc omanotes-test click > /dev/null
+
+new_widget
+replies "a click before the load the hover started has ended opens the panel once it is ready" \
+  "$(ipc omanotes-test hoverAndClick)" "none|closed>loaded|open"
+replies "with its rows" "$(ipc omanotes-test panelView)" "$(view_now)"
+replies "the IPC reaches the new widget" "$(ipc scratchpad close; ipc omanotes-test panelState)" "loaded|closed"
 
 want_counts="Omanotes: 1 unread · 2 pending|1 unread · 2 pending"
 counts=""
@@ -479,6 +591,29 @@ ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
 replies "only the failure cases are logged" "$(logged_failures)" \
   "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;"
+
+# A Panel.qml that fails to load, as a broken update could leave it: the
+# engine keeps the failed compile, so the widget must stay usable without it.
+broken_tree="$cfg_dir/broken-tree"
+cp -a "$stub_tree" "$broken_tree"
+rm "$broken_tree/Panel.qml"
+printf 'import QtQuick\nItem { propertyTheKitDropped: true }\n' > "$broken_tree/Panel.qml"
+PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$broken_tree" "${qs_cmd[@]}" > "$cfg_dir/qs-broken.log" 2>&1 &
+qs_pid=$!
+up=0
+for _ in $(seq 50); do
+  [[ "$(ipc scratchpad ping)" == '{"ok":true}' ]] && { up=1; break; }
+  sleep 0.2
+done
+replies "with a broken Panel.qml the widget still answers" "$up" "1"
+replies "an IPC open with a broken Panel.qml opens nothing" "$(ipc scratchpad open; ipc omanotes-test panelState)" "none|closed"
+replies "a hover and a second open after it load nothing again" \
+  "$(ipc omanotes-test hover > /dev/null; sleep 0.3; ipc scratchpad toggle; ipc omanotes-test panelState)" "none|closed"
+replies "the list IPC still answers" "$(ipc scratchpad listNotes | head -c 2)" "[{"
+ipc omanotes-test quit > /dev/null || true
+wait "$qs_pid" || true
+replies "the failed load is one line in the log, and no call threw" \
+  "$(grep -c "Panel.qml failed to load" "$cfg_dir/qs-broken.log")|$(grep -c "TypeError" "$cfg_dir/qs-broken.log" || true)" "1|0"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
 echo "panel: $checks checks, $failures failed"

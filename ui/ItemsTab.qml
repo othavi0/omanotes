@@ -511,8 +511,10 @@ FocusScope {
         }
     }
 
+    // The panel is created on demand (ADR-0019), often after the Db has
+    // loaded: no itemsUpdated comes for the rows it already holds.
     Component.onCompleted: {
-        root.refillEditor()
+        root.onItemsSynced()
         root.focusList()
     }
 }

@@ -150,6 +150,16 @@ ShellRoot {
   IpcHandler {
     target: "omanotes-test"
     function ping(): string { return svc.item && monitors.instances.length === 3 && monitors.instances[2].widget ? "ok" : "loading" }
+    // The panels load on demand (ADR-0019); the checks read all three while closed.
+    function preparePanels(): string {
+      var n = 0
+      for (var i = 0; i < 3; ++i) {
+        var w = monitors.instances[i].widget
+        w.preparePanel()
+        if (w.panelItem) n++
+      }
+      return String(n)
+    }
     function tick(ms: string): string { svc.item.tick(Number(ms)); return sr.state() }
     function state(): string { return sr.state() }
     function settings(): string { return JSON.stringify(svc.item.settings) }
@@ -269,6 +279,10 @@ for _ in $(seq 50); do
   sleep 0.2
 done
 if (( ! up )); then cat "$cfg_dir/qs.log"; echo "the service never answered ping"; exit 2; fi
+for _ in $(seq 50); do
+  [[ "$(ipc preparePanels)" == 3 ]] && break
+  sleep 0.1
+done
 
 checks=0
 failures=0

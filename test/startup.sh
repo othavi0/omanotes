@@ -36,12 +36,11 @@ ShellRoot {
     return found
   }
   function dbsIn(obj, found) { return sr.typesIn(obj, ["ItemsDb", "AlarmsDb"], found) }
-  function panelDb(n) { return monitors.instances[n].widget.panelItem.db }
+  function widgetDb(n) { return sr.dbsIn(monitors.instances[n].widget, [])[0] }
 
   property string lastFailure: ""
   Connections {
-    target: monitors.instances.length > 0 && monitors.instances[0].widget && monitors.instances[0].widget.panelItem
-      ? monitors.instances[0].widget.panelItem.db : null
+    target: monitors.instances.length > 0 && monitors.instances[0].widget ? sr.widgetDb(0) : null
     function onWriteFailed(kind, args, message) { sr.lastFailure = kind + ":" + message }
   }
 
@@ -63,10 +62,14 @@ ShellRoot {
     FloatingWindow {
       required property var modelData
       readonly property var widget: loader.item
-      implicitWidth: 40; implicitHeight: 40
+      // The widget away from the corner where offscreen puts the pointer,
+      // whose hover would load the panel (ADR-0019).
+      implicitWidth: 200; implicitHeight: 40
       Loader {
         id: loader
-        anchors.fill: parent
+        x: 100
+        width: 100
+        height: 40
         active: sr.pluginOn
         source: "file://" + Quickshell.env("OMANOTES_WORKTREE") + "/BarWidget.qml"
         onLoaded: item.service = Qt.binding(function() { return svc.item })
@@ -86,9 +89,13 @@ ShellRoot {
         for (var j = 0; j < dbs.length; ++j) if (dbs[j].ready) ready++
         var owned = sr.typesIn(w.panelItem, "SystemClock", sr.typesIn(w, "SystemClock", [])).length
           + sr.typesIn(w.panelItem, "RingWindow", sr.typesIn(w, "RingWindow", [])).length
-        out.push({ dbs: dbs.length, ready: ready, panelShares: dbs.indexOf(w.panelItem.db) >= 0, clocksAndWindows: owned })
+        var panel = !w.panelItem ? "none" : w.panelItem.db === sr.widgetDb(i) ? "shares the Db" : "has its own Db"
+        out.push({ dbs: dbs.length, ready: ready, panel: panel, clocksAndWindows: owned })
       }
       return JSON.stringify(out)
+    }
+    function preparePanels(): void {
+      for (var i = 0; i < monitors.instances.length; ++i) monitors.instances[i].widget.preparePanel()
     }
     function serviceState(): string {
       if (!svc.item) return "none"
@@ -123,7 +130,7 @@ ShellRoot {
     }
     // An add, then the plugin goes away in the same tick, before the write is sent.
     function addThenOff(title: string): string {
-      var queued = sr.panelDb(0).add("note", title, "")
+      var queued = sr.widgetDb(0).add("note", title, "")
       sr.pluginOn = false
       return queued
     }
@@ -131,7 +138,7 @@ ShellRoot {
     function setWatcherDelay(ms: int): void { sr.store.reloadDebounce.interval = ms }
     // A widget's view sending the service's write, as any QML of the plugin could.
     function spoof(): string {
-      var db = sr.panelDb(0)
+      var db = sr.widgetDb(0)
       sr.spoofed = "pending"
       sr.store.write(db._key, "alarm.delete", { id: 1 }, function(r) { sr.spoofed = r.ok ? "ok" : r.err })
       return "sent"
@@ -139,27 +146,27 @@ ShellRoot {
     function spoofed(): string { return sr.spoofed }
     // Every panel asks for a reload at once, as opening them would.
     function loadAll(): void {
-      for (var i = 0; i < monitors.instances.length; ++i) sr.panelDb(i).load()
+      for (var i = 0; i < monitors.instances.length; ++i) sr.widgetDb(i).load()
     }
     function addBody(title: string, size: int): string {
       return monitors.instances[0].widget.ipcAdd("note", title, "x".repeat(size))
     }
     // An add from the panel, which hears a failure as its user's.
     function addFromPanel(title: string, size: int): string {
-      return sr.panelDb(0).add("note", title, "x".repeat(size))
+      return sr.widgetDb(0).add("note", title, "x".repeat(size))
     }
     function lastFailure(): string { return sr.lastFailure }
     function setPlugin(on: bool): void { sr.pluginOn = on }
     function loaded(): int {
       var n = svc.item ? 1 : 0
-      for (var i = 0; i < monitors.instances.length; ++i) if (monitors.instances[i].widget && monitors.instances[i].widget.panelItem) n++
+      for (var i = 0; i < monitors.instances.length; ++i) if (monitors.instances[i].widget) n++
       return n
     }
     // How many widgets list an item with this title.
     function seen(title: string): int {
       var n = 0
       for (var i = 0; i < monitors.instances.length; ++i) {
-        if (sr.panelDb(i).allItems.some(function(item) { return item.title === title })) n++
+        if (sr.widgetDb(i).allItems.some(function(item) { return item.title === title })) n++
       }
       return n
     }
@@ -195,7 +202,7 @@ replies "every IPC call before the database is ready answers not ready" "$(ipc e
   "$refused $refused $refused $refused $refused $refused"
 rm -f "$cfg_dir/hold-sync"
 
-one='{"dbs":1,"ready":1,"panelShares":true,"clocksAndWindows":0}'
+one='{"dbs":1,"ready":1,"panel":"none","clocksAndWindows":0}'
 want="[$one$(printf ",$one%.0s" $(seq 2 $monitors))]"
 state=""
 for _ in $(seq 50); do
@@ -203,7 +210,7 @@ for _ in $(seq 50); do
   [[ "$state" == "$want" ]] && break
   sleep 0.2
 done
-replies "each widget runs one Db, shared with its panel and ready, and no clock or ring window" "$state" "$want"
+replies "each widget runs one Db, ready, no panel until one is wanted, and no clock or ring window" "$state" "$want"
 service_state=""
 for _ in $(seq 50); do
   service_state="$(ipc serviceState)"
@@ -233,6 +240,16 @@ replies "the refused add never lands" \
   "$(sqlite3 "$data_home/omarchy/scratchpad.db" "SELECT COUNT(*) FROM items WHERE title = 'EARLY'")" "0"
 replies "the migration the binary ran on the new file is in the journal, once" \
   "$(grep -c "omanotes-db: migrated 0 -> $current" "$cfg_dir/qs.log" || true)" "1"
+
+ipc preparePanels > /dev/null
+loaded='{"dbs":1,"ready":1,"panel":"shares the Db","clocksAndWindows":0}'
+want="[$loaded$(printf ",$loaded%.0s" $(seq 2 $monitors))]"
+for _ in $(seq 50); do
+  state="$(ipc state)"
+  [[ "$state" == "$want" ]] && break
+  sleep 0.2
+done
+replies "a loaded panel shares its widget's Db and adds no Db, clock or ring window" "$state" "$want"
 
 sleep 1
 : > "$cfg_dir/db.log"
