@@ -1,14 +1,14 @@
-// The wire: argv, stdin, stdout only on exit 0, the error as the last line of
-// stderr, and exit 0, 1 or 64.
+// The wire: argv, stdin, stdout as the results line and then the snapshot
+// line, the error as the last line of stderr, and exit 0, 1, 3 or 64.
 import test from "node:test"
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readdirSync, symlinkSync } from "node:fs"
 import { machine } from "node:os"
 import { join } from "node:path"
-import { BIN, BUILD, PROTOCOL, ROOT, call, exec, lastError, rows, run, sync, tempDb, tempDir, write } from "./lib/bin-fixture.mjs"
+import { BIN, BUILD, PROTOCOL, ROOT, call, cli, exec, lastError, rows, run, sync, tempDb, tempDir, write } from "./lib/bin-fixture.mjs"
 
-const CODES = ["protocol", "bad_request", "timeout", "too_large", "busy", "not_found", "refused", "forbidden", "io",
+const CODES = ["protocol", "bad_request", "timeout", "too_large", "response_too_large", "busy", "not_found", "refused", "forbidden", "io",
   "corrupt", "sqlite", "sqlite_missing", "sqlite_too_old", "selftest", "internal"]
 
 function fails(r, status, err) {
@@ -100,41 +100,85 @@ test("a request up to 1 MiB goes through; one byte more is too_large and writes 
   assert.equal(rows(db, "SELECT count(*) AS n FROM items")[0].n, 1)
 })
 
-test("a stdin that never closes ends in timeout after about 2 s instead of hanging", async (t) => {
+test("a snapshot over 64 MiB fails after the results with response_too_large, not the code of a refused write", (t) => {
   const db = tempDb(t)
-  const start = Date.now()
-  const r = await new Promise((resolve) => {
+  sync(db)
+  // A control character is six bytes in JSON, so 11 MiB of them written by hand make a 66 MiB snapshot. The search copies are given so the fold trigger, slow on a megabyte, does not run.
+  cli(db, "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 11) INSERT INTO items (type, title, body, search_title, search_body, status, position, created_at, updated_at) SELECT 'note', 'big', replace(hex(zeroblob(1048576)), '00', char(1)), 'big', '', 0, i, 1, 1 FROM n")
+  const r = exec([PROTOCOL, "run", db], { writes: [write("history.clear")], sync: { since: -1, views: [] } })
+  assert.equal(r.status, 3, r.stderr.slice(-200))
+  assert.equal(r.stdout.split("\n")[0], "{\"results\":[{\"id\":1}]}")
+  assert.deepEqual(lastError(r.stderr), { syncErr: { err: "response_too_large", detail: "the snapshot is over 64 MiB" } })
+})
+
+// Writes `first`, waits `pauseMs`, then writes `rest` and closes stdin, unless rest is null.
+function slowStdin(db, first, pauseMs, rest) {
+  return new Promise((resolve) => {
     const child = spawn(BIN, [PROTOCOL, "run", db], { env: {} })
     let out = ""
     let err = ""
     child.stdout.on("data", (d) => { out += d })
     child.stderr.on("data", (d) => { err += d })
-    child.stdin.write("{\"writes\":")
-    const guard = setTimeout(() => child.kill("SIGKILL"), 10000)
+    child.stdin.on("error", () => {})
+    child.stdin.write(first)
+    const later = rest === null ? null : setTimeout(() => child.stdin.end(rest), pauseMs)
+    const guard = setTimeout(() => child.kill("SIGKILL"), 45000)
     child.on("close", (status) => {
       clearTimeout(guard)
+      clearTimeout(later)
       resolve({ status, stdout: out, stderr: err })
     })
   })
-  const ms = Date.now() - start
-  fails(r, 1, "timeout")
-  assert.ok(ms >= 1900 && ms < 6000, `ended after ${ms} ms`)
+}
+
+test("a stdin that pauses 3 s, as a shell busy for that long would, still delivers its write", async (t) => {
+  const db = tempDb(t)
+  const body = JSON.stringify({ writes: [write("item.add", { type: "note", title: "late" })] })
+  const r = await slowStdin(db, body.slice(0, 10), 3000, body.slice(10))
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(JSON.parse(r.stdout).results, [{ id: 1, value: 1 }])
 })
 
-test("the response is the writes' results, then the snapshot after them, and only on exit 0", (t) => {
+test("a stdin that never closes ends in timeout after about 30 s instead of hanging", async (t) => {
+  const db = tempDb(t)
+  const start = Date.now()
+  const r = await slowStdin(db, "{\"writes\":", 0, null)
+  const ms = Date.now() - start
+  fails(r, 1, "timeout")
+  assert.ok(ms >= 29900 && ms < 34000, `ended after ${ms} ms`)
+})
+
+test("stdout is two lines: the writes' results, then the snapshot after them", (t) => {
   const db = tempDb(t)
   const r = exec([PROTOCOL, "run", db], { writes: [write("item.add", { type: "todo", title: "Olá, ação" })], sync: { since: -1, views: [{ key: "s", filter: "todo", query: "acao" }] } })
   assert.equal(r.status, 0, r.stderr)
   assert.ok(r.stdout.includes("Olá, ação"), "non-ASCII text is not escaped")
-  const res = JSON.parse(r.stdout)
-  assert.deepEqual(Object.keys(res), ["results", "snapshot"])
-  assert.deepEqual(res.results, [{ id: 1, value: 1 }])
-  assert.deepEqual(res.snapshot.items.map((i) => i.title), ["Olá, ação"])
-  assert.deepEqual(res.snapshot.matches, { s: [1] })
-  assert.deepEqual(Object.keys(res.snapshot), ["stamp", "unchanged", "settings", "counts", "items", "history", "alarms", "matches"])
-  assert.deepEqual(res.snapshot.counts, { unreadNotes: 0, pendingTodos: 1, notes: 0, todos: 1, history: 1, oldest: 1700000000 })
+  const lines = r.stdout.split("\n")
+  assert.equal(lines.length, 3, "two lines, each ended by a newline")
+  assert.equal(lines[2], "")
+  assert.deepEqual(JSON.parse(lines[0]), { results: [{ id: 1, value: 1 }] })
+  const snapshot = JSON.parse(lines[1])
+  assert.deepEqual(Object.keys(snapshot), ["stamp", "unchanged", "settings", "counts", "items", "history", "alarms", "matches"])
+  assert.deepEqual(snapshot.items.map((i) => i.title), ["Olá, ação"])
+  assert.deepEqual(snapshot.matches, { s: [1] })
+  assert.deepEqual(snapshot.counts, { unreadNotes: 0, pendingTodos: 1, notes: 0, todos: 1, history: 1, oldest: 1700000000 })
   assert.match(r.stderr, /^omanotes-db: migrated 0 -> 5\n$/)
-  assert.deepEqual(Object.keys(call(db, { writes: [write("history.clear")] })), ["results"], "no sync, no snapshot")
+  const writeOnly = exec([PROTOCOL, "run", db], { writes: [write("history.clear")] })
+  assert.equal(writeOnly.stdout, "{\"results\":[{\"id\":1}]}\n", "no sync, one line")
+})
+
+test("an exception inside a write is that write's internal, and the writes after it run", (t) => {
+  const db = tempDb(t)
+  // A key with an escaped lone surrogate throws InvalidOperationException, not OpException, when the args are checked.
+  const body = JSON.stringify({ writes: [
+    write("item.add", { type: "note", title: "first" }, { id: 1 }),
+    write("item.delete", { "\ud800": 1 }, { id: 2 }),
+    write("item.add", { type: "note", title: "third" }, { id: 3 })
+  ] })
+  const r = exec([PROTOCOL, "run", db], body)
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(JSON.parse(r.stdout).results, [{ id: 1, value: 1 }, { id: 2, err: "internal", detail: "InvalidOperationException" }, { id: 3, value: 2 }])
+  assert.deepEqual(rows(db, "SELECT title FROM items ORDER BY id"), [{ title: "first" }, { title: "third" }])
 })
 
 test("the same request gives the same answer whatever the environment holds", (t) => {

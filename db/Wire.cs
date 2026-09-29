@@ -14,6 +14,7 @@ internal enum ErrorCode
     BadRequest,
     Timeout,
     TooLarge,
+    ResponseTooLarge,
     Busy,
     NotFound,
     Refused,
@@ -54,6 +55,7 @@ internal sealed class OpException : Exception
         ErrorCode.BadRequest => "bad_request",
         ErrorCode.Timeout => "timeout",
         ErrorCode.TooLarge => "too_large",
+        ErrorCode.ResponseTooLarge => "response_too_large",
         ErrorCode.Busy => "busy",
         ErrorCode.NotFound => "not_found",
         ErrorCode.Refused => "refused",
@@ -67,7 +69,7 @@ internal sealed class OpException : Exception
         ErrorCode.Internal => "internal",
     };
 
-    /// <summary>{"err","detail"}: the last line of stderr on exit 1, 64 or 70, and a failed write's result.</summary>
+    /// <summary>{"err","detail"}: the last line of stderr on exit 1, 64 or 70, the syncErr of exit 3, and a failed write's result.</summary>
     public void WriteFields(Utf8JsonWriter w)
     {
         w.WriteString("err", Wire(Code));
@@ -90,11 +92,16 @@ internal static class Protocol
     /// <summary>A body over about 64 KB was lost in argv before (issue #55); the request now travels on stdin up to this.</summary>
     public const int MaxRequestBytes = 1 << 20;
 
-    /// <summary>The whole response is held before it is written; this bounds that buffer and the caller's collector.</summary>
+    /// <summary>The snapshot is written as it is read; this bounds the bytes written, and so the caller's collector.</summary>
     public const int MaxResponseBytes = 64 << 20;
 
-    /// <summary>A stdin with no byte and no end for this long is a lost write on the caller's side: give up instead of hanging its queue.</summary>
-    public const int StdinIdleMs = 2000;
+    /// <summary>
+    /// A stdin with no byte and no end for this long is a lost write on the
+    /// caller's side: give up instead of hanging its queue. Long enough that a
+    /// shell busy for a few seconds between the spawn and the write of the
+    /// request does not lose it.
+    /// </summary>
+    public const int StdinIdleMs = 30000;
 }
 
 /// <summary>Who sends a write. The op table says who may (ADR-0015: alarms are the service's; ADR-0016: settings are a widget's).</summary>

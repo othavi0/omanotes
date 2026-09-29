@@ -183,17 +183,17 @@ internal sealed partial class Conn : IDisposable
         }
     }
 
-    /// <summary>The first cell of each row, as a JSON array.</summary>
-    public void WriteColumn(Sql sql, Utf8JsonWriter w, params ReadOnlySpan<Value> args)
+    /// <summary>The first column of each row as an integer, read whole before any of it is written, so a statement that fails part way writes nothing.</summary>
+    public List<long> Ids(Sql sql, params ReadOnlySpan<Value> args)
     {
         using Stmt st = Prepare(sql.ToString(), args);
-        w.WriteStartArray();
+        var ids = new List<long>();
         while (st.Step())
         {
-            Stmt.WriteCell(st.Handle, 0, w);
+            ids.Add(Native.sqlite3_column_int64(st.Handle, 0));
         }
 
-        w.WriteEndArray();
+        return ids;
     }
 
     /// <summary>BEGIN IMMEDIATE takes the write lock up front. Dispose without Commit rolls back.</summary>
@@ -363,17 +363,13 @@ internal sealed partial class Conn : IDisposable
     /// </summary>
     internal sealed class Row
     {
-        private Row(RowTable table, List<(string Column, Value Value)> cells, int columnCount)
+        private Row(RowTable table, List<(string Column, Value Value)> cells)
         {
             TableName = Name(table);
             Cells = cells;
-            ColumnCount = columnCount;
         }
 
         public IReadOnlyList<(string Column, Value Value)> Cells { get; }
-
-        /// <summary>How many writable columns the table has, so a write can require every one.</summary>
-        public int ColumnCount { get; }
 
         internal string TableName { get; }
 
@@ -402,7 +398,7 @@ internal sealed partial class Conn : IDisposable
                 cells.Add((column, value));
             }
 
-            return new Row(table, cells, columns.Count);
+            return new Row(table, cells);
         }
 
         internal Value[] Values()
@@ -586,7 +582,7 @@ internal sealed partial class Conn : IDisposable
                     var text = new ReadOnlySpan<byte>(Native.sqlite3_column_text(st, col), Native.sqlite3_column_bytes(st, col));
                     if (System.Text.Unicode.Utf8.IsValid(text))
                     {
-                        w.WriteStringValue(text);
+                        WriteText(text, w);
                     }
                     else
                     {
@@ -600,6 +596,27 @@ internal sealed partial class Conn : IDisposable
                 default:
                     w.WriteNullValue();
                     break;
+            }
+        }
+
+        /// <summary>
+        /// A long text in pieces: whole, the writer asks its output for six
+        /// times the text's size, the worst case of escaping, so a note of
+        /// 1 MB would cost 6 MB. The bytes written are the same.
+        /// </summary>
+        private static void WriteText(ReadOnlySpan<byte> text, Utf8JsonWriter w)
+        {
+            const int Piece = 8 * 1024;
+            if (text.Length <= Piece)
+            {
+                w.WriteStringValue(text);
+                return;
+            }
+
+            for (int at = 0; at < text.Length; at += Piece)
+            {
+                int n = Math.Min(Piece, text.Length - at);
+                w.WriteStringValueSegment(text.Slice(at, n), at + n == text.Length);
             }
         }
     }

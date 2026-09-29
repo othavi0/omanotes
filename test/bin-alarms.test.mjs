@@ -91,6 +91,20 @@ test("a save writes every column, and sending it twice leaves one identical row"
   assert.deepEqual(rows(path, ALARM_ROWS), once)
 })
 
+test("a column the file has beyond the eleven of the protocol keeps its DEFAULT, and one the protocol lacks is refused", (t) => {
+  const path = newDb(t)
+  // A schema from a later release, or the user, added a column.
+  cli(path, "ALTER TABLE alarms ADD COLUMN sound TEXT NOT NULL DEFAULT 'bell'")
+  const id = insert(path, alarmRecord()).value
+  assert.ok(id > 0, "the insert of the eleven columns goes through")
+  cli(path, `UPDATE alarms SET sound = 'chime' WHERE id = ${id}`)
+  assert.equal(save(path, alarmRecord({ id, hour: 9 })).err, undefined, "and so does the save")
+  assert.deepEqual(rows(path, "SELECT hour, sound FROM alarms"), [{ hour: 9, sound: "chime" }], "the save leaves the column it does not name")
+  const extra = run(path, "alarm.insert", { alarm: { ...Db.alarmCells(alarmRecord()), sound: "horn" } }, { by: "service" })
+  assert.deepEqual(extra, { id: 1, err: "bad_request", detail: "unknown or repeated column" }, "a column outside the protocol is refused even when the file has it")
+  assert.equal(rows(path, "SELECT count(*) AS n FROM alarms")[0].n, 1)
+})
+
 test("a save and a delete of a missing id are not_found and write nothing", (t) => {
   const path = seeded(t)
   insert(path, alarmRecord())

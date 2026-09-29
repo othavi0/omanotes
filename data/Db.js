@@ -266,34 +266,48 @@ function command(binary, dbPath) {
   return [String(binary), String(PROTOCOL), "run", String(dbPath)]
 }
 
-// What a finished spawn answered: { ok: true, results, snapshot, syncErr }
-// or { ok: false, err, detail }. stdout counts only on exit 0; on exit 1, 64
-// or 70 the last line of stderr names the failure; any other exit, a signal
-// or an answer that does not parse is a crash.
+function parsedJson(text) {
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    return null
+  }
+}
+
+// What a finished spawn answered: { ok: true, results, snapshot, syncErr,
+// log } or { ok: false, err, detail, log }. Line 1 of stdout is the writes'
+// results and line 2 the snapshot. Line 1 stands whenever it is whole, even
+// when the process failed or died after it, so a committed write is never
+// told it failed. Exit 3: the snapshot failed, {"syncErr"} on the last line
+// of stderr. Exit 1, 64 or 70: the last line of stderr names the failure.
+// Any other exit, a signal or an answer that does not parse is a crash.
+// `log` is every other line of stderr, such as a migration the binary ran.
 function reply(exitCode, crashed, stdoutText, stderrText) {
-  if (!crashed && exitCode === 0) {
-    var answer = null
-    try {
-      answer = JSON.parse(String(stdoutText))
-    } catch (e) {
-      answer = null
-    }
-    if (answer && Array.isArray(answer.results)) {
-      return { ok: true, results: answer.results, snapshot: answer.snapshot || null, syncErr: answer.syncErr || null }
-    }
-    return { ok: false, err: "crash", detail: "unreadable answer" }
+  var text = String(stdoutText || "")
+  var cut = text.indexOf("\n")
+  var head = parsedJson(cut < 0 ? text : text.slice(0, cut))
+  var results = head && Array.isArray(head.results) ? head.results : null
+  var log = String(stderrText || "").split("\n").map(function(line) { return line.trim() })
+    .filter(function(line) { return line !== "" })
+  var last = crashed || log.length === 0 ? null : parsedJson(log[log.length - 1])
+  var told = !last ? null
+    : exitCode === 3 ? (results ? last.syncErr : null)
+    : exitCode === 1 || exitCode === 64 || exitCode === 70 ? last : null
+  var clean = !crashed && exitCode === 0
+  var failure = { err: "crash", detail: clean ? "unreadable answer" : crashed ? "signal " + exitCode : "exit " + exitCode }
+  if (told && typeof told.err === "string") {
+    failure = { err: told.err, detail: String(told.detail || "") }
+    log.pop()
   }
-  if (!crashed && (exitCode === 1 || exitCode === 64 || exitCode === 70)) {
-    var lines = String(stderrText || "").trim().split("\n")
-    var failure = null
-    try {
-      failure = JSON.parse(lines[lines.length - 1])
-    } catch (e) {
-      failure = null
-    }
-    if (failure && typeof failure.err === "string") return { ok: false, err: failure.err, detail: String(failure.detail || "") }
+  if (!results) return { ok: false, err: failure.err, detail: failure.detail, log: log }
+  var answer = { ok: true, results: results, snapshot: null, syncErr: null, log: log }
+  var rest = cut < 0 ? "" : text.slice(cut + 1)
+  if (!clean) answer.syncErr = failure
+  else if (rest !== "") {
+    answer.snapshot = parsedJson(rest)
+    if (!answer.snapshot) answer.syncErr = failure
   }
-  return { ok: false, err: "crash", detail: crashed ? "signal " + exitCode : "exit " + exitCode }
+  return answer
 }
 
 // The words a failure shows, in the toast and the journal. null keeps the
@@ -314,6 +328,7 @@ var ERROR_TEXT = {
   bad_request: "the database helper refused the request",
   timeout: "the database helper got no request",
   too_large: "text too large to save",
+  response_too_large: "the notes are over 64 MiB, too large to read",
   protocol: "Omanotes was updated. Run omarchy restart shell to finish",
   internal: "the database helper failed",
   crash: "the database helper stopped without an answer",

@@ -4,5 +4,5 @@ namespace Omanotes.Db;
 
 internal static class Canary
 {
-    public static Conn.Row Forge() => new Conn.Row(RowTable.Settings, [("volume = 0; DROP TABLE items; --", Value.Of(1))], 1);
+    public static Conn.Row Forge() => new Conn.Row(RowTable.Settings, [("volume = 0; DROP TABLE items; --", Value.Of(1))]);
 }

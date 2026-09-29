@@ -101,20 +101,35 @@ test("utf8Length counts the bytes a text takes on stdin", () => {
   assert.equal(Db.utf8Length("😀"), 4)
 })
 
-test("reply reads exit 0 as the answer, 1, 64 and 70 as the last line of stderr, and anything else as a crash", () => {
-  const answer = JSON.stringify({ results: [{ id: 1, value: 7 }], snapshot: { stamp: 3, unchanged: true } })
-  assert.deepEqual(Db.reply(0, false, answer, "omanotes-db: migrated 0 -> 5\n"),
-    { ok: true, results: [{ id: 1, value: 7 }], snapshot: { stamp: 3, unchanged: true }, syncErr: null })
-  assert.deepEqual(Db.reply(0, false, JSON.stringify({ results: [], syncErr: { err: "busy", detail: "database is locked" } }), ""),
-    { ok: true, results: [], snapshot: null, syncErr: { err: "busy", detail: "database is locked" } })
-  assert.deepEqual(Db.reply(0, false, "{\"results\":[", ""), { ok: false, err: "crash", detail: "unreadable answer" })
+test("reply reads line 1 as the results and line 2 as the snapshot on exit 0, with stderr as the log", () => {
+  const results = JSON.stringify({ results: [{ id: 1, value: 7 }] })
+  assert.deepEqual(Db.reply(0, false, results + "\n" + JSON.stringify({ stamp: 3, unchanged: true, matches: {} }) + "\n", "omanotes-db: migrated 0 -> 5\n"),
+    { ok: true, results: [{ id: 1, value: 7 }], snapshot: { stamp: 3, unchanged: true, matches: {} }, syncErr: null, log: ["omanotes-db: migrated 0 -> 5"] })
+  assert.deepEqual(Db.reply(0, false, results + "\n", ""), { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: null, log: [] },
+    "a request with no sync has no line 2")
+  assert.deepEqual(Db.reply(0, false, results + "\n{\"stamp\":", ""),
+    { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: { err: "crash", detail: "unreadable answer" }, log: [] })
+  assert.deepEqual(Db.reply(0, false, "{\"results\":[", ""), { ok: false, err: "crash", detail: "unreadable answer", log: [] })
+})
+
+test("reply keeps the results of line 1 whenever it is whole: a snapshot that failed (exit 3) or a process that died after it", () => {
+  const head = "{\"results\":[{\"id\":4,\"value\":9}]}\n"
+  assert.deepEqual(Db.reply(3, false, head + "{\"stamp\":1,\"items\":[", "{\"syncErr\":{\"err\":\"response_too_large\",\"detail\":\"the snapshot is over 64 MiB\"}}\n"),
+    { ok: true, results: [{ id: 4, value: 9 }], snapshot: null, syncErr: { err: "response_too_large", detail: "the snapshot is over 64 MiB" }, log: [] })
+  assert.deepEqual(Db.reply(9, true, head + "{\"stamp\"", ""),
+    { ok: true, results: [{ id: 4, value: 9 }], snapshot: null, syncErr: { err: "crash", detail: "signal 9" }, log: [] })
+  assert.deepEqual(Db.reply(139, false, head, "Segmentation fault\n"),
+    { ok: true, results: [{ id: 4, value: 9 }], snapshot: null, syncErr: { err: "crash", detail: "exit 139" }, log: ["Segmentation fault"] })
+})
+
+test("reply reads 1, 64 and 70 with no line 1 as the last line of stderr, and anything else as a crash", () => {
   for (const code of [1, 64, 70]) {
     assert.deepEqual(Db.reply(code, false, "", "omanotes-db: a line\n{\"err\":\"busy\",\"detail\":\"database is locked\"}\n"),
-      { ok: false, err: "busy", detail: "database is locked" })
+      { ok: false, err: "busy", detail: "database is locked", log: ["omanotes-db: a line"] })
   }
-  assert.deepEqual(Db.reply(1, false, "", "not json\n"), { ok: false, err: "crash", detail: "exit 1" })
-  assert.deepEqual(Db.reply(3, false, "", ""), { ok: false, err: "crash", detail: "exit 3" })
-  assert.deepEqual(Db.reply(1, true, "", "{\"err\":\"busy\",\"detail\":\"x\"}"), { ok: false, err: "crash", detail: "signal 1" },
+  assert.deepEqual(Db.reply(1, false, "", "not json\n"), { ok: false, err: "crash", detail: "exit 1", log: ["not json"] })
+  assert.deepEqual(Db.reply(3, false, "", ""), { ok: false, err: "crash", detail: "exit 3", log: [] })
+  assert.deepEqual(Db.reply(1, true, "", "{\"err\":\"busy\",\"detail\":\"x\"}"), { ok: false, err: "crash", detail: "signal 1", log: ["{\"err\":\"busy\",\"detail\":\"x\"}"] },
     "SIGHUP is exit code 1 with a crash status")
 })
 
@@ -126,6 +141,8 @@ test("errorText keeps the words the toasts compare, SQLite's own words and the p
   assert.equal(Db.errorText({ err: "protocol", detail: "the caller speaks another protocol" }), "Omanotes was updated. Run omarchy restart shell to finish")
   assert.equal(Db.errorText({ err: "no_binary", detail: "/p/bin/omanotes-db.riscv64" }), "cannot run the database helper /p/bin/omanotes-db.riscv64")
   assert.equal(Db.errorText({ err: "something_new", detail: "" }), "database error: something_new")
+  assert.equal(Db.errorText({ err: "response_too_large", detail: "the snapshot is over 64 MiB" }), "the notes are over 64 MiB, too large to read",
+    "a snapshot too large to read is not a text too large to save")
 })
 
 test("every failure the binary names, and the two the Store adds, has words", () => {

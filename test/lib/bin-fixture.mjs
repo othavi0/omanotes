@@ -13,7 +13,8 @@ import { loadQmlLib } from "./load-qml-lib.mjs"
 export const Db = loadQmlLib(new URL("../../data/Db.js", import.meta.url), [
   "PROTOCOL", "MAX_REQUEST_BYTES", "now", "wholeId", "wholeIn", "daysMask", "maskDays", "alarmCells", "clampedInt",
   "parseAlarms", "mergeAlarms", "SETTINGS", "settingsCells", "parseSettings", "mergeSettings", "parseCounts", "prunes",
-  "movedRows", "typeRows", "matchedRows", "wellFormed", "request", "utf8Length", "command", "reply", "ERROR_TEXT", "errorText"
+  "movedRows", "typeRows", "matchedRows", "wellFormed", "request", "utf8Length", "command", "reply", "ERROR_TEXT", "errorText",
+  "MAX_WRITE_BYTES", "MAX_QUERY", "viewQuery", "sameRows", "writeJson", "definitive"
 ])
 export const Legacy = loadQmlLib(new URL("./legacy-db.js", import.meta.url), [
   "addSql", "setStatusSql", "updateSql", "deleteItemSql", "convertTypeSql", "moveSql", "deleteHistorySql",
@@ -60,15 +61,25 @@ export function exec(args, input = "", { env = {} } = {}) {
   return { status: r.status, signal: r.signal, stdout: r.stdout.toString("utf8"), stderr: r.stderr.toString("utf8") }
 }
 
-// One `run` request. On exit 0 the parsed response; on anything else the
-// failure, and stdout must be empty then.
+// One `run` request, as { results, snapshot }: stdout's line 1 is the writes'
+// results and line 2 the snapshot. On exit 3 the snapshot failed after line 1
+// went out: { status: 3, results, syncErr } from stderr's last line. On any
+// other failure the error, and stdout must be empty then.
 export function call(dbPath, request, opts = {}) {
-  const r = exec([PROTOCOL, "run", dbPath], request, opts)
-  if (r.status !== 0) {
-    assert.equal(r.stdout, "", "stdout carries nothing unless the exit is 0")
-    return { status: r.status, error: lastError(r.stderr), stderr: r.stderr }
+  return answerOf(exec([PROTOCOL, "run", dbPath], request, opts))
+}
+
+// The answer of a finished `run`, { status, stdout, stderr }, as call() gives it.
+export function answerOf(r) {
+  if (r.status === 0 || r.status === 3) {
+    const [head, snapshot] = r.stdout.split("\n")
+    const res = JSON.parse(head)
+    if (r.status === 3) return { status: 3, results: res.results, syncErr: lastError(r.stderr).syncErr, stderr: r.stderr }
+    if (snapshot) res.snapshot = JSON.parse(snapshot)
+    return res
   }
-  return JSON.parse(r.stdout)
+  assert.equal(r.stdout, "", "stdout carries nothing unless the exit is 0 or 3")
+  return { status: r.status, error: lastError(r.stderr), stderr: r.stderr }
 }
 
 export function write(op, args = {}, { by = "widget", id = 1, at = T0 } = {}) {

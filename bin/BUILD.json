@@ -4,7 +4,7 @@
     1
   ],
   "schema": 5,
-  "source": "5f38d233818b4a05bb768aaa0ac0b4a714a0b5e0980fc7397886036ddff43c54",
+  "source": "60db151570c84b00eb46fba02469044cba54adbc3dbb7bb6d07c5d390b62fd70",
   "toolchain": {
     "sdk": "10.0.401",
     "ilcompiler": "10.0.12",
@@ -14,13 +14,13 @@
   },
   "targets": {
     "x86_64": {
-      "sha256": "f817c4939ce0e5a77c32938cba401769e173f6071708609eb4c897ab50aca258",
-      "bytes": 1964712,
+      "sha256": "86ed8b3910e4fd66d06899f7c81f7201919480123a89b5a302b288a13d899664",
+      "bytes": 1969576,
       "glibc": "2.34"
     },
     "aarch64": {
-      "sha256": "f0f65cb566fcaf95e7a305e62d9e51ea8fdfdb2ff30663a41203e0c939000550",
-      "bytes": 2024528,
+      "sha256": "2ed252e9f9d0d2f089b47394b68588d9676d022d8b595bf394b556db20270c05",
+      "bytes": 2030192,
       "glibc": "2.34"
     }
   }

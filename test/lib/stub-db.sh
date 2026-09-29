@@ -18,7 +18,7 @@
 #   fail-insert       requests with alarm.insert fail with "disk I/O error"
 #   fail-sync         requests with no writes fail as a lock held outside
 #   first-fails       the next request fails as a lock held outside, once
-#   crash             the next request dies with no answer, once
+#   crash             the next request dies by SIGKILL with no answer, once
 #
 # A failure is what the binary does: exit 1 and {"err","detail"} on the last line
 # of stderr. Builtins only until the real binary, but for sleep: a check races a
@@ -52,7 +52,7 @@ else
   (( inserts )) && wait_while hold-inserts
   (( saves )) && wait_while hold-writes
 fi
-if [[ -e "$cfg/crash" ]]; then rm -f "$cfg/crash"; exit 3; fi
+if [[ -e "$cfg/crash" ]]; then rm -f "$cfg/crash"; kill -KILL $$; fi
 if [[ -e "$cfg/first-fails" ]]; then rm -f "$cfg/first-fails"; busy; fi
 if [[ "$kinds" == sync ]]; then
   [[ -e "$cfg/fail-sync" ]] && busy

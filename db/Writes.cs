@@ -33,13 +33,26 @@ internal static class Writes
         new("alarm.save", Who.Service, AlarmSave),
         new("alarm.delete", Who.Service, AlarmDelete));
 
+    /// <summary>The columns of an alarm record in protocol 1, as data/Db.js alarmCells sends them.</summary>
+    private static readonly HashSet<string> AlarmColumns = new(StringComparer.Ordinal)
+    {
+        "hour", "minute", "label", "days", "enabled", "snooze_minutes", "ring_minutes",
+        "snoozed_until_ms", "last_fired_at_ms", "armed_at_ms", "auto_snoozes",
+    };
+
     public static Op? Find(string name) => Table.GetValueOrDefault(name);
 
-    /// <summary>Runs one write and writes its result object. A refused write is its own result and does not stop the next.</summary>
-    public static void Run(Conn db, WriteReq w, Utf8JsonWriter json)
+    /// <summary>
+    /// Runs one write and writes its result object; returns why it failed, or
+    /// null. A failed write is its own result and does not stop the next, and
+    /// an exception that is not an OpException is that write's `internal`:
+    /// the writes before it are committed and their results must go out.
+    /// </summary>
+    public static OpException? Run(Conn db, WriteReq w, Utf8JsonWriter json)
     {
         json.WriteStartObject();
         json.WriteNumber("id", w.Id);
+        OpException? failure = null;
         try
         {
             if (w.By != w.Op.Allowed)
@@ -59,10 +72,28 @@ internal static class Writes
         }
         catch (OpException e)
         {
-            e.WriteFields(json);
+            failure = e;
+        }
+#pragma warning disable CA1031 // A bug in one op must not take back the results of the writes committed before it.
+        catch (Exception e)
+#pragma warning restore CA1031
+        {
+            failure = new OpException(ErrorCode.Internal, e.GetType().Name);
         }
 
+        failure?.WriteFields(json);
         json.WriteEndObject();
+        return failure;
+    }
+
+    /// <summary>The result of a write not run, failed with `why`, which it returns.</summary>
+    public static OpException Refuse(WriteReq w, OpException why, Utf8JsonWriter json)
+    {
+        json.WriteStartObject();
+        json.WriteNumber("id", w.Id);
+        why.WriteFields(json);
+        json.WriteEndObject();
+        return why;
     }
 
     private static Dictionary<string, Op> Index(params ReadOnlySpan<Op> ops)
@@ -303,11 +334,25 @@ internal static class Writes
         return Value.Of(name);
     }
 
-    /// <summary>The record is absolute (ADR-0015): every writable column, so sending it twice leaves the same row.</summary>
+    /// <summary>
+    /// The record is absolute (ADR-0015): every column of the protocol, so
+    /// sending it twice leaves the same row. The protocol fixes the columns,
+    /// not the file: one the file has beyond these, from a later schema or
+    /// the user, keeps its DEFAULT on insert and its value on save.
+    /// </summary>
     private static Conn.Row Alarm(Conn db, Args a)
     {
-        Conn.Row row = db.RowOf(RowTable.Alarms, a.Obj("alarm").Cells());
-        return row.Cells.Count == row.ColumnCount ? row : throw new OpException(ErrorCode.BadRequest, "an alarm names every column");
+        List<(string Name, Value Value)> cells = a.Obj("alarm").Cells();
+        foreach ((string name, Value _) in cells)
+        {
+            if (!AlarmColumns.Contains(name))
+            {
+                throw new OpException(ErrorCode.BadRequest, "unknown or repeated column");
+            }
+        }
+
+        Conn.Row row = db.RowOf(RowTable.Alarms, cells);
+        return row.Cells.Count == AlarmColumns.Count ? row : throw new OpException(ErrorCode.BadRequest, "an alarm names every column");
     }
 
     private static Value AlarmInsert(Conn db, Args a, long at)

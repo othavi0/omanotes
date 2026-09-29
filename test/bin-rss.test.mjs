@@ -9,7 +9,7 @@ import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { setTimeout as sleep } from "node:timers/promises"
-import { BIN, PROTOCOL, T0, call, newDb } from "./lib/bin-fixture.mjs"
+import { BIN, PROTOCOL, T0, answerOf, call, newDb } from "./lib/bin-fixture.mjs"
 
 const LIMIT_KB = 8 * 1024
 
@@ -41,7 +41,7 @@ async function peakOf(dbPath, request) {
   child.stdout.resume()
   const code = await exited
   assert.equal(code, 0)
-  return { peak, answer: JSON.parse(Buffer.concat(chunks).toString("utf8")) }
+  return { peak, answer: answerOf({ status: code, stdout: Buffer.concat(chunks).toString("utf8"), stderr: "" }) }
 }
 
 function item(i) {

@@ -170,6 +170,21 @@ test("a search matches the title or the body and ignores ASCII case", (t) => {
   assert.deepEqual(searchIds(path, "note", "domain"), [])
 })
 
+test("an unchanged answer still carries each view's matches, so a search costs the ids and not the rows", (t) => {
+  const path = seeded(t)
+  const stamp = sync(path).stamp
+  const snap = sync(path, stamp, [{ key: "a", filter: "all", query: "domain" }, { key: "b", filter: "note", query: "" }])
+  assert.deepEqual(snap, { stamp, unchanged: true, matches: { a: [2], b: [1, 4] } })
+})
+
+test("a search SQLite refuses fails its own view only, and the rest of the snapshot goes out", (t) => {
+  const path = seeded(t)
+  // SQLite refuses a LIKE pattern over 50 000 bytes.
+  const snap = sync(path, -1, [{ key: "long", filter: "all", query: "x".repeat(60000) }, { key: "ok", filter: "all", query: "domain" }])
+  assert.deepEqual(snap.matches, { long: { err: "sqlite", detail: "LIKE or GLOB pattern too complex" }, ok: [2] })
+  assert.equal(snap.items.length, 5)
+})
+
 // Every spelling of a word finds the item, whatever its case and accents, and
 // an accent typed as a separate combining mark counts the same.
 function assertAccentedSearch(path, titleId, bodyId) {
