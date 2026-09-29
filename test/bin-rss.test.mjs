@@ -3,7 +3,7 @@
 // stacks) does not grow with the database. VmHWM, the peak of the whole
 // process, also counts the pages of libc, libsqlite3 and libm, which the
 // system shares and a package update moves: its growth from 1 000 to 2 000
-// items measured from -276 to +356 kB over 20 runs, so it is reported and not
+// items moved from -276 to +356 kB between runs, so it is reported and not
 // gated.
 //
 // The child's stdout is a FIFO filled before the spawn, so the child blocks on
