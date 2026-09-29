@@ -1,0 +1,61 @@
+{
+  "version": 5,
+  "firstMigration": ["CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL, body TEXT, status INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)","CREATE INDEX IF NOT EXISTS idx_items_sort ON items(status, updated_at DESC)","CREATE INDEX IF NOT EXISTS idx_items_type_status ON items(type, status)","CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL, action TEXT NOT NULL, ts INTEGER NOT NULL)","CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts DESC)"],
+  "newFile": {
+    "master": [
+      {"type":"index","name":"idx_history_ts","tbl_name":"history","sql":"CREATE INDEX idx_history_ts ON history(ts DESC)"},
+      {"type":"index","name":"idx_items_order","tbl_name":"items","sql":"CREATE INDEX idx_items_order ON items(status, position)"},
+      {"type":"index","name":"idx_items_type_status","tbl_name":"items","sql":"CREATE INDEX idx_items_type_status ON items(type, status)"},
+      {"type":"table","name":"alarms","tbl_name":"alarms","sql":"CREATE TABLE alarms (id INTEGER PRIMARY KEY AUTOINCREMENT, hour INTEGER NOT NULL CHECK (hour BETWEEN 0 AND 23), minute INTEGER NOT NULL CHECK (minute BETWEEN 0 AND 59), label TEXT NOT NULL DEFAULT '' CHECK (length(label) <= 40), days INTEGER NOT NULL DEFAULT 0 CHECK (days BETWEEN 0 AND 127), enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)), snooze_minutes INTEGER NOT NULL DEFAULT 9 CHECK (snooze_minutes BETWEEN 1 AND 180), ring_minutes INTEGER NOT NULL DEFAULT 5 CHECK (ring_minutes BETWEEN 1 AND 60), snoozed_until_ms INTEGER NOT NULL DEFAULT 0, last_fired_at_ms INTEGER NOT NULL DEFAULT 0, armed_at_ms INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000), auto_snoozes INTEGER NOT NULL DEFAULT 0 CHECK (auto_snoozes BETWEEN 0 AND 99))"},
+      {"type":"table","name":"history","tbl_name":"history","sql":"CREATE TABLE history (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL, action TEXT NOT NULL, ts INTEGER NOT NULL)"},
+      {"type":"table","name":"items","tbl_name":"items","sql":"CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL, body TEXT, status INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, search_title TEXT, search_body TEXT, position INTEGER NOT NULL DEFAULT 0)"},
+      {"type":"table","name":"search_map","tbl_name":"search_map","sql":"CREATE TABLE search_map (ch TEXT PRIMARY KEY, folded TEXT NOT NULL) WITHOUT ROWID"},
+      {"type":"table","name":"settings","tbl_name":"settings","sql":"CREATE TABLE settings (id INTEGER PRIMARY KEY CHECK (id = 1), sound_on INTEGER NOT NULL DEFAULT 1 CHECK (sound_on IN (0, 1)), sound TEXT NOT NULL DEFAULT 'alarm-clock-elapsed', sound_file TEXT NOT NULL DEFAULT '', volume INTEGER NOT NULL DEFAULT 100 CHECK (volume BETWEEN 0 AND 100), snooze_minutes INTEGER NOT NULL DEFAULT 9 CHECK (snooze_minutes BETWEEN 1 AND 180), ring_minutes INTEGER NOT NULL DEFAULT 5 CHECK (ring_minutes BETWEEN 1 AND 60), history_days INTEGER NOT NULL DEFAULT 0 CHECK (history_days IN (0, 30, 90)), check_updates INTEGER NOT NULL DEFAULT 1 CHECK (check_updates IN (0, 1)))"},
+      {"type":"table","name":"sqlite_sequence","tbl_name":"sqlite_sequence","sql":"CREATE TABLE sqlite_sequence(name,seq)"},
+      {"type":"trigger","name":"items_search_insert","tbl_name":"items","sql":"CREATE TRIGGER items_search_insert AFTER INSERT ON items WHEN NEW.search_title IS NULL BEGIN UPDATE items SET search_title = (WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(NEW.title)) SELECT group_concat(coalesce(search_map.folded, substr(NEW.title, n.i, 1)), '' ORDER BY n.i) FROM n LEFT JOIN search_map ON search_map.ch = substr(NEW.title, n.i, 1)), search_body = CASE WHEN NEW.body IS NULL THEN NULL ELSE (WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(NEW.body)) SELECT group_concat(coalesce(search_map.folded, substr(NEW.body, n.i, 1)), '' ORDER BY n.i) FROM n LEFT JOIN search_map ON search_map.ch = substr(NEW.body, n.i, 1)) END WHERE id = NEW.id; END"},
+      {"type":"trigger","name":"items_search_update","tbl_name":"items","sql":"CREATE TRIGGER items_search_update AFTER UPDATE OF title, body ON items WHEN NEW.search_title IS OLD.search_title AND NEW.search_body IS OLD.search_body BEGIN UPDATE items SET search_title = (WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(NEW.title)) SELECT group_concat(coalesce(search_map.folded, substr(NEW.title, n.i, 1)), '' ORDER BY n.i) FROM n LEFT JOIN search_map ON search_map.ch = substr(NEW.title, n.i, 1)), search_body = CASE WHEN NEW.body IS NULL THEN NULL ELSE (WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(NEW.body)) SELECT group_concat(coalesce(search_map.folded, substr(NEW.body, n.i, 1)), '' ORDER BY n.i) FROM n LEFT JOIN search_map ON search_map.ch = substr(NEW.body, n.i, 1)) END WHERE id = NEW.id; END"}
+    ],
+    "settings": [
+      {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+    ],
+    "userVersion": 5
+  },
+  "v0WithRows": {
+    "master": [
+      {"type":"index","name":"idx_history_ts","tbl_name":"history","sql":"CREATE INDEX idx_history_ts ON history(ts DESC)"},
+      {"type":"index","name":"idx_items_order","tbl_name":"items","sql":"CREATE INDEX idx_items_order ON items(status, position)"},
+      {"type":"index","name":"idx_items_type_status","tbl_name":"items","sql":"CREATE INDEX idx_items_type_status ON items(type, status)"},
+      {"type":"table","name":"alarms","tbl_name":"alarms","sql":"CREATE TABLE alarms (id INTEGER PRIMARY KEY AUTOINCREMENT, hour INTEGER NOT NULL CHECK (hour BETWEEN 0 AND 23), minute INTEGER NOT NULL CHECK (minute BETWEEN 0 AND 59), label TEXT NOT NULL DEFAULT '' CHECK (length(label) <= 40), days INTEGER NOT NULL DEFAULT 0 CHECK (days BETWEEN 0 AND 127), enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)), snooze_minutes INTEGER NOT NULL DEFAULT 9 CHECK (snooze_minutes BETWEEN 1 AND 180), ring_minutes INTEGER NOT NULL DEFAULT 5 CHECK (ring_minutes BETWEEN 1 AND 60), snoozed_until_ms INTEGER NOT NULL DEFAULT 0, last_fired_at_ms INTEGER NOT NULL DEFAULT 0, armed_at_ms INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000), auto_snoozes INTEGER NOT NULL DEFAULT 0 CHECK (auto_snoozes BETWEEN 0 AND 99))"},
+      {"type":"table","name":"history","tbl_name":"history","sql":"CREATE TABLE history (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL, action TEXT NOT NULL, ts INTEGER NOT NULL)"},
+      {"type":"table","name":"items","tbl_name":"items","sql":"CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL, body TEXT, status INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, search_title TEXT, search_body TEXT, position INTEGER NOT NULL DEFAULT 0)"},
+      {"type":"table","name":"search_map","tbl_name":"search_map","sql":"CREATE TABLE search_map (ch TEXT PRIMARY KEY, folded TEXT NOT NULL) WITHOUT ROWID"},
+      {"type":"table","name":"settings","tbl_name":"settings","sql":"CREATE TABLE settings (id INTEGER PRIMARY KEY CHECK (id = 1), sound_on INTEGER NOT NULL DEFAULT 1 CHECK (sound_on IN (0, 1)), sound TEXT NOT NULL DEFAULT 'alarm-clock-elapsed', sound_file TEXT NOT NULL DEFAULT '', volume INTEGER NOT NULL DEFAULT 100 CHECK (volume BETWEEN 0 AND 100), snooze_minutes INTEGER NOT NULL DEFAULT 9 CHECK (snooze_minutes BETWEEN 1 AND 180), ring_minutes INTEGER NOT NULL DEFAULT 5 CHECK (ring_minutes BETWEEN 1 AND 60), history_days INTEGER NOT NULL DEFAULT 0 CHECK (history_days IN (0, 30, 90)), check_updates INTEGER NOT NULL DEFAULT 1 CHECK (check_updates IN (0, 1)))"},
+      {"type":"table","name":"sqlite_sequence","tbl_name":"sqlite_sequence","sql":"CREATE TABLE sqlite_sequence(name,seq)"},
+      {"type":"trigger","name":"items_search_insert","tbl_name":"items","sql":"CREATE TRIGGER items_search_insert AFTER INSERT ON items WHEN NEW.search_title IS NULL BEGIN UPDATE items SET search_title = (WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(NEW.title)) SELECT group_concat(coalesce(search_map.folded, substr(NEW.title, n.i, 1)), '' ORDER BY n.i) FROM n LEFT JOIN search_map ON search_map.ch = substr(NEW.title, n.i, 1)), search_body = CASE WHEN NEW.body IS NULL THEN NULL ELSE (WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(NEW.body)) SELECT group_concat(coalesce(search_map.folded, substr(NEW.body, n.i, 1)), '' ORDER BY n.i) FROM n LEFT JOIN search_map ON search_map.ch = substr(NEW.body, n.i, 1)) END WHERE id = NEW.id; END"},
+      {"type":"trigger","name":"items_search_update","tbl_name":"items","sql":"CREATE TRIGGER items_search_update AFTER UPDATE OF title, body ON items WHEN NEW.search_title IS OLD.search_title AND NEW.search_body IS OLD.search_body BEGIN UPDATE items SET search_title = (WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(NEW.title)) SELECT group_concat(coalesce(search_map.folded, substr(NEW.title, n.i, 1)), '' ORDER BY n.i) FROM n LEFT JOIN search_map ON search_map.ch = substr(NEW.title, n.i, 1)), search_body = CASE WHEN NEW.body IS NULL THEN NULL ELSE (WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(NEW.body)) SELECT group_concat(coalesce(search_map.folded, substr(NEW.body, n.i, 1)), '' ORDER BY n.i) FROM n LEFT JOIN search_map ON search_map.ch = substr(NEW.body, n.i, 1)) END WHERE id = NEW.id; END"}
+    ],
+    "tables": {
+      "items": [
+        {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+        {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+        {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+        {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+        {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+      ],
+      "history": [
+        {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+        {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+        {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+      ],
+      "alarms": [],
+      "settings": [
+        {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+      ],
+      "sqlite_sequence": [
+        {"name":"history","seq":3},
+        {"name":"items","seq":5}
+      ]
+    },
+    "userVersion": 5
+  }
+}

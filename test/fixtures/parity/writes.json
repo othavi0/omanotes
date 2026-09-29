@@ -1,0 +1,1517 @@
+{
+  "now": 1708640000,
+  "items": {
+    "start": {
+      "items": [
+        {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+        {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+        {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+        {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+        {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+      ],
+      "history": [
+        {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+        {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+        {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+      ],
+      "alarms": [],
+      "settings": [
+        {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+      ],
+      "sequence": [
+        {"name":"history","seq":3},
+        {"name":"items","seq":5}
+      ]
+    },
+    "steps": [
+      {
+        "label": "add a note with a body",
+        "result": {
+          "id": 6
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":4},
+            {"name":"items","seq":6}
+          ]
+        }
+      },
+      {
+        "label": "add a todo without a body",
+        "result": {
+          "id": 7
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":5},
+            {"name":"items","seq":7}
+          ]
+        }
+      },
+      {
+        "label": "add with quotes, a backslash and wildcards",
+        "result": {
+          "id": 8
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":-2}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":6},
+            {"name":"items","seq":8}
+          ]
+        }
+      },
+      {
+        "label": "add with a body left out",
+        "result": {
+          "id": 9
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":-2},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":-3}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":7},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "complete a todo",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":0},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":-2},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":-3}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":8},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "complete it again",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":0},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":-2},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":-3}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":8},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "reopen a read note",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":0},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":-4},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":-2},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":-3}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":9},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "edit",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas v2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":0},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":-4},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":-2},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":-3}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":10},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "edit only the case (the trigger folds again)",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":0},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":-4},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":-2},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":-3}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":11},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "edit to an empty body",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":0},
+            {"id":3,"type":"todo","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":-4},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":-2},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":-3}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":12},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "convert",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":0},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":-4},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":-2},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":-3}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":13},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "move after, in the second block",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":-4},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":2},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":0},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":-1},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":-2},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":-3}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":13},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "move before, in the first block",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":7},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":6},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":1},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":2},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":5},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":4},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":3},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":2}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":13},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "move across blocks",
+        "result": {
+          "found": false
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":7},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":6},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":1},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":2},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":5},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":4},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":3},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":2}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":13},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "move onto itself",
+        "result": {
+          "found": false
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":7},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":6},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":1},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":2},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":5},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":4},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":3},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":2}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":13},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "delete",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":7},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":6},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":5},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":4},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":3},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":2}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000},
+            {"id":14,"type":"todo","title":"Backup scratchpad.db","action":"deleted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":14},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "complete a missing id",
+        "result": {
+          "found": false
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":7},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":6},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":5},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":4},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":3},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":2}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000},
+            {"id":14,"type":"todo","title":"Backup scratchpad.db","action":"deleted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":14},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "edit a missing id",
+        "result": {
+          "found": false
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":7},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":6},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":5},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":4},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":3},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":2}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000},
+            {"id":14,"type":"todo","title":"Backup scratchpad.db","action":"deleted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":14},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "convert a missing id",
+        "result": {
+          "found": false
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":7},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":6},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":5},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":4},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":3},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":2}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000},
+            {"id":14,"type":"todo","title":"Backup scratchpad.db","action":"deleted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":14},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "delete a missing id",
+        "result": {
+          "found": false
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":7},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":6},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":5},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":4},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":3},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":2}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000},
+            {"id":14,"type":"todo","title":"Backup scratchpad.db","action":"deleted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":14},
+            {"name":"items","seq":9}
+          ]
+        }
+      },
+      {
+        "label": "move to a missing anchor",
+        "result": {
+          "found": false
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"IDEAS V2","body":"new body","status":0,"created_at":1699996400,"updated_at":1700000000,"search_title":"ideas v2","search_body":"new body","position":7},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":1,"created_at":1699999280,"updated_at":1700000000,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"note","title":"Reply","body":null,"status":0,"created_at":1699989200,"updated_at":1700000000,"search_title":"reply","search_body":null,"position":6},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":0,"created_at":1699910000,"updated_at":1700000000,"search_title":"buy coffee","search_body":"medium grind","position":1},
+            {"id":6,"type":"note","title":"Ação O'Brien","body":"line1\nline2","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"acao o'brien","search_body":"line1\nline2","position":5},
+            {"id":7,"type":"todo","title":"Plain","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"plain","search_body":null,"position":4},
+            {"id":8,"type":"note","title":"It's \"x\" \\ %_","body":"b'","status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"it's \"x\" \\ %_","search_body":"b'","position":3},
+            {"id":9,"type":"note","title":"No body","body":null,"status":0,"created_at":1700000000,"updated_at":1700000000,"search_title":"no body","search_body":null,"position":2}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000},
+            {"id":4,"type":"note","title":"Ação O'Brien","action":"added","ts":1700000000},
+            {"id":5,"type":"todo","title":"Plain","action":"added","ts":1700000000},
+            {"id":6,"type":"note","title":"It's \"x\" \\ %_","action":"added","ts":1700000000},
+            {"id":7,"type":"note","title":"No body","action":"added","ts":1700000000},
+            {"id":8,"type":"todo","title":"Renew the domain","action":"completed","ts":1700000000},
+            {"id":9,"type":"note","title":"Buy coffee","action":"reopened","ts":1700000000},
+            {"id":10,"type":"note","title":"Ideas v2","action":"edited","ts":1700000000},
+            {"id":11,"type":"note","title":"IDEAS V2","action":"edited","ts":1700000000},
+            {"id":12,"type":"todo","title":"Reply","action":"edited","ts":1700000000},
+            {"id":13,"type":"note","title":"Reply","action":"converted","ts":1700000000},
+            {"id":14,"type":"todo","title":"Backup scratchpad.db","action":"deleted","ts":1700000000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":14},
+            {"name":"items","seq":9}
+          ]
+        }
+      }
+    ]
+  },
+  "historyAndSettings": {
+    "steps": [
+      {
+        "label": "delete one history entry",
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "delete a missing history entry",
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+          ],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "prune 30 days",
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "one setting",
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":55,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "several settings, a quote in the text",
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":0,"sound":"x'y","sound_file":"/tmp/a b.oga","volume":55,"snooze_minutes":12,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "Keep 90 days",
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":0,"sound":"x'y","sound_file":"/tmp/a b.oga","volume":55,"snooze_minutes":12,"ring_minutes":5,"history_days":90,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "clear history",
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [],
+          "alarms": [],
+          "settings": [
+            {"id":1,"sound_on":0,"sound":"x'y","sound_file":"/tmp/a b.oga","volume":55,"snooze_minutes":12,"ring_minutes":5,"history_days":90,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      }
+    ]
+  },
+  "shorterKeep": {
+    "tables": {
+      "items": [
+        {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+        {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+        {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+        {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+        {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+      ],
+      "history": [
+        {"id":4,"type":"note","title":"recent","action":"added","ts":1708553600}
+      ],
+      "alarms": [],
+      "settings": [
+        {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":30,"check_updates":1}
+      ],
+      "sequence": [
+        {"name":"history","seq":5},
+        {"name":"items","seq":5}
+      ]
+    }
+  },
+  "settingsStart": {
+    "tables": {
+      "items": [
+        {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+        {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+        {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+        {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+        {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+      ],
+      "history": [
+        {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+        {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+        {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+      ],
+      "alarms": [],
+      "settings": [
+        {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+      ],
+      "sequence": [
+        {"name":"history","seq":3},
+        {"name":"items","seq":5}
+      ]
+    }
+  },
+  "alarms": {
+    "steps": [
+      {
+        "label": "insert",
+        "result": {
+          "id": 1
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+          ],
+          "alarms": [
+            {"id":1,"hour":7,"minute":30,"label":"Wake","days":14,"enabled":1,"snooze_minutes":9,"ring_minutes":5,"snoozed_until_ms":0,"last_fired_at_ms":0,"armed_at_ms":1700000000000,"auto_snoozes":0}
+          ],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"alarms","seq":1},
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "save",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+          ],
+          "alarms": [
+            {"id":1,"hour":8,"minute":30,"label":"Café","days":65,"enabled":0,"snooze_minutes":9,"ring_minutes":5,"snoozed_until_ms":1700000600000,"last_fired_at_ms":0,"armed_at_ms":1700000000000,"auto_snoozes":0}
+          ],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"alarms","seq":1},
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "save a missing alarm",
+        "result": {
+          "found": false
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+          ],
+          "alarms": [
+            {"id":1,"hour":8,"minute":30,"label":"Café","days":65,"enabled":0,"snooze_minutes":9,"ring_minutes":5,"snoozed_until_ms":1700000600000,"last_fired_at_ms":0,"armed_at_ms":1700000000000,"auto_snoozes":0}
+          ],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"alarms","seq":1},
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "insert a second",
+        "result": {
+          "id": 2
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+          ],
+          "alarms": [
+            {"id":1,"hour":8,"minute":30,"label":"Café","days":65,"enabled":0,"snooze_minutes":9,"ring_minutes":5,"snoozed_until_ms":1700000600000,"last_fired_at_ms":0,"armed_at_ms":1700000000000,"auto_snoozes":0},
+            {"id":2,"hour":7,"minute":45,"label":"Wake","days":14,"enabled":1,"snooze_minutes":9,"ring_minutes":5,"snoozed_until_ms":0,"last_fired_at_ms":0,"armed_at_ms":1700000000000,"auto_snoozes":0}
+          ],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"alarms","seq":2},
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "delete",
+        "result": {
+          "found": true
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+          ],
+          "alarms": [
+            {"id":2,"hour":7,"minute":45,"label":"Wake","days":14,"enabled":1,"snooze_minutes":9,"ring_minutes":5,"snoozed_until_ms":0,"last_fired_at_ms":0,"armed_at_ms":1700000000000,"auto_snoozes":0}
+          ],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"alarms","seq":2},
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      },
+      {
+        "label": "delete a missing alarm",
+        "result": {
+          "found": false
+        },
+        "tables": {
+          "items": [
+            {"id":1,"type":"note","title":"Ideas for the panel","body":"Tabs the same width","status":0,"created_at":1699996400,"updated_at":1699996400,"search_title":"ideas for the panel","search_body":"tabs the same width","position":2},
+            {"id":2,"type":"todo","title":"Renew the domain","body":"Due day 30","status":0,"created_at":1699999280,"updated_at":1699999280,"search_title":"renew the domain","search_body":"due day 30","position":1},
+            {"id":3,"type":"todo","title":"Reply to upstream PR review","body":null,"status":0,"created_at":1699989200,"updated_at":1699989200,"search_title":"reply to upstream pr review","search_body":null,"position":3},
+            {"id":4,"type":"note","title":"Buy coffee","body":"Medium grind","status":1,"created_at":1699910000,"updated_at":1699910000,"search_title":"buy coffee","search_body":"medium grind","position":2},
+            {"id":5,"type":"todo","title":"Backup scratchpad.db","body":null,"status":1,"created_at":1699827200,"updated_at":1699999940,"search_title":"backup scratchpad.db","search_body":null,"position":1}
+          ],
+          "history": [
+            {"id":1,"type":"todo","title":"Renew the domain","action":"added","ts":1699999280},
+            {"id":2,"type":"note","title":"Buy coffee","action":"completed","ts":1699910000},
+            {"id":3,"type":"todo","title":"Old errand","action":"deleted","ts":1699900000}
+          ],
+          "alarms": [
+            {"id":2,"hour":7,"minute":45,"label":"Wake","days":14,"enabled":1,"snooze_minutes":9,"ring_minutes":5,"snoozed_until_ms":0,"last_fired_at_ms":0,"armed_at_ms":1700000000000,"auto_snoozes":0}
+          ],
+          "settings": [
+            {"id":1,"sound_on":1,"sound":"alarm-clock-elapsed","sound_file":"","volume":100,"snooze_minutes":9,"ring_minutes":5,"history_days":0,"check_updates":1}
+          ],
+          "sequence": [
+            {"name":"alarms","seq":2},
+            {"name":"history","seq":3},
+            {"name":"items","seq":5}
+          ]
+        }
+      }
+    ]
+  },
+  "search": {
+    "views": [
+      {
+        "filter": "all",
+        "query": "cafe",
+        "ids": [6]
+      },
+      {
+        "filter": "note",
+        "query": "cafe",
+        "ids": [6]
+      },
+      {
+        "filter": "todo",
+        "query": "cafe",
+        "ids": []
+      },
+      {
+        "filter": "bogus",
+        "query": "cafe",
+        "ids": [6]
+      },
+      {
+        "filter": "all",
+        "query": "CAFÉ",
+        "ids": [6]
+      },
+      {
+        "filter": "note",
+        "query": "CAFÉ",
+        "ids": [6]
+      },
+      {
+        "filter": "todo",
+        "query": "CAFÉ",
+        "ids": []
+      },
+      {
+        "filter": "bogus",
+        "query": "CAFÉ",
+        "ids": [6]
+      },
+      {
+        "filter": "all",
+        "query": "acao",
+        "ids": [6]
+      },
+      {
+        "filter": "note",
+        "query": "acao",
+        "ids": [6]
+      },
+      {
+        "filter": "todo",
+        "query": "acao",
+        "ids": []
+      },
+      {
+        "filter": "bogus",
+        "query": "acao",
+        "ids": [6]
+      },
+      {
+        "filter": "all",
+        "query": "100%",
+        "ids": [7]
+      },
+      {
+        "filter": "note",
+        "query": "100%",
+        "ids": []
+      },
+      {
+        "filter": "todo",
+        "query": "100%",
+        "ids": [7]
+      },
+      {
+        "filter": "bogus",
+        "query": "100%",
+        "ids": [7]
+      },
+      {
+        "filter": "all",
+        "query": "a_b",
+        "ids": [7]
+      },
+      {
+        "filter": "note",
+        "query": "a_b",
+        "ids": []
+      },
+      {
+        "filter": "todo",
+        "query": "a_b",
+        "ids": [7]
+      },
+      {
+        "filter": "bogus",
+        "query": "a_b",
+        "ids": [7]
+      },
+      {
+        "filter": "all",
+        "query": "nandu",
+        "ids": [7]
+      },
+      {
+        "filter": "note",
+        "query": "nandu",
+        "ids": []
+      },
+      {
+        "filter": "todo",
+        "query": "nandu",
+        "ids": [7]
+      },
+      {
+        "filter": "bogus",
+        "query": "nandu",
+        "ids": [7]
+      },
+      {
+        "filter": "all",
+        "query": "straße",
+        "ids": [8]
+      },
+      {
+        "filter": "note",
+        "query": "straße",
+        "ids": [8]
+      },
+      {
+        "filter": "todo",
+        "query": "straße",
+        "ids": []
+      },
+      {
+        "filter": "bogus",
+        "query": "straße",
+        "ids": [8]
+      },
+      {
+        "filter": "all",
+        "query": "ω",
+        "ids": [8]
+      },
+      {
+        "filter": "note",
+        "query": "ω",
+        "ids": [8]
+      },
+      {
+        "filter": "todo",
+        "query": "ω",
+        "ids": []
+      },
+      {
+        "filter": "bogus",
+        "query": "ω",
+        "ids": [8]
+      },
+      {
+        "filter": "all",
+        "query": "\\",
+        "ids": [9]
+      },
+      {
+        "filter": "note",
+        "query": "\\",
+        "ids": []
+      },
+      {
+        "filter": "todo",
+        "query": "\\",
+        "ids": [9]
+      },
+      {
+        "filter": "bogus",
+        "query": "\\",
+        "ids": [9]
+      },
+      {
+        "filter": "all",
+        "query": "_",
+        "ids": [7]
+      },
+      {
+        "filter": "note",
+        "query": "_",
+        "ids": []
+      },
+      {
+        "filter": "todo",
+        "query": "_",
+        "ids": [7]
+      },
+      {
+        "filter": "bogus",
+        "query": "_",
+        "ids": [7]
+      },
+      {
+        "filter": "all",
+        "query": "%",
+        "ids": [7]
+      },
+      {
+        "filter": "note",
+        "query": "%",
+        "ids": []
+      },
+      {
+        "filter": "todo",
+        "query": "%",
+        "ids": [7]
+      },
+      {
+        "filter": "bogus",
+        "query": "%",
+        "ids": [7]
+      },
+      {
+        "filter": "all",
+        "query": "zzz",
+        "ids": []
+      },
+      {
+        "filter": "note",
+        "query": "zzz",
+        "ids": []
+      },
+      {
+        "filter": "todo",
+        "query": "zzz",
+        "ids": []
+      },
+      {
+        "filter": "bogus",
+        "query": "zzz",
+        "ids": []
+      },
+      {
+        "filter": "all",
+        "query": "e",
+        "ids": [6,2,1,3,8,4]
+      },
+      {
+        "filter": "note",
+        "query": "e",
+        "ids": [6,1,8,4]
+      },
+      {
+        "filter": "todo",
+        "query": "e",
+        "ids": [2,3]
+      },
+      {
+        "filter": "bogus",
+        "query": "e",
+        "ids": [6,2,1,3,8,4]
+      }
+    ],
+    "empty": {
+      "all": [6,2,7,1,9,3,8,5,4],
+      "todo": [2,7,9,3,5]
+    }
+  }
+}
