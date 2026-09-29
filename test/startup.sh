@@ -347,6 +347,26 @@ ipc setSpawnLimit 30000 > /dev/null
 sleep 1.5
 replies "and no omanotes-db process is left behind" "$(pgrep -af "$probe" || true)" ""
 
+# A snapshot over 64 MiB fails only after the binary wrote 64 MiB, so a
+# retry costs the shell 64 MiB again: the Store does not retry it.
+sleep 1
+: > "$cfg_dir/db.log"
+touch "$cfg_dir/too-large"
+ipc loadAll > /dev/null
+sleep 3
+replies "a snapshot over 64 MiB fails once and is not asked again" "$(requests)" "sync;"
+replies "and the read failure is in the journal" \
+  "$(grep -c "omanotes db: read failed: the notes are over 64 MiB, too large to read" "$cfg_dir/qs.log" || true)" "1"
+rm -f "$cfg_dir/too-large"
+sqlite3 "$file" "INSERT INTO items (type, title, status, created_at, updated_at) VALUES ('note', 'SHRUNK', 0, 1, 1)"
+seen=""
+for _ in $(seq 30); do
+  seen="$(ipc seen SHRUNK)"
+  [[ "$seen" == "$monitors" ]] && break
+  sleep 0.1
+done
+replies "the next change of the file reads again, and a file that fits shows" "$seen" "$monitors"
+
 # A read that ran before a write lands after the write's own snapshot. The
 # watcher waits 5 s, so nothing else decides for it. In rollback-journal mode
 # the stamp orders the two; in WAL the stamp is -1 and the write that ended
@@ -373,6 +393,34 @@ for mode in delete wal; do
   sleep 1
   replies "$mode: the read held from before the write lands after it and is dropped" "$(ipc seen "FRESH-$mode")" "$monitors"
 done
+
+# In WAL the dropped read can be the newer one: it ran after a change made
+# outside that the write's snapshot does not hold. The watcher waits 30 s, so
+# only the Store can show that change in time.
+ipc setWatcherDelay 30000 > /dev/null
+sleep 0.5
+: > "$cfg_dir/db.log"
+touch "$cfg_dir/hold-sync"
+ipc loadAll > /dev/null
+for _ in $(seq 30); do grep -q '^[0-9]* sync ' "$cfg_dir/db.log" && break; sleep 0.1; done
+replies "wal: a read is sent and held before it runs" "$(grep -c '^[0-9]* sync ' "$cfg_dir/db.log" || true)" "1"
+ipc addNote "WRITTEN-wal" > /dev/null
+seen=""
+for _ in $(seq 30); do
+  seen="$(ipc seen "WRITTEN-wal")"
+  [[ "$seen" == "$monitors" ]] && break
+  sleep 0.1
+done
+replies "wal: a write lands with its own snapshot" "$seen" "$monitors"
+sqlite3 "$file" "INSERT INTO items (type, title, status, created_at, updated_at) VALUES ('note', 'OUTSIDE-wal', 0, 1, 1)"
+rm -f "$cfg_dir/hold-sync"
+seen=""
+for _ in $(seq 20); do
+  seen="$(ipc seen "OUTSIDE-wal")"
+  [[ "$seen" == "$monitors" ]] && break
+  sleep 0.1
+done
+replies "wal: the change made outside, which only the dropped read held, shows" "$seen" "$monitors"
 sqlite3 "$file" "PRAGMA journal_mode = delete" > /dev/null
 ipc setWatcherDelay 80 > /dev/null
 
