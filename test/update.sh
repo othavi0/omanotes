@@ -423,6 +423,14 @@ refused "an update whose omanotes-db refuses the protocol of the installed data/
   "omanotes-db does not speak protocol 0 of the installed data/Db.js"
 replies "and does not restart the shell" "$(wc -l < "$tmp/order.log")" "0"
 
+previous=$(( $(sed -n 's/^var PROTOCOL = //p' "$worktree/data/Db.js") - 1 ))
+install_db_js "feat: shell no protocolo anterior" sed -i "s/^var PROTOCOL = .*/var PROTOCOL = $previous/" "$tmp/dev/data/Db.js"
+publish_broken "feat: versão nova sobre o shell no protocolo anterior" true
+code=0
+run "$plugin" apply || code=$?
+replies "an update over an installed data/Db.js at the protocol before, Min = Current - 1, ends updated" \
+  "$code|$(field phase)|$(field error)|$(head_of "$plugin")" "0|updated||$(head_of "$tmp/dev")"
+
 install_db_js "feat: Db.js de antes do binário" sed -i '/^var PROTOCOL = /d' "$tmp/dev/data/Db.js"
 publish_broken "feat: versão nova sobre um Db.js sem PROTOCOL" true
 code=0

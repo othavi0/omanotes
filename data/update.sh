@@ -189,7 +189,7 @@ validate() {
     detail="$(printf '%s\n' "$out" | tail -n 1)"
     detail="${detail:-omarchy-plugin-validate failed}"
   else
-    smoke_db "$work"
+    smoke_db "$work" "$dir"
   fi
   rm -rf -- "$work"
   work=""
@@ -216,20 +216,29 @@ elf_machine() {
   esac
 }
 
+# The PROTOCOL a data/Db.js declares, or nothing. Loose on purpose: an
+# installed update.sh reads the Db.js of every later version, so a
+# reformatted line must not lock updates out.
+protocol_of() {
+  sed -nE 's/^[[:space:]]*(var|let|const)[[:space:]]+PROTOCOL[[:space:]]*=[[:space:]]*([0-9]+).*/\2/p' "$1" 2> /dev/null | head -n 1
+}
+
 # Proves the copy's omanotes-db runs on this machine and speaks the protocol
 # of the copy's data/Db.js (ADR-0018), since the merge would put the plugin
-# in a shell that cannot read its database. The machine is read from the ELF
-# header because running it proves nothing: with qemu's binfmt an aarch64
-# binary starts on x86_64. Sets detail on failure.
+# in a shell that cannot read its database, and the protocol of the installed
+# data/Db.js, which the running shell keeps speaking until it restarts
+# (ADR-0017). An installed Db.js with no PROTOCOL predates the binary and
+# spawns none. The machine is read from the ELF header because running it
+# proves nothing: with qemu's binfmt an aarch64 binary starts on x86_64. Sets
+# detail on failure.
 smoke_db() {
-  local work="$1" arch name bin want got proto code=0 out reason
+  local work="$1" dir="$2" arch name bin want got proto old code=0 out reason
   arch="$(uname -m)"
   name="bin/omanotes-db.$arch"
   bin="$work/tree/$name"
   want="$(elf_machine_of "$arch")"
-  # Loose on purpose: an installed update.sh reads the Db.js of every later
-  # version, so a reformatted line must not lock updates out.
-  proto="$(sed -nE 's/^[[:space:]]*(var|let|const)[[:space:]]+PROTOCOL[[:space:]]*=[[:space:]]*([0-9]+).*/\2/p' "$work/tree/data/Db.js" 2> /dev/null | head -n 1)"
+  proto="$(protocol_of "$work/tree/data/Db.js")"
+  old="$(protocol_of "$dir/data/Db.js")"
   if [[ ! -e "$bin" && ! -L "$bin" ]]; then detail="there is no $name"
   elif [[ -L "$bin" || ! -f "$bin" ]]; then detail="$name is not a regular file"
   elif [[ ! -x "$bin" ]]; then detail="$name is not executable (no x bit, or a noexec mount)"
@@ -249,6 +258,18 @@ smoke_db() {
       124) detail="omanotes-db selftest did not finish in 20 s" ;;
       *) detail="omanotes-db selftest failed with exit $code${reason:+: $reason}" ;;
     esac
+    # The binary checks the protocol before the command, so `version` is
+    # enough, and the selftest above already proved the new one.
+    if [[ -z "$detail" && -n "$old" && "$old" != "$proto" ]]; then
+      code=0
+      timeout 20 env -i "$bin" "$old" version > /dev/null 2>&1 9>&- || code=$?
+      case "$code" in
+        0) ;;
+        64) detail="omanotes-db does not speak protocol $old of the installed data/Db.js" ;;
+        124) detail="omanotes-db version did not finish in 20 s" ;;
+        *) detail="omanotes-db version failed with exit $code" ;;
+      esac
+    fi
   fi
 }
 
