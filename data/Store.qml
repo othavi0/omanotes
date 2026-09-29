@@ -130,6 +130,7 @@ QtObject {
     property string _binary: ""
     property real _stamp: -1               // the file's change counter at the shown snapshot
     property int _shown: 0                 // how many snapshots with rows were shown
+    property bool _tooLarge: false         // the last read was over 64 MiB: the watcher reads, even before `ready`
 
     function _log(message) {
         console.error("omanotes db: " + message)
@@ -158,6 +159,7 @@ QtObject {
         root.matches = {}
         root._stamp = -1
         root._dirty = false
+        root._tooLarge = false
         reloadDebounce.stop()
         initRetry.stop()
         initRetry.interval = 500
@@ -248,9 +250,9 @@ QtObject {
     // binary's own lines, such as a migration it ran, go to the journal. The
     // writes hear their results first, in order; then the snapshot lands, or
     // the read failure is told and the Store asks again with back-off. A
-    // snapshot over 64 MiB fails only after the binary wrote 64 MiB, which
-    // the shell collects, so it is not asked again: the next change of the
-    // file, write or view reads again.
+    // snapshot over 64 MiB is not asked again (Db.retriesRead): until a
+    // snapshot lands, the next change of the file reads again, before the
+    // first snapshot too, and so do a write and a view that attaches.
     function _finish(lane, answer) {
         var sent = lane.sent
         if (sent === null) return
@@ -269,7 +271,12 @@ QtObject {
                 root._log(said)
                 root.failed(said)
             }
-            if (failure.err !== "response_too_large") initRetry.start()
+            if (Db.retriesRead(failure.err)) {
+                initRetry.start()
+            } else {
+                initRetry.stop()
+                root._tooLarge = true
+            }
         } else if (answer.ok && answer.snapshot) {
             initRetry.interval = 500
             // A read asked for while this one ran makes its answer stale.
@@ -336,6 +343,7 @@ QtObject {
         root.allItems = snap.items
         root.matches = root._matchesOf(snap, sent.views)
         root.covered = Math.max(root.covered, sent.covers)
+        root._tooLarge = false
         if (!root.ready) {
             root.ready = true
             // A watch set while the folder did not exist yet watches nothing.
@@ -368,7 +376,7 @@ QtObject {
         preload: false
         printErrors: false
         onFileChanged: {
-            if (root.ready) root.reloadSoon()
+            if (root.ready || root._tooLarge) root.reloadSoon()
         }
     }
 
@@ -380,7 +388,7 @@ QtObject {
 
     // The file is locked, the binary is missing or a read failed: ask again
     // from 500 ms up to every 30 s, never in a loop. A snapshot over 64 MiB
-    // is not asked again (see _finish).
+    // is not asked again, and stops a retry already armed (see _finish).
     property Timer initRetry: Timer {
         interval: 500
         repeat: false
