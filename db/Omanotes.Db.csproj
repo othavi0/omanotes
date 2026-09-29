@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>omanotes-db</AssemblyName>
+    <RootNamespace>Omanotes.Db</RootNamespace>
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+
+    <!-- The culture analyzers (CA1304, CA1305, CA1310, CA1311) only run with
+         this false, so tools/analyze.sh builds once with false. The binary is
+         always built with true: no ICU on the user's machine is needed. -->
+    <InvariantGlobalization Condition="'$(InvariantGlobalization)' == ''">true</InvariantGlobalization>
+    <PublishAot>true</PublishAot>
+    <StripSymbols>true</StripSymbols>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <StackTraceSupport>false</StackTraceSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <DebuggerSupport>false</DebuggerSupport>
+    <MetricsSupport>false</MetricsSupport>
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <AutoreleasePoolSupport>false</AutoreleasePoolSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- One request is all this process lives for, and the default budget
+         grows it for a load it never sees. Embedded, never read from DOTNET_*:
+         the binary reads no environment. -->
+    <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="1048576" />
+    <EmbeddedResource Include="Schema/search_map.tsv" LogicalName="search_map.tsv" />
+    <!-- tools/source-hash.sh, passed by tools/build.sh; `version` reports it. -->
+    <AssemblyMetadata Include="source" Value="$(SourceHash)" />
+    <!-- lld writes the output path into .gnu.version_d; a fixed soname keeps
+         the build folder out of the bytes. -->
+    <LinkerArg Include="-Wl,-soname=omanotes-db" />
+  </ItemGroup>
+</Project>

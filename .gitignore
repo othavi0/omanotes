@@ -1,0 +1,4 @@
+# The build writes to $HOME/.cache/omanotes-build; these catch a build run by
+# hand with the default paths, which the shell would answer with a reload.
+db/bin/
+db/obj/
