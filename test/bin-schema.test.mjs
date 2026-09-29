@@ -6,7 +6,7 @@ import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { BIN, Db, PROTOCOL, ROOT, call, cli, legacyDb, legacyNewDb, rows, sync, tempDb, v0Db } from "./lib/bin-fixture.mjs"
+import { BIN, Legacy, PROTOCOL, ROOT, V0_SCHEMA, call, cli, legacyDb, legacyNewDb, rows, sync, tempDb, v0Db } from "./lib/bin-fixture.mjs"
 
 const SEARCH_MAP_SHA256 = "406fc008e11b15b16017733b3afa05e9060b166340dbf01d238996b07d371382"
 
@@ -29,7 +29,7 @@ test("the versioned fold table is the searchText of before the binary, and its s
   const lines = []
   for (let u = 0; u < 0x10000; u++) {
     const c = String.fromCharCode(u)
-    const folded = Db.searchText(c)
+    const folded = Legacy.searchText(c)
     if (folded !== c) lines.push(u.toString(16).padStart(4, "0") + "\t" + hex(folded))
   }
   assert.equal(lines.length, 2299)
@@ -41,11 +41,15 @@ test("a new file migrates to the schema and the search_map the JS migrations mak
   sync(bin)
   const old = legacyNewDb(t)
   assert.deepEqual(master(bin), master(old))
-  assert.equal(rows(bin, "PRAGMA user_version")[0].user_version, Db.MIGRATIONS.length)
+  assert.equal(rows(bin, "PRAGMA user_version")[0].user_version, Legacy.MIGRATIONS.length)
   assert.equal(sha256(foldTable(bin)), SEARCH_MAP_SHA256)
   assert.equal(foldTable(bin), foldTable(old))
   assert.deepEqual(rows(bin, "SELECT * FROM settings"), rows(old, "SELECT * FROM settings"))
   assert.equal(cli(bin, "PRAGMA journal_mode").trim(), "delete", "the binary never turns WAL on")
+})
+
+test("test/lib/v0.sql is the first migration of before the binary, statement for statement", () => {
+  assert.deepEqual(V0_SCHEMA.trim().split(";\n").map((s) => s.replace(/;$/, "")), Legacy.MIGRATIONS[0])
 })
 
 test("a v0 file with rows migrates to the rows the JS migrations leave", (t) => {

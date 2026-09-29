@@ -8,25 +8,10 @@ set -euo pipefail
 source "$(dirname "$0")/lib/harness.sh"
 stub_keyboard_panel
 
-# While the hold file exists, a read runs at once but prints only when the
-# release file appears, so the test can write and reload in between. A held
-# list read of todos with a search fails while the fail-list file exists.
-real_sqlite3="$(command -v sqlite3)"
-mkdir "$cfg_dir/bin"
-cat > "$cfg_dir/bin/sqlite3" <<SH
-#!/usr/bin/env bash
-[[ "\$*" == *-json* && -e "$cfg_dir/hold" ]] || exec "$real_sqlite3" "\$@"
-fail=0
-[[ -e "$cfg_dir/fail-list" && "\$*" == *"WHERE type = 'todo' AND (search_title LIKE"* ]] && fail=1
-out="\$("$real_sqlite3" "\$@" 2>&1)"
-code=\$?
-printf '%s\n' "\$*" >> "$cfg_dir/held.log"
-for _ in \$(seq 200); do [[ -e "$cfg_dir/release" ]] && break; sleep 0.05; done
-if (( fail )); then echo "Error: disk I/O error" >&2; exit 10; fi
-printf '%s' "\$out"
-exit \$code
-SH
-chmod +x "$cfg_dir/bin/sqlite3"
+# The binary is a stub (lib/stub-db.sh). While hold-reads exists, a read runs at once but
+# answers only when the file is removed, so the test can write and reload in between. A
+# held read that carried a search fails while the fail-list file exists.
+stub_db
 
 # The widget loads from its own path, outside the config dir, as the shell
 # loads a plugin. Symlinked into the config dir, Panel.qml fails to resolve the
@@ -159,7 +144,7 @@ ShellRoot {
 }
 QML
 
-PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$worktree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
+PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$stub_tree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
 trap 'kill "$qs_pid" 2> /dev/null || true; wait "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
 
@@ -396,14 +381,15 @@ caught_up() {
   done
   replies "$what" "$got" "$want"
 }
-hold_reads() { rm -f "$cfg_dir/release"; : > "$cfg_dir/held.log"; touch "$cfg_dir/hold"; }
-release_reads() { rm -f "$cfg_dir/hold" "$cfg_dir/fail-list"; touch "$cfg_dir/release"; }
+hold_reads() { held_from="$(wc -l < "$cfg_dir/db.log")"; touch "$cfg_dir/hold-reads"; }
+release_reads() { rm -f "$cfg_dir/hold-reads" "$cfg_dir/fail-list"; }
+# One request reads what four did, so a reload holds one read.
 all_reads_held() {
   for _ in $(seq 50); do
-    (( $(wc -l < "$cfg_dir/held.log") >= 4 )) && { pass "$1"; return; }
+    (( $(wc -l < "$cfg_dir/db.log") > held_from )) && { pass "$1"; return; }
     sleep 0.2
   done
-  fail "$1: held $(wc -l < "$cfg_dir/held.log") of 4 reads"
+  fail "$1: no read was held"
 }
 panel_rows_are() {
   local what="$1" want="$2" got=""
@@ -423,7 +409,7 @@ ipc omanotes-test filterPanel note overlap > /dev/null
 panel_rows_are "the panel lists no note that matches overlap" 0
 hold_reads
 external_note "OVERLAP-1"
-all_reads_held "the reload after the first write holds its four reads"
+all_reads_held "the reload after the first write holds its read"
 external_note "OVERLAP-2"
 sleep 1
 release_reads
@@ -436,7 +422,7 @@ panel_rows_are "the panel lists the todos that match e" \
 hold_reads
 touch "$cfg_dir/fail-list"
 external_note "OVERLAP-3"
-all_reads_held "the reload after the third write holds its four reads"
+all_reads_held "the reload after the third write holds its read"
 ipc omanotes-test filterPanel note coffee > /dev/null
 sleep 0.5
 release_reads
@@ -446,7 +432,7 @@ ipc omanotes-test filterPanel all "" > /dev/null
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
 replies "only the failure cases are logged" "$(logged_failures)" \
-  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;list read failed: disk I/O error;"
+  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;"
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
 echo "panel: $checks checks, $failures failed"

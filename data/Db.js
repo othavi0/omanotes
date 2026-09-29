@@ -1,257 +1,32 @@
 .pragma library
 
-// Omanotes SQL builders + result parsers. Deliberately Quickshell-free (no
-// `Quickshell.*`, no QML types) so it's exercised directly under Node (see
-// test/db.test.mjs). Owns all SQL for the plugin — Db.qml calls these
-// builders instead of building SQL ad hoc.
+// The pure half of the data layer: what a request to bin/omanotes-db carries,
+// what its answer means, what the raw cells of a snapshot become, what the
+// views lay over them, and the words a failure shows. The SQL lives in the
+// binary (ADR-0018). No QML imports, so Node loads this file (ADR-0009).
 
-// Quote a JS string as a single-quoted SQL literal, doubling embedded quotes.
-function q(value) {
-  return "'" + String(value).replace(/'/g, "''") + "'"
-}
+// The protocol this QML speaks, argv[1] of every spawn. The binary answers
+// every protocol from its Min to its Current (db/Wire.cs).
+var PROTOCOL = 1
 
-// Escape a substring for use inside a LIKE pattern with backslash escaping.
-// Backslashes must be escaped first so they don't swallow the wildcards.
-function likeEscape(s) {
-  return String(s).replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")
-}
+// A request over this many bytes is refused by the binary as too_large, so
+// the Store never sends one.
+var MAX_REQUEST_BYTES = 1048576
 
-// Unix timestamp in seconds.
+// Unix timestamp in seconds: the `at` of every write. The binary has no clock.
 function now() {
   return Math.floor(Date.now() / 1000)
 }
 
-// The copy of a title or body that search matches against: lower case, without
-// the accents of the Combining Diacritical Marks block. It works one UTF-16
-// unit at a time and leaves surrogates as they are, because the migration
-// applies the same map one character at a time in SQL (foldedSql), and both
-// must give every item the same copy.
-function searchChar(c) {
-  if (c >= "\ud800" && c <= "\udfff") return c
-  return c.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").normalize("NFC")
-}
-
-function searchText(text) {
-  return String(text).replace(/[\s\S]/g, searchChar)
-}
-
-// Unified list. filterType is "all"|"note"|"todo";
-// query is an optional substring match on title or body that ignores case and
-// accents (searchText).
-// Order: status 0 (unread notes, pending todos) first, then each block by
-// position (ADR-0014). Every filter reads the same order.
-function listSql(filterType, query) {
-  var where = []
-  var ft = String(filterType || "all")
-  if (ft !== "all") {
-    if (ft !== "note" && ft !== "todo") ft = "all"
-    else where.push("type = " + q(ft))
-  }
-  var needle = searchText(String(query || "").trim())
-  if (needle !== "") {
-    var pattern = q("%" + likeEscape(needle) + "%")
-    where.push("(search_title LIKE " + pattern + " ESCAPE '\\' OR search_body LIKE " + pattern + " ESCAPE '\\')")
-  }
-  var sql = "SELECT id, type, title, body, status, created_at, updated_at FROM items"
-  if (where.length > 0) sql += " WHERE " + where.join(" AND ")
-  sql += " ORDER BY status ASC, position ASC, id DESC"
-  return sql
-}
-
-// The position above every item of the block with `status`.
-function topOfBlockSql(status) {
-  return "(SELECT COALESCE(MIN(position), 1) - 1 FROM items WHERE status = " + status + ")"
-}
-
-// Counts for the bar tooltip and the panel header: unread notes and pending
-// todos, unfiltered totals per type for the filter segment, and
-// every history entry, including those past historySql()'s limit. `oldest`
-// is the time of the oldest entry, 0 with none, so opening the panel knows
-// whether the Keep choice has anything to remove without another read.
-function countsSql() {
-  return "SELECT "
-    + "(SELECT COUNT(*) FROM items WHERE type = 'note' AND status = 0) AS unreadNotes, "
-    + "(SELECT COUNT(*) FROM items WHERE type = 'todo' AND status = 0) AS pendingTodos, "
-    + "(SELECT COUNT(*) FROM items WHERE type = 'note') AS notes, "
-    + "(SELECT COUNT(*) FROM items WHERE type = 'todo') AS todos, "
-    + "(SELECT COUNT(*) FROM history) AS history, "
-    + "(SELECT COALESCE(MIN(ts), 0) FROM history) AS oldest"
-}
-
-// One argument per statement: the CLI stops at the first failing argument and
-// the open transaction rolls back, while statements joined in one argument keep
-// running past a failure (ADR-0001). IMMEDIATE takes the write lock up front.
-function transaction(statements) {
-  return ["BEGIN IMMEDIATE"].concat(statements, ["COMMIT"])
-}
-
-function bodySql(body) {
-  return (body === null || body === undefined || body === "") ? "NULL" : q(body)
-}
-
-function searchBodySql(body) {
-  return bodySql(body) === "NULL" ? "NULL" : q(searchText(body))
-}
-
-// Insert a new item (status 0, top of its block) + "added" history row, and
-// return its id. The `SELECT last_insert_rowid()` sits between the two INSERTs
-// so it captures the items row (a later history INSERT would otherwise move
-// last_insert_rowid).
-function addSql(type, title, body) {
-  var t = (type === "todo") ? "todo" : "note"
-  var ts = now()
-  var b = bodySql(body)
-  return transaction([
-    "INSERT INTO items (type, title, body, search_title, search_body, status, position, created_at, updated_at) VALUES ("
-      + q(t) + ", " + q(title) + ", " + b + ", " + q(searchText(title)) + ", " + searchBodySql(body)
-      + ", 0, " + topOfBlockSql(0) + ", " + ts + ", " + ts + ")",
-    "SELECT last_insert_rowid() AS id",
-    "INSERT INTO history (type, title, action, ts) VALUES ("
-      + q(t) + ", " + q(title) + ", 'added', " + ts + ")"
-  ])
-}
-
-// Ids are interpolated into the SQL text (ADR-0002), so anything but a whole
-// number is refused before a statement is built.
-function sqlId(id) {
+// An id the wire takes: anything but a whole number is refused before a
+// spawn, with the words the IPC has always answered.
+function wholeId(id) {
   if (!/^\d+$/.test(String(id))) throw new Error("invalid id: " + id)
   return Number(id)
 }
 
-// Printed by the writes that target one item, right after the statement that
-// changes it: parseFound() reads 0 when no item had that id.
-var CHANGES = "SELECT changes()"
-
-// Set an item's status (0 or 1), moving it to the top of its new block, +
-// record "completed"/"reopened" history.
-// The history row is an INSERT…SELECT of the item's own type/title so quoting
-// is always correct. It runs first so it can skip an item that already has
-// the status, which the UPDATE then leaves as it was.
-function setStatusSql(id, status) {
-  var s = (status === 1) ? 1 : 0
-  var ts = now()
-  var action = (s === 1) ? "completed" : "reopened"
-  var nid = sqlId(id)
-  return transaction([
-    "INSERT INTO history (type, title, action, ts) "
-      + "SELECT type, title, " + q(action) + ", " + ts + " FROM items WHERE id = " + nid
-      + " AND status <> " + s,
-    "UPDATE items SET status = " + s
-      + ", position = CASE status WHEN " + s + " THEN position ELSE " + topOfBlockSql(s) + " END"
-      + ", updated_at = CASE status WHEN " + s + " THEN updated_at ELSE " + ts + " END WHERE id = " + nid,
-    CHANGES
-  ])
-}
-
-// Update an item's title/body (bump updated_at, type is fixed on edit) +
-// record an "edited" history row carrying the post-edit title. The history
-// INSERT…SELECT reads the item's own type + title after the UPDATE.
-function updateSql(id, title, body) {
-  var nid = sqlId(id)
-  var ts = now()
-  return transaction([
-    "UPDATE items SET title = " + q(title) + ", body = " + bodySql(body)
-      + ", search_title = " + q(searchText(title)) + ", search_body = " + searchBodySql(body)
-      + ", updated_at = " + ts + " WHERE id = " + nid,
-    CHANGES,
-    "INSERT INTO history (type, title, action, ts) "
-      + "SELECT type, title, 'edited', " + ts + " FROM items WHERE id = " + nid
-  ])
-}
-
-// Permanently delete an item + record "deleted" history (title captured first).
-function deleteItemSql(id) {
-  var ts = now()
-  var nid = sqlId(id)
-  return transaction([
-    "INSERT INTO history (type, title, action, ts) "
-      + "SELECT type, title, 'deleted', " + ts + " FROM items WHERE id = " + nid,
-    "DELETE FROM items WHERE id = " + nid,
-    CHANGES
-  ])
-}
-
-// Flip an item's type (note<->todo), bump updated_at, keep status, and
-// record a "converted" history row.
-function convertTypeSql(id) {
-  var nid = sqlId(id)
-  var ts = now()
-  return transaction([
-    "UPDATE items SET type = CASE type WHEN 'note' THEN 'todo' ELSE 'note' END, updated_at = " + ts
-      + " WHERE id = " + nid,
-    CHANGES,
-    "INSERT INTO history (type, title, action, ts) "
-      + "SELECT type, title, 'converted', " + ts + " FROM items WHERE id = " + nid
-  ])
-}
-
-// Put item `id` just before item `anchorId` of the same block, or just after
-// it when `after`, and number that block 1, 2, 3… in the new order. The item
-// takes the anchor's place in the list order (position, then id DESC), with
-// one more key to fall before or after it. Nothing is written, and CHANGES
-// prints 0, when either id is missing, they are the same item or the two sit
-// in different blocks. A move is not an action, so it leaves history and
-// updated_at alone.
-function moveSql(id, anchorId, after) {
-  var nid = sqlId(id)
-  var aid = sqlId(anchorId)
-  var key = function(moved, other) { return "CASE i.id WHEN " + nid + " THEN " + moved + " ELSE " + other + " END" }
-  return transaction([
-    "UPDATE items SET position = moved.position FROM (SELECT i.id, ROW_NUMBER() OVER (ORDER BY "
-      + key("a.position", "i.position") + ", " + key("a.id", "i.id") + " DESC, " + key(after ? 2 : 0, 1)
-      + ") AS position FROM items i JOIN items a ON a.id = " + aid + " AND a.status = i.status"
-      + " JOIN items m ON m.id = " + nid + " AND m.status = a.status AND m.id <> a.id) AS moved"
-      + " WHERE items.id = moved.id",
-    CHANGES
-  ])
-}
-
-// `rows` with the row `id` moved as moveSql moves it, so the list shows the
-// drop before the reload confirms it. The same rows when either is missing.
-function movedRows(rows, id, anchorId, after) {
-  var list = rows.slice()
-  var from = -1
-  for (var i = 0; i < list.length; ++i) if (Number(list[i].id) === Number(id)) from = i
-  if (from < 0) return list
-  var row = list.splice(from, 1)[0]
-  for (var j = 0; j < list.length; ++j) {
-    if (Number(list[j].id) !== Number(anchorId)) continue
-    list.splice(after ? j + 1 : j, 0, row)
-    return list
-  }
-  return rows.slice()
-}
-
-// The newest 500 history rows, for the History tab. The table keeps growing;
-// countsSql() counts all of it.
-function historySql() {
-  return "SELECT id, type, title, action, ts FROM history "
-    + "ORDER BY ts DESC, id DESC LIMIT 500"
-}
-
-function deleteHistorySql(id) {
-  return "DELETE FROM history WHERE id = " + sqlId(id)
-}
-
-function clearHistorySql() {
-  return "DELETE FROM history"
-}
-
-// Removes the history entries older than `days`. With none that old it
-// deletes nothing, and SQLite leaves the file as it was.
-function pruneHistorySql(days) {
-  return "DELETE FROM history WHERE ts < CAST(strftime('%s', 'now') AS INTEGER) - " + sqlInt(days, 1, 36500) + " * 86400"
-}
-
-// True when keeping `days` of history would remove an entry, from the
-// oldest entry's time (seconds, 0 with none) and now (seconds).
-function prunes(days, oldest, nowSeconds) {
-  return days > 0 && oldest > 0 && oldest < nowSeconds - days * 86400
-}
-
-// A whole number in [min, max], for interpolation into SQL text (ADR-0002),
-// as sqlId is for ids.
-function sqlInt(value, min, max) {
+// A whole number in [min, max], refused otherwise.
+function wholeIn(value, min, max) {
   var n = Number(value)
   if (typeof value === "boolean" || !/^-?\d+$/.test(String(value)) || n < min || n > max) {
     throw new Error("invalid value: " + value)
@@ -276,54 +51,24 @@ function maskDays(mask) {
   return days
 }
 
-var ALARM_COLUMNS = "id, hour, minute, label, days, enabled, snooze_minutes, ring_minutes,"
-  + " snoozed_until_ms, last_fired_at_ms, armed_at_ms, auto_snoozes"
-
-function alarmsSql() {
-  return "SELECT " + ALARM_COLUMNS + " FROM alarms ORDER BY hour, minute, id"
-}
-
-// The mutable columns of an alarm as [column, value] pairs, checked before
-// any SQL exists. The CHECK constraints refuse the same ranges again.
-function alarmValues(record) {
+// An Alarm record as the cells of its row, every writable column, checked
+// before a spawn. The binary writes the record whole (ADR-0015), and the
+// CHECK constraints refuse the same ranges again.
+function alarmCells(record) {
   var ms = Number.MAX_SAFE_INTEGER
-  return [
-    ["hour", sqlInt(record.hour, 0, 23)],
-    ["minute", sqlInt(record.minute, 0, 59)],
-    ["label", q(record.label || "")],
-    ["days", daysMask(record.days)],
-    ["enabled", record.enabled ? 1 : 0],
-    ["snooze_minutes", sqlInt(record.snoozeMinutes, 1, 180)],
-    ["ring_minutes", sqlInt(record.ringMinutes, 1, 60)],
-    ["snoozed_until_ms", sqlInt(record.snoozedUntil, 0, ms)],
-    ["last_fired_at_ms", sqlInt(record.lastFiredAt, 0, ms)],
-    ["armed_at_ms", sqlInt(record.armedAt, 0, ms)],
-    ["auto_snoozes", sqlInt(record.autoSnoozes, 0, 99)]
-  ]
-}
-
-// Insert a new alarm and print its id. No history row: alarms stay out of
-// History.
-function insertAlarmSql(record) {
-  var values = alarmValues(record)
-  return transaction([
-    "INSERT INTO alarms (" + values.map(function(v) { return v[0] }).join(", ") + ") VALUES ("
-      + values.map(function(v) { return v[1] }).join(", ") + ")",
-    "SELECT last_insert_rowid() AS id"
-  ])
-}
-
-// Write every mutable column of one alarm, then CHANGES. The record is
-// absolute, so sending it twice leaves the same row, which is what lets the
-// alarm store retry a failed write.
-function saveAlarmSql(record) {
-  var nid = sqlId(record.id)
-  var set = alarmValues(record).map(function(v) { return v[0] + " = " + v[1] })
-  return transaction(["UPDATE alarms SET " + set.join(", ") + " WHERE id = " + nid, CHANGES])
-}
-
-function deleteAlarmSql(id) {
-  return transaction(["DELETE FROM alarms WHERE id = " + sqlId(id), CHANGES])
+  return {
+    hour: wholeIn(record.hour, 0, 23),
+    minute: wholeIn(record.minute, 0, 59),
+    label: String(record.label || ""),
+    days: daysMask(record.days),
+    enabled: record.enabled ? 1 : 0,
+    snooze_minutes: wholeIn(record.snoozeMinutes, 1, 180),
+    ring_minutes: wholeIn(record.ringMinutes, 1, 60),
+    snoozed_until_ms: wholeIn(record.snoozedUntil, 0, ms),
+    last_fired_at_ms: wholeIn(record.lastFiredAt, 0, ms),
+    armed_at_ms: wholeIn(record.armedAt, 0, ms),
+    auto_snoozes: wholeIn(record.autoSnoozes, 0, 99)
+  }
 }
 
 function clampedInt(value, min, max, fallback) {
@@ -332,12 +77,13 @@ function clampedInt(value, min, max, fallback) {
   return Math.max(min, Math.min(max, n))
 }
 
-// sqlite3 -json rows of alarmsSql -> Alarm records: numbers, a days list and
-// a boolean, with camelCase names. SQLite keeps a fraction written to an
-// INTEGER column as REAL, so a hand edit can leave 6.4 in `hour`.
-function parseAlarms(text) {
+// The alarm rows of a snapshot -> Alarm records: numbers, a days list and a
+// boolean, with camelCase names. SQLite keeps a fraction written to an
+// INTEGER column as REAL, so a hand edit can leave 6.4 in `hour`, and the
+// binary sends an infinite REAL as 9e999, which reads as Infinity here.
+function parseAlarms(rows) {
   var ms = Number.MAX_SAFE_INTEGER
-  return parseRows(text).map(function(row) {
+  return (rows || []).map(function(row) {
     return {
       id: Number(row.id),
       hour: clampedInt(row.hour, 0, 23, null),
@@ -359,7 +105,7 @@ function parseAlarms(text) {
 
 // The rows with each pending record laid over its row. A pending null drops
 // the row, and a pending record whose row is gone is not brought back. The
-// order is alarmsSql's order.
+// order is the snapshot's order.
 function mergeAlarms(rows, pending) {
   var out = []
   for (var i = 0; i < rows.length; i++) {
@@ -372,11 +118,11 @@ function mergeAlarms(rows, pending) {
 
 // The settings record, { soundOn, sound, soundFile, volume, snoozeMinutes,
 // ringMinutes, historyDays, checkUpdates }, one spec per key. It drives the
-// read, the write and the fallbacks. `column` stays inside this file. The
-// sound catalog lives in data/Sound.js and is not checked here, so a new
-// sound needs no migration. The sound fallback repeats Sound.DEFAULT_SOUND,
-// which this file cannot import under Node; test/sound.test.mjs holds them
-// equal.
+// read, the write and the fallbacks, and the binary only checks each column
+// name against the schema (ADR-0016). The sound catalog lives in
+// data/Sound.js and is not checked here, so a new sound needs no migration.
+// The sound fallback repeats Sound.DEFAULT_SOUND, which this file cannot
+// import under Node; test/sound.test.mjs holds them equal.
 var SETTINGS = {
   soundOn: { column: "sound_on", kind: "bool", fallback: true },
   sound: { column: "sound", kind: "text", fallback: "alarm-clock-elapsed" },
@@ -388,13 +134,6 @@ var SETTINGS = {
   checkUpdates: { column: "check_updates", kind: "bool", fallback: true }
 }
 
-// The settings row and the file size, always one row: a row deleted by hand
-// reads as NULLs, which parseSettings turns into the fallbacks.
-function settingsSql() {
-  return "SELECT s.*, pc.page_count * ps.page_size AS db_bytes"
-    + " FROM pragma_page_count pc, pragma_page_size ps LEFT JOIN settings s ON s.id = 1"
-}
-
 function settingValue(key, value) {
   var spec = SETTINGS[key]
   if (!spec) throw new Error("unknown setting: " + key)
@@ -403,44 +142,41 @@ function settingValue(key, value) {
     : spec.kind === "pick" ? spec.options.indexOf(value) >= 0
     : typeof value === "number" && value === Math.round(value) && value >= spec.min && value <= spec.max
   if (!ok) throw new Error("invalid setting: " + key + " " + JSON.stringify(value))
-  if (spec.kind === "bool") return value ? 1 : 0
-  if (spec.kind === "text") return q(value)
-  return value
+  return spec.kind === "bool" ? (value ? 1 : 0) : value
 }
 
-// One absolute upsert of every key in `patch`, so two panels writing
-// different keys never undo each other. Throws on an unknown key or a value
-// outside its spec: the controls clamp, this refuses. A shorter Keep prunes
-// in the same transaction, so the History tab never shows what it drops.
-function setSettingsSql(patch) {
+// The cells of a settings patch, keyed by column. Throws on an unknown key
+// or a value outside its spec: the controls clamp, this refuses. The binary
+// writes only these columns, so two panels writing different keys never undo
+// each other, and a shorter Keep prunes in the same transaction.
+function settingsCells(patch) {
   var keys = Object.keys(patch || {})
   if (keys.length === 0) throw new Error("empty setting patch")
-  var values = keys.map(function(k) { return settingValue(k, patch[k]) })
-  var columns = keys.map(function(k) { return SETTINGS[k].column })
-  var prune = patch.historyDays > 0 ? [pruneHistorySql(patch.historyDays)] : []
-  return transaction([
-    "INSERT INTO settings (id, " + columns.join(", ") + ") VALUES (1, " + values.join(", ") + ")"
-      + " ON CONFLICT(id) DO UPDATE SET " + columns.map(function(c) { return c + " = excluded." + c }).join(", ")
-  ].concat(prune))
+  var cells = {}
+  for (var i = 0; i < keys.length; i++) {
+    var value = settingValue(keys[i], patch[keys[i]])
+    cells[SETTINGS[keys[i]].column] = value
+  }
+  return cells
 }
 
-// sqlite3 -json output of settingsSql -> { settings, bytes }. Like
-// parseAlarms, a value a hand edit left out of range is clamped or falls
-// back, so a read never fails on it. "" gives every fallback.
-function parseSettings(text) {
-  var rows = parseRows(text)
-  var row = rows.length > 0 ? rows[0] : {}
+// The settings row of a snapshot, with the file size -> { settings, bytes }.
+// A value a hand edit left out of range is clamped or falls back, so a read
+// never fails on it. A row deleted by hand reads as NULL cells, and null
+// gives every fallback.
+function parseSettings(row) {
+  var cells = row || {}
   var settings = {}
   for (var key in SETTINGS) {
     var spec = SETTINGS[key]
-    var v = row[spec.column]
+    var v = cells[spec.column]
     if (v === null || v === undefined) settings[key] = spec.fallback
     else if (spec.kind === "bool") settings[key] = Number(v) === 0 ? false : Number(v) === 1 ? true : spec.fallback
     else if (spec.kind === "text") settings[key] = String(v)
     else if (spec.kind === "pick") settings[key] = spec.options.indexOf(Number(v)) >= 0 ? Number(v) : spec.fallback
     else settings[key] = clampedInt(v, spec.min, spec.max, spec.fallback)
   }
-  return { settings: settings, bytes: Number(row.db_bytes) || 0 }
+  return { settings: settings, bytes: Number(cells.db_bytes) || 0 }
 }
 
 function mergeSettings(settings, patch) {
@@ -450,229 +186,146 @@ function mergeSettings(settings, patch) {
   return out
 }
 
-// searchText(column) in SQL: each character through search_map, joined back
-// in order.
-function foldedSql(column) {
-  var ch = "substr(" + column + ", n.i, 1)"
-  return "(WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < length(" + column + "))"
-    + " SELECT group_concat(coalesce(search_map.folded, " + ch + "), '' ORDER BY n.i)"
-    + " FROM n LEFT JOIN search_map ON search_map.ch = " + ch + ")"
-}
-
-function copiesSql(row) {
-  return "search_title = " + foldedSql(row + ".title") + ", search_body = CASE WHEN " + row
-    + ".body IS NULL THEN NULL ELSE " + foldedSql(row + ".body") + " END"
-}
-
-// Adds the search copy and fills it for the items already there. search_map
-// holds every character searchChar changes; SQLite's lower() only knows ASCII,
-// so it covers that too. Building the map takes tens of milliseconds, so it is
-// built only when a database needs this step.
-// The triggers fold the rows written with sqlite3, which leave the copy empty
-// on insert or as it was on update. addSql and updateSql write it themselves,
-// but an edit that changes only case or accents leaves the copy equal to the
-// old one, so the update trigger folds it again (ADR-0012).
-function searchCopyMigration() {
-  var rows = []
-  for (var u = 0; u < 0x10000; u++) {
-    var c = String.fromCharCode(u)
-    var s = searchChar(c)
-    if (s !== c) rows.push("(" + q(c) + ", " + q(s) + ")")
-  }
-  return [
-    "ALTER TABLE items ADD COLUMN search_title TEXT",
-    "ALTER TABLE items ADD COLUMN search_body TEXT",
-    "CREATE TABLE search_map (ch TEXT PRIMARY KEY, folded TEXT NOT NULL) WITHOUT ROWID",
-    "INSERT INTO search_map VALUES " + rows.join(", "),
-    "UPDATE items SET " + copiesSql("items"),
-    "CREATE TRIGGER items_search_insert AFTER INSERT ON items WHEN NEW.search_title IS NULL"
-      + " BEGIN UPDATE items SET " + copiesSql("NEW") + " WHERE id = NEW.id; END",
-    "CREATE TRIGGER items_search_update AFTER UPDATE OF title, body ON items"
-      + " WHEN NEW.search_title IS OLD.search_title AND NEW.search_body IS OLD.search_body"
-      + " BEGIN UPDATE items SET " + copiesSql("NEW") + " WHERE id = NEW.id; END"
-  ]
-}
-
-// The schema, as the steps that build it. Entry i takes a database from
-// user_version i to i + 1: its statements, one per element (ADR-0001), or a
-// function that returns them. A shipped entry never changes: a schema change
-// appends one (ADR-0011). The first entry keeps IF NOT EXISTS because
-// databases made before versioning have its tables at version 0.
-var MIGRATIONS = [
-  [
-    "CREATE TABLE IF NOT EXISTS items ("
-      + "id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL, body TEXT,"
-      + " status INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
-    "CREATE INDEX IF NOT EXISTS idx_items_sort ON items(status, updated_at DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_items_type_status ON items(type, status)",
-    "CREATE TABLE IF NOT EXISTS history ("
-      + "id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, title TEXT NOT NULL,"
-      + " action TEXT NOT NULL, ts INTEGER NOT NULL)",
-    "CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts DESC)"
-  ],
-  searchCopyMigration,
-  // Numbers each block in the order the list showed before (ADR-0014).
-  [
-    "ALTER TABLE items ADD COLUMN position INTEGER NOT NULL DEFAULT 0",
-    "UPDATE items SET position = shown.position FROM (SELECT id, ROW_NUMBER() OVER"
-      + " (PARTITION BY status ORDER BY updated_at DESC, id DESC) AS position FROM items) AS shown"
-      + " WHERE items.id = shown.id",
-    "DROP INDEX IF EXISTS idx_items_sort",
-    "CREATE INDEX idx_items_order ON items(status, position)"
-  ],
-  // Alarms (ADR-0015). Instants are epoch ms (the _ms columns), unlike the
-  // seconds of items. days is a bitmask of Date.getDay() indices, bit 0 for
-  // Sunday, and 0 rings once. armed_at_ms defaults to the insert time, so a
-  // row written with sqlite3 does not ring an occurrence from before it existed.
-  [
-    "CREATE TABLE alarms ("
-      + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-      + " hour INTEGER NOT NULL CHECK (hour BETWEEN 0 AND 23),"
-      + " minute INTEGER NOT NULL CHECK (minute BETWEEN 0 AND 59),"
-      + " label TEXT NOT NULL DEFAULT '' CHECK (length(label) <= 40),"
-      + " days INTEGER NOT NULL DEFAULT 0 CHECK (days BETWEEN 0 AND 127),"
-      + " enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),"
-      + " snooze_minutes INTEGER NOT NULL DEFAULT 9 CHECK (snooze_minutes BETWEEN 1 AND 180),"
-      + " ring_minutes INTEGER NOT NULL DEFAULT 5 CHECK (ring_minutes BETWEEN 1 AND 60),"
-      + " snoozed_until_ms INTEGER NOT NULL DEFAULT 0,"
-      + " last_fired_at_ms INTEGER NOT NULL DEFAULT 0,"
-      + " armed_at_ms INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),"
-      + " auto_snoozes INTEGER NOT NULL DEFAULT 0 CHECK (auto_snoozes BETWEEN 0 AND 99))"
-  ],
-  // Settings (ADR-0016): one typed row. The CHECKs refuse a hand edit out of
-  // range, and the DEFAULTs repeat the fallbacks of SETTINGS for a fresh row.
-  // The volume starts at 100, the volume the ring played at before.
-  [
-    "CREATE TABLE settings ("
-      + "id INTEGER PRIMARY KEY CHECK (id = 1),"
-      + " sound_on INTEGER NOT NULL DEFAULT 1 CHECK (sound_on IN (0, 1)),"
-      + " sound TEXT NOT NULL DEFAULT 'alarm-clock-elapsed',"
-      + " sound_file TEXT NOT NULL DEFAULT '',"
-      + " volume INTEGER NOT NULL DEFAULT 100 CHECK (volume BETWEEN 0 AND 100),"
-      + " snooze_minutes INTEGER NOT NULL DEFAULT 9 CHECK (snooze_minutes BETWEEN 1 AND 180),"
-      + " ring_minutes INTEGER NOT NULL DEFAULT 5 CHECK (ring_minutes BETWEEN 1 AND 60),"
-      + " history_days INTEGER NOT NULL DEFAULT 0 CHECK (history_days IN (0, 30, 90)),"
-      + " check_updates INTEGER NOT NULL DEFAULT 1 CHECK (check_updates IN (0, 1)))",
-    "INSERT INTO settings (id) VALUES (1)"
-  ]
-]
-
-var VERSION_CHANGED = "version_changed"
-
-// The migrations above `version`, in one transaction that ends at the current
-// version, or [] when there are none. Every widget starts its own Db, so
-// another start-up can migrate between the version read and this write: the
-// first statements then fail with VERSION_CHANGED and nothing is written.
-function migrateSql(version) {
-  var steps = []
-  for (var v = version; v < MIGRATIONS.length; v++) {
-    var entry = MIGRATIONS[v]
-    steps = steps.concat(typeof entry === "function" ? entry() : entry)
-  }
-  if (steps.length === 0) return []
-  return transaction([
-    "CREATE TEMP TABLE migrating_from (version INTEGER CONSTRAINT " + VERSION_CHANGED
-      + " CHECK (version = " + version + "))",
-    "INSERT INTO migrating_from SELECT user_version FROM pragma_user_version"
-  ].concat(steps, ["PRAGMA user_version = " + MIGRATIONS.length]))
-}
-
-function migrationRaced(stderr) {
-  return errorText(stderr, 1) === "CHECK constraint failed: " + VERSION_CHANGED
-}
-
-// argv for a read or write via the sqlite3 CLI. `sql` is one statement or a
-// transaction() array, one argument per statement. `json` enables -json output.
-//
-// `.timeout 5000` is a CLI dot-command (not SQL) that sets the busy timeout for
-// the session: it makes sqlite wait up to 5s on a locked db instead of failing,
-// and — unlike `PRAGMA busy_timeout=...` — it prints nothing, so it cannot
-// corrupt the -json output.
-//
-// `-init /dev/null` skips the user's sqliterc, which the CLI reads even when not
-// interactive: a `.headers on` there turns a write's "1" into "changes()\n1".
-function sqliteCommand(dbPath, sql, json) {
-  var cmd = ["sqlite3", "-init", "/dev/null"]
-  if (json) cmd.push("-json")
-  return cmd.concat(String(dbPath), ".timeout 5000", sql)
-}
-
-// argv for start-up: ensure the data dir exists, then read the schema version
-// through sqliteCommand, so it waits on a locked db like every other command
-// ("$@" is quoted, so the shell cannot mangle the SQL).
-function initCommand(dataDir, dbPath) {
-  return ["bash", "-c", 'mkdir -p -- "$0" && exec "$@"', String(dataDir)]
-    .concat(sqliteCommand(dbPath, "PRAGMA user_version", false))
-}
-
-// The backup of the day `dayText` ("2026-09-28"), next to the database.
-function backupName(dayText) {
-  return "scratchpad-" + dayText + ".db"
-}
-
-// argv for a backup: VACUUM INTO a temporary file, then a move over the
-// day's backup, so a VACUUM that fails leaves the earlier copy of the day.
-// VACUUM INTO writes another file, so the watcher does not fire, and it
-// cannot run inside a transaction, so it is its own argument.
-function backupCommand(dbPath, dataDir, dayText) {
-  var target = String(dataDir) + "/" + backupName(dayText)
-  var temporary = target + ".tmp"
-  return ["bash", "-c", 'rm -f -- "$3" && sqlite3 -init /dev/null "$1" ".timeout 5000" "$2" && mv -f -- "$3" "$4"',
-    "omanotes-backup", String(dbPath), "VACUUM INTO " + q(temporary), temporary, target]
-}
-
-function parseVersion(text) {
-  var t = String(text || "").trim()
-  if (!/^\d+$/.test(t)) throw new Error("unreadable sqlite3 output")
-  return Number(t)
-}
-
-// Parse a `sqlite3 -json` result into an array of row objects. An empty result
-// set prints nothing, so "" → []. Anything else that is not a JSON array throws.
-function parseRows(text) {
-  var t = String(text || "").trim()
-  if (t === "") return []
-  var rows
-  try {
-    rows = JSON.parse(t)
-  } catch (e) {
-    rows = null
-  }
-  if (!Array.isArray(rows)) throw new Error("unreadable sqlite3 output")
-  return rows
-}
-
-// Parse countsSql() output into { unreadNotes, pendingTodos, notes, todos, history, oldestHistory }.
-function parseCounts(text) {
-  var rows = parseRows(text)
-  var row = rows.length > 0 ? rows[0] : {}
+// The counts row of a snapshot -> { unreadNotes, pendingTodos, notes, todos,
+// history, oldestHistory }. `oldest` is the time of the oldest history
+// entry, 0 with none.
+function parseCounts(row) {
+  var cells = row || {}
   return {
-    unreadNotes: Number(row.unreadNotes) || 0,
-    pendingTodos: Number(row.pendingTodos) || 0,
-    notes: Number(row.notes) || 0,
-    todos: Number(row.todos) || 0,
-    history: Number(row.history) || 0,
-    oldestHistory: Number(row.oldest) || 0
+    unreadNotes: Number(cells.unreadNotes) || 0,
+    pendingTodos: Number(cells.pendingTodos) || 0,
+    notes: Number(cells.notes) || 0,
+    todos: Number(cells.todos) || 0,
+    history: Number(cells.history) || 0,
+    oldestHistory: Number(cells.oldest) || 0
   }
 }
 
-// Parse addSql() output into the new item's id (-1 if absent). Writes run
-// WITHOUT -json, so the output is a plain integer like "2\n".
-function parseId(text) {
-  var t = String(text || "").trim()
-  var n = Number(t)
-  return (t !== "" && isFinite(n)) ? n : -1
+// True when keeping `days` of history would remove an entry, from the
+// oldest entry's time (seconds, 0 with none) and now (seconds).
+function prunes(days, oldest, nowSeconds) {
+  return days > 0 && oldest > 0 && oldest < nowSeconds - days * 86400
 }
 
-// Parse the CHANGES count a one-item write prints: false when no item had its id.
-function parseFound(text) {
-  return Number(String(text || "").trim()) > 0
+// `rows` with the row `id` moved as item.move moves it, so the list shows the
+// drop before the write confirms it. The same rows when either is missing.
+function movedRows(rows, id, anchorId, after) {
+  var list = rows.slice()
+  var from = -1
+  for (var i = 0; i < list.length; ++i) if (Number(list[i].id) === Number(id)) from = i
+  if (from < 0) return list
+  var row = list.splice(from, 1)[0]
+  for (var j = 0; j < list.length; ++j) {
+    if (Number(list[j].id) !== Number(anchorId)) continue
+    list.splice(after ? j + 1 : j, 0, row)
+    return list
+  }
+  return rows.slice()
 }
 
-// The first line sqlite3 printed on stderr, without the "Error in 3rd command
-// line argument: " prefix that only locates the failing argument.
-function errorText(stderr, exitCode) {
-  var line = String(stderr || "").trim().split("\n")[0]
-  line = line.replace(/^[A-Za-z ]*error( in \S+ command line argument)?: /i, "")
-  return line !== "" ? line : "sqlite3 exited " + exitCode
+// The rows a view shows: every item narrowed by type, in the snapshot's
+// order. A search is answered by the binary, whose ids come in the same
+// order (the fold table lives there, ADR-0012).
+function typeRows(allItems, filter) {
+  if (filter !== "note" && filter !== "todo") return allItems
+  return allItems.filter(function(item) { return item.type === filter })
+}
+
+function matchedRows(itemsById, ids) {
+  var out = []
+  for (var i = 0; i < ids.length; ++i) if (itemsById[ids[i]]) out.push(itemsById[ids[i]])
+  return out
+}
+
+// The text with every lone surrogate replaced by U+FFFD. The QML engine
+// sends a lone surrogate raw on stdin, where the decoder drops it, and the
+// binary refuses an escaped one; the argv of the sqlite3 CLI turned it into
+// U+FFFD, and so does this.
+function wellFormed(s) {
+  return s.replace(/[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g,
+    function(m) { return m.length === 2 ? m : "�" })
+}
+
+// The stdin of one spawn: the writes in order ({ id, by, op, at, args }),
+// then a sync that asks for the snapshot after them ({ since, views }).
+function request(writes, sync) {
+  var body = {}
+  if (writes.length > 0) body.writes = writes
+  if (sync) body.sync = sync
+  return JSON.stringify(body, function(key, value) { return typeof value === "string" ? wellFormed(value) : value })
+}
+
+// The bytes `text` takes in UTF-8, for a text already well formed.
+function utf8Length(text) {
+  return unescape(encodeURIComponent(text)).length
+}
+
+// argv of a request. No user text travels here: an argument over 128 KiB
+// kept the process from starting, and the note was lost (issue #55).
+function command(binary, dbPath) {
+  return [String(binary), String(PROTOCOL), "run", String(dbPath)]
+}
+
+// What a finished spawn answered: { ok: true, results, snapshot, syncErr }
+// or { ok: false, err, detail }. stdout counts only on exit 0; on exit 1, 64
+// or 70 the last line of stderr names the failure; any other exit, a signal
+// or an answer that does not parse is a crash.
+function reply(exitCode, crashed, stdoutText, stderrText) {
+  if (!crashed && exitCode === 0) {
+    var answer = null
+    try {
+      answer = JSON.parse(String(stdoutText))
+    } catch (e) {
+      answer = null
+    }
+    if (answer && Array.isArray(answer.results)) {
+      return { ok: true, results: answer.results, snapshot: answer.snapshot || null, syncErr: answer.syncErr || null }
+    }
+    return { ok: false, err: "crash", detail: "unreadable answer" }
+  }
+  if (!crashed && (exitCode === 1 || exitCode === 64 || exitCode === 70)) {
+    var lines = String(stderrText || "").trim().split("\n")
+    var failure = null
+    try {
+      failure = JSON.parse(lines[lines.length - 1])
+    } catch (e) {
+      failure = null
+    }
+    if (failure && typeof failure.err === "string") return { ok: false, err: failure.err, detail: String(failure.detail || "") }
+  }
+  return { ok: false, err: "crash", detail: crashed ? "signal " + exitCode : "exit " + exitCode }
+}
+
+// The words a failure shows, in the toast and the journal. null keeps the
+// words SQLite gave ("disk I/O error", "attempt to write a readonly
+// database", a CHECK that failed), as the sqlite3 CLI printed them.
+// "item not found" is compared by ui/ItemsTab.qml, word for word.
+var ERROR_TEXT = {
+  busy: "database is locked",
+  not_found: "item not found",
+  refused: null,
+  io: null,
+  corrupt: null,
+  sqlite: null,
+  sqlite_too_old: null,
+  selftest: null,
+  sqlite_missing: "libsqlite3 is not installed",
+  forbidden: "not allowed from here",
+  bad_request: "the database helper refused the request",
+  timeout: "the database helper got no request",
+  too_large: "text too large to save",
+  protocol: "Omanotes was updated. Run omarchy restart shell to finish",
+  internal: "the database helper failed",
+  crash: "the database helper stopped without an answer",
+  no_binary: "cannot run the database helper"
+}
+
+// `failure` is { err, detail }: a write's result, a request that failed or
+// a sync that failed.
+function errorText(failure) {
+  var text = ERROR_TEXT[failure.err]
+  if (text === null) return failure.detail || failure.err
+  if (text === undefined) return "database error: " + failure.err
+  if (failure.err === "no_binary") return text + " " + failure.detail
+  return text
 }

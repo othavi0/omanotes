@@ -1,11 +1,12 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { loadQmlLib } from "./lib/load-qml-lib.mjs"
+import { cli, newDb, sync } from "./lib/bin-fixture.mjs"
 
 const Sound = loadQmlLib(new URL("../data/Sound.js", import.meta.url), [
   "SOUND_DIR", "DEFAULT_SOUND", "CUSTOM", "SOUNDS", "catalogEntry", "pathFor", "soundPath", "nameOf", "soundName"
 ])
-const Db = loadQmlLib(new URL("../data/Db.js", import.meta.url), ["SETTINGS", "MIGRATIONS"])
+const Db = loadQmlLib(new URL("../data/Db.js", import.meta.url), ["SETTINGS"])
 
 const DIR = "/usr/share/sounds/freedesktop/stereo/"
 
@@ -20,10 +21,11 @@ test("every catalog sound plays its freedesktop file, and the default is the ala
   assert.equal(Sound.soundPath(null), DIR + "alarm-clock-elapsed.oga", "a Db not read yet rings the default")
 })
 
-test("the settings row falls back to the catalog's default sound", () => {
+test("the settings row falls back to the catalog's default sound, and a new file starts on it", (t) => {
   assert.equal(Db.SETTINGS.sound.fallback, Sound.DEFAULT_SOUND)
-  assert.ok(Db.MIGRATIONS.flat().some((sql) => typeof sql === "string" && sql.includes("sound TEXT NOT NULL DEFAULT '" + Sound.DEFAULT_SOUND + "'")),
-    "a fresh row starts on the same sound")
+  const path = newDb(t)
+  assert.equal(sync(path).settings.sound, Sound.DEFAULT_SOUND)
+  assert.equal(cli(path, "SELECT dflt_value FROM pragma_table_info('settings') WHERE name = 'sound'"), "'" + Sound.DEFAULT_SOUND + "'\n")
 })
 
 test("a custom sound plays the chosen file, and a custom sound with no file plays the default", () => {

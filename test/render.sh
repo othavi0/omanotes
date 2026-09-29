@@ -38,7 +38,7 @@ sqlite3 "$db" "INSERT INTO alarms (id, hour, minute, label, days, enabled, snooz
   (2, 16, 30, 'Stand-up', 62, 1, 0, $midnight),
   (3, 22, 0, 'Take the pills', 127, 1, $(ms "$day 14:11"), $midnight),
   (4, 6, 15, 'Early flight', 0, 0, 0, $midnight);"
-mkdir "$cfg_dir/bin"
+mkdir -p "$cfg_dir/bin"
 for stub in pw-play omarchy-notification-send; do
   printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/$stub"
   chmod +x "$cfg_dir/bin/$stub"
