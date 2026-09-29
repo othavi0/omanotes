@@ -493,6 +493,21 @@ expect "and the retry lands once the write can" "SELECT enabled FROM alarms WHER
 ipc toggleRow "$gym" > /dev/null
 expect "the next switch lands at once" "SELECT enabled FROM alarms WHERE id = $gym" "1"
 sleep 0.3
+touch "$cfg_dir/refuse-writes"
+refused_before="$(updates)"
+ipc toggleRow "$gym" > /dev/null
+sleep 2.5
+replies "a switch the binary refuses as bad_request is sent once and not retried: a retry gets the same answer" \
+  "$(( $(updates) - refused_before ))" "1"
+replies "while the row on disk stays on" "$(sql "SELECT enabled FROM alarms WHERE id = $gym")" "1"
+rm "$cfg_dir/refuse-writes"
+ipc toggleRow "$gym" > /dev/null
+ipc toggleRow "$gym" > /dev/null
+expect "the next switches of that alarm replace the refused one and land" "SELECT enabled FROM alarms WHERE id = $gym" "0"
+ipc toggleRow "$gym" > /dev/null
+expect "and it is back on" "SELECT enabled FROM alarms WHERE id = $gym" "1"
+for n in 1 2 3; do ipc clearToastOf "$n"; done
+sleep 0.3
 updates_before="$(updates)"
 contains "a repeat chip on a saved alarm leaves it unsaved" "$(ipc toggleDay 6)" "|dirty:true"
 sleep 0.5
@@ -755,7 +770,7 @@ replies "and the shell restarted once, through the stub" "$(cat "$cfg_dir/restar
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
 logged_failures="$(grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | sort -u | tr '\n' ';' || true)"
-replies "only the injected failures are logged" "$logged_failures" "disk I/O error;"
+replies "only the injected failures are logged" "$logged_failures" "disk I/O error;the database helper refused the request;"
 replies "the failed save was retried at least once before it landed" \
   "$(( $(grep -c "omanotes db: disk I/O error" "$cfg_dir/qs.log" || true) >= 3 ))" "1"
 replies "the broken player is logged once" "$(grep -c "omanotes: cannot play" "$cfg_dir/qs.log" || true)" "1"

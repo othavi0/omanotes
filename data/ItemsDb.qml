@@ -63,6 +63,7 @@ QtObject {
 
     property string _key: ""
     property bool _moved: false                 // items shows a drop the file has not confirmed
+    property bool _heard: false                 // a snapshot has landed since init
     property bool _fromScript: false
     // key -> { value, id }: the settings writes still on their way.
     property var _settingsPatch: ({})
@@ -82,15 +83,22 @@ QtObject {
         function onFailed(message) { root.failed(message) }
     }
 
+    // The signals go out only for what changed, and each at least once: a
+    // list rebuilt for nothing cancels the drag in progress.
     function _landed(changed) {
         for (var key in root._settingsPatch) {
             if (root._settingsPatch[key].id <= Store.covered) delete root._settingsPatch[key]
         }
         root._showSettings()
-        if (changed || root._moved) root._showItems()
-        root.countsUpdated()
-        root.itemsUpdated(root.items)
-        root.historyUpdated(Store.history)
+        var shown = root.items
+        root._showItems()
+        var first = !root._heard
+        root._heard = true
+        if (changed || first) {
+            root.countsUpdated()
+            root.historyUpdated(Store.history)
+        }
+        if (first || !Db.sameRows(shown, root.items)) root.itemsUpdated(root.items)
     }
 
     function _showSettings() {
@@ -104,7 +112,7 @@ QtObject {
     // the rows shown.
     function _showItems() {
         root._moved = false
-        var query = root.listQuery.trim()
+        var query = Db.viewQuery(root.listQuery)
         if (query === "") {
             root.items = Db.typeRows(Store.allItems, root.listFilter)
             return
@@ -148,7 +156,7 @@ QtObject {
         root.listQuery = String(query || "")
         if (root._key === "") return
         Store.setView(root._key, root.listFilter, root.listQuery)
-        if (root.listQuery.trim() === "") Qt.callLater(root._listShown)
+        if (Db.viewQuery(root.listQuery) === "") Qt.callLater(root._listShown)
         else Store.reload()
     }
     function _listShown() {

@@ -119,9 +119,9 @@ QtObject {
     // What a finished alarm write does to the overlay. A write that failed
     // keeps its entry and is retried with back-off, and the retry sends the
     // newest state of that alarm because a later change replaced the entry.
-    // A row that is gone only drops the entry, quietly. A record the schema
-    // refuses stays laid over its row and is not retried: it would be refused
-    // again.
+    // A row that is gone only drops the entry, quietly. A write refused for
+    // what it is (Db.definitive: the schema, the side, the size) stays laid
+    // over its row and is not retried: it would be refused again.
     function _ended(kind, args, write, r) {
         var entry = kind === "insertAlarm" ? undefined : root._pending[args.id]
         var current = !!entry && entry.write === write
@@ -141,7 +141,7 @@ QtObject {
             return
         }
         if (error !== "") {
-            if (current && r.err === "refused") entry.unwritable = true
+            if (current && Db.definitive(r.err)) entry.unwritable = true
             else if (current) {
                 entry.retry = true
                 alarmRetry.start()

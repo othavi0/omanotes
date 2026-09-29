@@ -111,7 +111,6 @@ QtObject {
     property bool _dirty: false
     property string _binary: ""
     property real _stamp: -1               // the file's change counter at the shown snapshot
-    property string _viewsShown: "[]"      // the searches the shown snapshot answered
     property int _shown: 0                 // how many snapshots with rows were shown
 
     function _log(message) {
@@ -131,15 +130,17 @@ QtObject {
         return { id: w.id, by: w.by, op: w.op, at: w.at, args: w.args }
     }
 
+    // The snapshot a request asks for: after the stamp shown, with the search
+    // of each view, cut as the view compares it. The binary answers the
+    // searches even when the file did not move, so a search costs its ids.
     function _sync() {
         var views = []
         for (var key in root._attached) {
             var v = root._attached[key]
-            var query = v.query.trim()
+            var query = Db.viewQuery(v.query)
             if (query !== "") views.push({ key: key, filter: v.filter, query: query })
         }
-        var sig = JSON.stringify(views)
-        return { since: sig === root._viewsShown ? root._stamp : -1, views: views, sig: sig }
+        return { since: root._stamp, views: views }
     }
 
     // What a lane carries: the writes, the request body, and what the answer
@@ -150,10 +151,9 @@ QtObject {
             writes: writes,
             since: sync.since,
             views: sync.views,
-            sig: sync.sig,
             shownBefore: root._shown,
             covers: writes.length > 0 ? writes[writes.length - 1].id : root._doneWrite,
-            body: Db.request(writes.map(root._wire), { since: sync.since, views: sync.views })
+            body: Db.request(writes.map(root._wire), sync)
         }
     }
 
@@ -233,14 +233,28 @@ QtObject {
         Qt.callLater(root._pump)
     }
 
+    // The searches a request carried and the ids each matched. A search
+    // SQLite refused matched nothing, and the journal says why.
+    function _matchesOf(snap, views) {
+        var out = {}
+        for (var j = 0; j < views.length; ++j) {
+            var v = views[j]
+            var found = (snap.matches || {})[v.key]
+            if (found && !Array.isArray(found)) root._log("search failed: " + Db.errorText(found))
+            out[v.key] = { filter: v.filter, query: v.query, ids: Array.isArray(found) ? found : [] }
+        }
+        return out
+    }
+
     function _apply(snap, sent) {
         if (snap.unchanged) {
             // Answered against the snapshot this request knew; if another
             // landed since, it no longer says anything about what is shown.
-            if (sent.since !== root._stamp || sent.sig !== root._viewsShown) {
+            if (sent.since !== root._stamp) {
                 root.reload()
                 return
             }
+            root.matches = root._matchesOf(snap, sent.views)
             root.covered = Math.max(root.covered, sent.covers)
             root.snapshotApplied(false)
             return
@@ -255,7 +269,6 @@ QtObject {
         }
         root._shown += 1
         root._stamp = snap.stamp
-        root._viewsShown = sent.sig
         var read = Db.parseSettings(snap.settings)
         root.settings = read.settings
         root.dbBytes = read.bytes
@@ -266,12 +279,7 @@ QtObject {
         for (var i = 0; i < snap.items.length; ++i) byId[snap.items[i].id] = snap.items[i]
         root.itemsById = byId
         root.allItems = snap.items
-        var matches = {}
-        for (var j = 0; j < sent.views.length; ++j) {
-            var v = sent.views[j]
-            matches[v.key] = { filter: v.filter, query: v.query, ids: (snap.matches || {})[v.key] || [] }
-        }
-        root.matches = matches
+        root.matches = root._matchesOf(snap, sent.views)
         root.covered = Math.max(root.covered, sent.covers)
         if (!root.ready) {
             root.ready = true

@@ -13,6 +13,17 @@ var PROTOCOL = 1
 // the Store never sends one.
 var MAX_REQUEST_BYTES = 1048576
 
+// A search goes out cut to this many UTF-16 units. Folded, the longest unit
+// takes 6 bytes, so a search stays far under the 50 000 bytes SQLite takes
+// in a LIKE pattern.
+var MAX_QUERY = 200
+
+// The search of a view as the Store sends it and as the view compares the
+// answer: trimmed as the binary expects, then cut.
+function viewQuery(text) {
+  return String(text || "").trim().slice(0, MAX_QUERY)
+}
+
 // Unix timestamp in seconds: the `at` of every write. The binary has no clock.
 function now() {
   return Math.floor(Date.now() / 1000)
@@ -235,6 +246,28 @@ function matchedRows(itemsById, ids) {
   var out = []
   for (var i = 0; i < ids.length; ++i) if (itemsById[ids[i]]) out.push(itemsById[ids[i]])
   return out
+}
+
+var ROW_FIELDS = ["id", "type", "title", "body", "status", "created_at", "updated_at"]
+
+// Whether two lists show the same rows in the same order, field by field. A
+// snapshot that changes nothing a list shows, such as the echo the watcher
+// asks for after a write, then rebuilds nothing and cancels no drag.
+function sameRows(a, b) {
+  if (a.length !== b.length) return false
+  for (var i = 0; i < a.length; ++i) {
+    if (a[i] === b[i]) continue
+    for (var f = 0; f < ROW_FIELDS.length; ++f) {
+      if (a[i][ROW_FIELDS[f]] !== b[i][ROW_FIELDS[f]]) return false
+    }
+  }
+  return true
+}
+
+// The failures a retry would get again: the record, the side or the size is
+// wrong, not the moment.
+function definitive(err) {
+  return err === "bad_request" || err === "forbidden" || err === "too_large" || err === "refused"
 }
 
 // The text with every lone surrogate replaced by U+FFFD. The QML engine

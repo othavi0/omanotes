@@ -15,6 +15,8 @@
 #   hold-inserts      requests with alarm.insert wait until the file is removed
 #   hold-any-write    requests with any write wait until the file is removed
 #   fail-writes       requests with alarm.save or alarm.delete fail with "disk I/O error"
+#   refuse-writes     requests with alarm.save or alarm.delete fail as bad_request, as a
+#                     record the binary refuses
 #   fail-insert       requests with alarm.insert fail with "disk I/O error"
 #   fail-sync         requests with no writes fail as a lock held outside
 #   first-fails       the next request fails as a lock held outside, once
@@ -42,6 +44,7 @@ printf '%s %s %s\n' "$n" "$kinds" "$req" >> "$cfg/db.log"
 wait_while() { while [[ -e "$cfg/$1" ]]; do sleep 0.05; done; }
 disk() { printf '{"err":"io","detail":"disk I/O error"}\n' >&2; exit 1; }
 busy() { printf '{"err":"busy","detail":"database is locked"}\n' >&2; exit 1; }
+refuse() { printf '{"err":"bad_request","detail":"an alarm names every column"}\n' >&2; exit 1; }
 saves=0; inserts=0
 [[ "$kinds" == *write:alarm.save* || "$kinds" == *write:alarm.delete* ]] && saves=1
 [[ "$kinds" == *write:alarm.insert* ]] && inserts=1
@@ -69,5 +72,6 @@ if [[ "$kinds" == sync ]]; then
 else
   (( inserts )) && [[ -e "$cfg/fail-insert" ]] && disk
   (( saves )) && [[ -e "$cfg/fail-writes" ]] && disk
+  (( saves )) && [[ -e "$cfg/refuse-writes" ]] && refuse
 fi
 exec "$real" "$@" <<< "$req"

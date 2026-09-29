@@ -60,6 +60,35 @@ test("matchedRows looks the matched ids up in the snapshot, and skips one it doe
   assert.deepEqual(ids(Db.matchedRows(byId, [3, 9, 1])), [3, 1])
 })
 
+test("viewQuery trims a search and cuts it to MAX_QUERY units, which SQLite always takes", (t) => {
+  assert.equal(Db.MAX_QUERY, 200)
+  assert.equal(Db.viewQuery("  cafe  "), "cafe")
+  assert.equal(Db.viewQuery(" " + "x".repeat(300)), "x".repeat(200))
+  assert.equal(Db.viewQuery(""), "")
+  // U+0958 folds to the longest UTF-8 of the fold table: 6 bytes, 200 of them far under the 50 000 of a LIKE pattern.
+  const path = newDb(t)
+  const snap = sync(path, -1, [{ key: "v", filter: "all", query: Db.viewQuery("क़".repeat(60000)) }])
+  assert.deepEqual(snap.matches, { v: [] })
+})
+
+test("sameRows compares two lists row by row and field by field, so a snapshot with the same rows changes nothing", () => {
+  const row = (id, title) => ({ id, type: "note", title, body: null, status: 0, created_at: 1, updated_at: 2 })
+  const shown = [row(1, "a"), row(2, "b")]
+  assert.equal(Db.sameRows(shown, [row(1, "a"), row(2, "b")]), true)
+  assert.equal(Db.sameRows([], []), true)
+  assert.equal(Db.sameRows(shown, [row(2, "b"), row(1, "a")]), false, "the order counts")
+  assert.equal(Db.sameRows(shown, [row(1, "a")]), false)
+  assert.equal(Db.sameRows(shown, [row(1, "a"), row(2, "B")]), false)
+  assert.equal(Db.sameRows(shown, [row(1, "a"), { ...row(2, "b"), updated_at: 3 }]), false)
+})
+
+test("definitive is true for the failures a retry would get again", () => {
+  for (const err of ["bad_request", "forbidden", "too_large", "refused"]) assert.equal(Db.definitive(err), true, err)
+  for (const err of ["busy", "io", "corrupt", "sqlite", "internal", "crash", "no_binary", "timeout", "protocol", "not_found"]) {
+    assert.equal(Db.definitive(err), false, err)
+  }
+})
+
 test("parseCounts of no row counts zero", () => {
   assert.deepEqual(Db.parseCounts(null), { unreadNotes: 0, pendingTodos: 0, notes: 0, todos: 0, history: 0, oldestHistory: 0 })
 })

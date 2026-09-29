@@ -77,6 +77,13 @@ ShellRoot {
       itemsTab.searchText = query
       return "ok"
     }
+    // A search too long for the argv of an IPC call.
+    function searchRepeated(text: string, times: int): string {
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      if (!itemsTab) return "no ItemsTab"
+      itemsTab.searchText = text.repeat(times)
+      return "ok"
+    }
     function panelRows(): int {
       var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
       return itemsTab ? itemsTab.itemList.length : -1
@@ -427,6 +434,21 @@ ipc omanotes-test filterPanel note coffee > /dev/null
 sleep 0.5
 release_reads
 panel_rows_are "a failed list read re-runs with the latest filter and search" 1
+
+ipc omanotes-test filterPanel all "" > /dev/null
+sleep 1
+ipc omanotes-test filterPanel all "extern" > /dev/null
+panel_rows_are "a search lists what it matches" \
+  "$(sqlite3 "$db" "SELECT COUNT(*) FROM items WHERE search_title LIKE '%extern%' OR search_body LIKE '%extern%'")"
+searched="$(grep '"query":"extern"' "$cfg_dir/db.log" || true)"
+replies "a search asks for the ids after the stamp shown, not for every row again" \
+  "$(grep -c '"since":-1' <<< "$searched" || true)|$(( $(grep -c '"since":' <<< "$searched" || true) >= 1 ))" "0|1"
+ipc omanotes-test searchRepeated x 60000 > /dev/null
+panel_rows_are "a search of 60 000 characters lists nothing" 0
+replies "it goes out cut to 200 characters, under SQLite's limit on a LIKE pattern" \
+  "$(grep -o '"query":"x*"' "$cfg_dir/db.log" | awk '{ print length($0) - 10 }' | sort -n | tail -1)" "200"
+ipc omanotes-test searchRepeated "中" 20000 > /dev/null
+panel_rows_are "a search of 20 000 characters of 3 bytes lists nothing, and no view's reload fails for it" 0
 ipc omanotes-test filterPanel all "" > /dev/null
 
 ipc omanotes-test quit > /dev/null || true

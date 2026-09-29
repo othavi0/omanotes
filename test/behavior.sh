@@ -1214,6 +1214,11 @@ ShellRoot {
     function() { console.log("SEARCH-DRAG float=" + sr.floatText() + " line=" + sr.named("dropLine").visible); sr.release() },
     function() { console.log("AFTER-SEARCH-DRAG " + sr.order() + " write=[" + (db.writing ? "busy" : "") + "]"); itemsTab.searchText = "" },
 
+    function() { sr.drag(304, sr.pointIn(304, 0.95).y) },
+    // The echo the watcher asks for after a write: the file did not move.
+    function() { Data.Store.reload() },
+    function() { console.log("ECHO-MID-DRAG float=" + sr.floatText()); sr.release() },
+
     function() { panel.close() },
     function() { panel.open() },
     function() { console.log("REOPEN " + sr.order()) }
@@ -1290,6 +1295,7 @@ logged "a note dropped above another lands right before it, and the todos stay i
 logged "the search lists every row here" "SEARCH 304,302,303,301,306,305$"
 logged "while the search has text, a row does not drag" "SEARCH-DRAG float=none line=false$"
 logged "and nothing moves" "AFTER-SEARCH-DRAG 304,302,303,301,306,305 write=\[\]$"
+logged "a reload that finds the file as shown lands during a drag and leaves the drag alone" "ECHO-MID-DRAG float=Delta todo$"
 logged "the order survives closing and reopening the panel" "REOPEN 304,302,303,301,306,305$"
 logged "no write was rejected during the drag run" "WRITE-FAILURES 0$"
 expect "the order is stored in the database" \
