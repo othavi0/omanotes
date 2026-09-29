@@ -7,7 +7,8 @@
 // gated.
 //
 // The child's stdout is a FIFO filled before the spawn, so the child blocks on
-// its first write, line 1, right after the migration and the writes. The test
+// its first write to stdout: the result line of its one write, or the snapshot
+// of a read, right after the migration. The test
 // then drains it 64 KiB at a time and reads /proc/<pid>/status each time the
 // child is blocked again. RssAnon is the largest of those readings, VmHWM the
 // last one.
@@ -17,7 +18,7 @@ import { spawn, spawnSync } from "node:child_process"
 import { closeSync, constants, openSync, readFileSync, readSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
-import { BIN, PROTOCOL, T0, answerOf, call, newDb, tempDb, tempDir } from "./lib/bin-fixture.mjs"
+import { BIN, PROTOCOL, T0, answerOf, call, newDb, tempDb, tempDir, writesOf } from "./lib/bin-fixture.mjs"
 
 const ANON_LIMIT_KB = 3 * 1024
 const WRITE_ANON_LIMIT_KB = 16 * 1024
@@ -99,7 +100,7 @@ async function peakOf(t, dbPath, request) {
   }
   closeSync(reader)
   const status = await exited
-  const answer = answerOf({ status, stdout: Buffer.concat(out).toString("utf8"), stderr })
+  const answer = answerOf({ status, stdout: Buffer.concat(out).toString("utf8"), stderr }, writesOf(request))
   return { anon, hwm, answer }
 }
 

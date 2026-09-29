@@ -51,6 +51,11 @@ stub_db() {
   done
   ln -sfn "$cfg_dir/bin" "$stub_tree/bin"
 }
+# lib/stall-journal.c, built where the stub preloads it. Returns 1 with no C compiler.
+stall_journal_lib() {
+  command -v cc > /dev/null || return 1
+  cc -shared -fPIC -O2 -o "$cfg_dir/stall-journal.so" "$worktree/test/lib/stall-journal.c" -ldl
+}
 # The protocol the QML speaks, for the requests a script sends the binary itself.
 protocol="$(sed -n 's/^var PROTOCOL = \([0-9]*\)$/\1/p' "$worktree/data/Db.js")"
 # One sync of the whole file, which opening it with the binary migrates first.

@@ -3,9 +3,10 @@ import Quickshell.Io
 import "Db.js" as Db
 
 // One spawn of bin/omanotes-db at a time. The request goes in on stdin, which
-// is closed to end it, and the answer comes back on stdout: the writes'
-// results on line 1, then the snapshot. `finished` hands over what Db.reply
-// read of it. The Store runs two lanes: writes and reads.
+// is closed to end it, and the answer comes back on stdout: one result line
+// per write, each as soon as its write ends, then the snapshot (ADR-0020).
+// `finished` hands over what Db.reply read of it. The Store runs two lanes:
+// writes and reads.
 //
 // Each rule is a failure measured before this lane existed (ADR-0018):
 // - The request is written in onStarted. Written earlier it can be lost, and
@@ -20,7 +21,8 @@ import "Db.js" as Db
 //   one kept across spawns held the text of the last snapshot for as long as
 //   the shell ran.
 // - A spawn that outlives its limit is killed, and its answer is what it
-//   wrote before: a process stuck on a disk would hold the queue forever.
+//   wrote before: a process stuck on a disk would hold the queue forever. The
+//   writes whose result lines came out before the kill keep their results.
 Process {
     id: lane
 
@@ -68,7 +70,7 @@ Process {
         lane.stdinEnabled = false
     }
     onExited: function(exitCode, exitStatus) {
-        lane._end(Db.reply(exitCode, exitStatus !== 0, lane.stdout ? lane.stdout.text : "", lane.stderr ? lane.stderr.text : ""))
+        lane._end(Db.reply(lane.sent.writes.length, exitCode, exitStatus !== 0, lane.stdout ? lane.stdout.text : "", lane.stderr ? lane.stderr.text : ""))
     }
     onRunningChanged: {
         if (lane.running) return

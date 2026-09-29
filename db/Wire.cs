@@ -79,8 +79,8 @@ internal sealed class OpException : Exception
 
 internal static class Protocol
 {
-    /// <summary>The newest protocol this binary speaks. argv[1] names the caller's.</summary>
-    public const int Current = 1;
+    /// <summary>The newest protocol this binary speaks. argv[1] names the caller's. 2 writes one result line per write (ADR-0020).</summary>
+    public const int Current = 2;
 
     /// <summary>
     /// The oldest one it still answers. Between an update's merge and the
@@ -88,6 +88,9 @@ internal static class Protocol
     /// a release that raises Current keeps Min = Current - 1.
     /// </summary>
     public const int Min = 1;
+
+    /// <summary>The protocol that writes every result in one {"results":[...]} line after the last write. Its branch goes once Min passes it.</summary>
+    public const int OneResultsLine = 1;
 
     /// <summary>A body over about 64 KB was lost in argv before (issue #55); the request now travels on stdin up to this.</summary>
     public const int MaxRequestBytes = 1 << 20;

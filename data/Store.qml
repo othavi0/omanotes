@@ -231,14 +231,16 @@ QtObject {
         else if (!result.ok) root._log("write failed: " + Db.errorText(result))
     }
 
-    function _result(results, id) {
+    function _result(results, id, failure) {
         for (var i = 0; i < results.length; ++i) {
             var r = results[i]
             if (r.id !== id) continue
             if (typeof r.err === "string") return { ok: false, err: r.err, detail: String(r.detail || "") }
             return { ok: true, value: r.value === undefined ? null : r.value }
         }
-        return { ok: false, err: "crash", detail: "no result" }
+        // No failure with every line whole: the binary answered another id.
+        if (!failure) return { ok: false, err: "crash", detail: "no result" }
+        return { ok: false, err: failure.err, detail: String(failure.detail || "") }
     }
 
     // What one finished request did, as its lane read it (Db.reply). The
@@ -250,15 +252,15 @@ QtObject {
         if (sent === null) return
         lane.sent = null
         for (var n = 0; n < answer.log.length; ++n) console.error(answer.log[n])
-        for (var i = 0; i < sent.writes.length; ++i) {
-            root._landWrite(sent.writes[i], answer.ok ? root._result(answer.results, sent.writes[i].id)
-                : { ok: false, err: answer.err, detail: answer.detail })
-        }
         var failure = answer.ok ? answer.syncErr : answer
+        var results = answer.ok ? answer.results : []
+        for (var i = 0; i < sent.writes.length; ++i)
+            root._landWrite(sent.writes[i], root._result(results, sent.writes[i].id, failure))
         if (failure && root._clients > 0) {
-            // A request with writes that failed whole was told to the views
-            // that wrote; a read that failed is told to every view.
-            if (answer.ok || sent.writes.length === 0) {
+            // A write with no result was told its failure through the view
+            // that wrote. Only once every write has its result is the failure
+            // the read's, told to every view.
+            if (sent.writes.length === 0 || results.length === sent.writes.length) {
                 var said = (root.ready ? "read failed: " : "") + Db.errorText(failure)
                 root._log(said)
                 root.failed(said)

@@ -1,9 +1,11 @@
 // Locks, transactions and several writers at once.
 import test from "node:test"
 import assert from "node:assert/strict"
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
-import { BIN, PROTOCOL, answerOf, call, cli, exec, holdLock, lastError, rows, run, sync, tempDb, write } from "./lib/bin-fixture.mjs"
+import { join } from "node:path"
+import { setTimeout as sleep } from "node:timers/promises"
+import { BIN, Db, PROTOCOL, ROOT, answerOf, call, cli, exec, holdLock, lastError, newDb, rows, run, sync, tempDb, tempDir, write } from "./lib/bin-fixture.mjs"
 
 function timed(fn) {
   const start = process.hrtime.bigint()
@@ -93,13 +95,13 @@ test("eight processes writing five items each lose nothing", async (t) => {
     const child = spawn(BIN, [PROTOCOL, "run", path], { env: {} })
     let out = ""
     child.stdout.on("data", (d) => { out += d })
-    child.on("close", (status) => resolve({ status, out }))
+    child.on("close", (status) => resolve({ status, stdout: out, stderr: "" }))
     const writes = Array.from({ length: 5 }, (_, i) => write("item.add", { type: "note", title: `p${p} n${i}` }, { id: i }))
     child.stdin.end(JSON.stringify({ writes }))
   })))
   for (const r of runs) {
     assert.equal(r.status, 0)
-    assert.ok(JSON.parse(r.out).results.every((x) => typeof x.value === "number"), r.out)
+    assert.ok(answerOf(r, 5).results.every((x) => typeof x.value === "number"), r.stdout)
   }
   assert.equal(rows(path, "SELECT count(DISTINCT id) AS n FROM items")[0].n, 40)
   assert.equal(rows(path, "SELECT count(*) AS n FROM history")[0].n, 40)
@@ -180,7 +182,7 @@ test("a snapshot is one read transaction: a writer committing outside never show
   try {
     for (let i = 0; i < 40; i++) {
       const r = await callAsync(path, { sync: { since: -1, views: [] } })
-      const answer = r.status === 0 || r.status === 3 ? answerOf(r) : null
+      const answer = r.status === 0 || r.status === 3 ? answerOf(r, 0) : null
       if (!answer || answer.syncErr) {
         seen.failed.push(answer ? JSON.stringify(answer.syncErr) : `exit ${r.status} ${r.stderr.trim()}`)
         continue
@@ -205,17 +207,58 @@ test("a snapshot is one read transaction: a writer committing outside never show
   assert.notEqual(gens, "gen 0", "the writer committed while the snapshots ran")
 })
 
-test("a snapshot that cannot be read keeps the results of the writes before it: line 1, then exit 3 and syncErr on stderr", (t) => {
+test("a snapshot that cannot be read keeps the results of the writes before it: their lines, then exit 3 and syncErr on stderr", (t) => {
   const path = tempDb(t)
   sync(path)
   cli(path, "DROP TABLE settings")
   const r = exec([PROTOCOL, "run", path], { writes: [write("item.add", { type: "note", title: "kept" })], sync: { since: -1, views: [] } })
   assert.equal(r.status, 3, r.stderr)
-  assert.equal(r.stdout.split("\n")[0], "{\"results\":[{\"id\":1,\"value\":1}]}")
+  assert.equal(r.stdout.split("\n")[0], "{\"id\":1,\"value\":1}")
   assert.deepEqual(lastError(r.stderr), { syncErr: { err: "sqlite", detail: "no such table: settings" } })
-  const res = answerOf(r)
+  const res = answerOf(r, 1)
   assert.equal(res.results[0].value, 1)
   assert.equal(res.snapshot, undefined)
   assert.deepEqual(res.syncErr, { err: "sqlite", detail: "no such table: settings" })
   assert.equal(rows(path, "SELECT title FROM items")[0].title, "kept")
+})
+
+async function until(what, ok, ms = 5000) {
+  const end = Date.now() + ms
+  while (!ok()) {
+    assert.ok(Date.now() < end, `${what} within ${ms} ms`)
+    await sleep(20)
+  }
+}
+
+test("a request killed during its second write has already written the whole result line of the first (#57)", async (t) => {
+  if (spawnSync("cc", ["--version"]).error) {
+    assert.ok(process.env.OMANOTES_REQUIRE_CC !== "1", "OMANOTES_REQUIRE_CC=1, and there is no C compiler (cc) to build test/lib/stall-journal.c")
+    t.skip("no C compiler (cc) to build test/lib/stall-journal.c (OMANOTES_REQUIRE_CC=1 fails instead)")
+    return
+  }
+  const shim = join(tempDir(t), "stall.so")
+  const built = spawnSync("cc", ["-shared", "-fPIC", "-O2", "-o", shim, join(ROOT, "test/lib/stall-journal.c"), "-ldl"], { encoding: "utf8" })
+  assert.equal(built.status, 0, built.stderr)
+  const path = newDb(t)
+  const child = spawn(BIN, [PROTOCOL, "run", path], { env: { LD_PRELOAD: shim, OMANOTES_STALL_JOURNAL: "2" } })
+  t.after(() => child.kill("SIGKILL"))
+  let out = ""
+  let err = ""
+  child.stdout.on("data", (d) => { out += d })
+  child.stderr.on("data", (d) => { err += d })
+  const closed = new Promise((resolve) => child.on("close", (status, signal) => resolve(signal)))
+  child.stdin.end(JSON.stringify({ writes: [
+    write("item.add", { type: "note", title: "first" }, { id: 1 }),
+    write("item.add", { type: "note", title: "second" }, { id: 2 })
+  ], sync: { since: -1, views: [] } }))
+  await until("the first note in the file", () => cli(path, "SELECT count(*) FROM items WHERE title = 'first'").trim() === "1")
+  // Its line goes out after its COMMIT: a kill between the two still loses it (ADR-0020).
+  await until("the first result line on stdout", () => out.endsWith("\n"))
+  assert.equal(await Promise.race([closed, sleep(200).then(() => "running")]), "running", "the second write is held on the disk")
+  child.kill("SIGKILL")
+  assert.equal(await closed, "SIGKILL")
+  assert.equal(out, "{\"id\":1,\"value\":1}\n")
+  assert.deepEqual(Db.reply(2, 9, true, out, err),
+    { ok: true, results: [{ id: 1, value: 1 }], snapshot: null, syncErr: { err: "crash", detail: "signal 9" }, log: [] })
+  assert.equal(cli(path, "SELECT group_concat(title) FROM items").trim(), "first", "the second write never committed")
 })

@@ -448,11 +448,7 @@ FocusScope {
             if (root.toast) root.toast.show("Item removed elsewhere")
             root.focusList()
         }
-        if (root._selectAfterReload >= 0 && ItemJs.indexOfId(items, root._selectAfterReload) >= 0) {
-            root.selectedId = root._selectAfterReload
-            root._selectAfterReload = -1
-            listView.positionViewAtIndex(root.selectedIndex, ListView.Center)
-        }
+        root._selectPending()
         var refill = !root.editorFocused && !editorPane.dirty
         if (ItemJs.indexOfId(items, root.selectedId) >= 0) {
             if (refill) root.refillEditor()
@@ -461,6 +457,13 @@ FocusScope {
         root.selectedId = items.length > 0 ? items[0].id : -1
         if (refill) root.refillEditor()
         if (items.length > 0) listView.positionViewAtIndex(0, ListView.Center)
+    }
+
+    function _selectPending() {
+        if (root._selectAfterReload < 0 || ItemJs.indexOfId(root.itemList, root._selectAfterReload) < 0) return
+        root.selectedId = root._selectAfterReload
+        root._selectAfterReload = -1
+        listView.positionViewAtIndex(root.selectedIndex, ListView.Center)
     }
 
     Connections {
@@ -473,6 +476,15 @@ FocusScope {
         }
         function onAdded(id, type, title) {
             root._selectAfterReload = Number(id)
+            // A watcher read can list the row while a later write of the same
+            // request holds the request, so no itemsUpdated comes after this
+            // result. The result can land long after the save: a user who has
+            // typed since keeps the row and the text in front of them. Focus
+            // alone is not that, since the title keeps it after a draft is saved.
+            if (ItemJs.indexOfId(root.itemList, Number(id)) >= 0) {
+                if (editorPane.dirty) root._selectAfterReload = -1
+                else if (!root.draftNew) root._selectPending()
+            }
             if (root.toast) root.toast.show("Added " + type + " — " + title)
         }
         function onUpdated(id, title) {

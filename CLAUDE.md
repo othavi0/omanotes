@@ -13,7 +13,7 @@ Omarchy shell plugin (Quickshell/QML) with a bar widget and a service: notes and
 
 ## Commands
 
-- `npm test` runs everything, `tools/verify-bin.sh --check` included. It needs `qs`, `sqlite3` and the Omarchy shell under `$OMARCHY_PATH` (default `/usr/share/omarchy`). The aarch64 test skips without `qemu-aarch64-static` and the sysroot; `OMANOTES_REQUIRE_ARM=1` makes that a failure, for a release.
+- `npm test` runs everything, `tools/verify-bin.sh --check` included. It needs `qs`, `sqlite3` and the Omarchy shell under `$OMARCHY_PATH` (default `/usr/share/omarchy`). The aarch64 test skips without `qemu-aarch64-static` and the sysroot; `OMANOTES_REQUIRE_ARM=1` makes that a failure, for a release. The two tests of a request killed part way (`test/panel.sh`, `test/bin-concurrency.test.mjs`) skip without `cc`; `OMANOTES_REQUIRE_CC=1` makes that a failure too.
 - `node --test test/` runs only the unit tests.
 - `npm run validate` runs `omarchy plugin validate .`.
 - `npm run build:db` (`tools/build.sh`) rebuilds `bin/` for x86_64 and aarch64 and writes `bin/BUILD.json`. It needs the .NET SDK of `db/global.json`, and the aarch64 sysroot that `tools/sysroot.sh` unpacks.

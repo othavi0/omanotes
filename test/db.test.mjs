@@ -116,15 +116,16 @@ test("a lone surrogate in a title reaches the file as U+FFFD, where the raw text
   const path = newDb(t)
   const write = { id: 1, by: "widget", op: "item.add", at: T0, args: { type: "note", title: "x\ud800y", body: "" } }
   const raw = exec([String(Db.PROTOCOL), "run", path], JSON.stringify({ writes: [write] }))
-  assert.equal(JSON.parse(raw.stdout).results[0].err, "bad_request")
+  assert.equal(JSON.parse(raw.stdout).err, "bad_request")
   const r = exec([String(Db.PROTOCOL), "run", path], Db.request([Db.writeJson(write)], null))
   assert.equal(r.status, 0, r.stderr)
   assert.equal(rows(path, "SELECT title FROM items")[0].title, "x�y")
 })
 
 test("command puts no user text in argv: the binary, the protocol, the verb and the file", () => {
-  assert.deepEqual(Db.command("/p/bin/omanotes-db.x86_64", "/d/scratchpad.db"), ["/p/bin/omanotes-db.x86_64", "1", "run", "/d/scratchpad.db"])
-  assert.ok(BUILD.protocol[0] <= Db.PROTOCOL && Db.PROTOCOL <= BUILD.protocol[1], "the committed binary speaks the QML's protocol")
+  assert.deepEqual(Db.command("/p/bin/omanotes-db.x86_64", "/d/scratchpad.db"), ["/p/bin/omanotes-db.x86_64", "2", "run", "/d/scratchpad.db"])
+  assert.deepEqual(BUILD.protocol, [Db.PROTOCOL - 1, Db.PROTOCOL],
+    "the committed binary speaks the QML's protocol and the one before, which the old QML speaks until the restart")
 })
 
 test("utf8Length counts the bytes a text takes on stdin, a lone surrogate as the U+FFFD that replaces it", () => {
@@ -144,36 +145,71 @@ test("MAX_WRITE_BYTES leaves room for the sync of the views in a request", () =>
   assert.ok(Buffer.byteLength(Db.request([], { since: 4294967295, views })) <= 16384, "twelve views with the longest search fit the room")
 })
 
-test("reply reads line 1 as the results and line 2 as the snapshot on exit 0, with stderr as the log", () => {
-  const results = JSON.stringify({ results: [{ id: 1, value: 7 }] })
-  assert.deepEqual(Db.reply(0, false, results + "\n" + JSON.stringify({ stamp: 3, unchanged: true, matches: {} }) + "\n", "omanotes-db: migrated 0 -> 5\n"),
-    { ok: true, results: [{ id: 1, value: 7 }], snapshot: { stamp: 3, unchanged: true, matches: {} }, syncErr: null, log: ["omanotes-db: migrated 0 -> 5"] })
-  assert.deepEqual(Db.reply(0, false, results + "\n", ""), { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: null, log: [] },
-    "a request with no sync has no line 2")
-  assert.deepEqual(Db.reply(0, false, results + "\n{\"stamp\":", ""),
+const MIGRATED = "omanotes-db: migrated 0 -> 5\n"
+const R1 = "{\"id\":1,\"value\":7}\n"
+const R2 = "{\"id\":2,\"err\":\"not_found\",\"detail\":\"no such row\"}\n"
+const SNAPSHOT = { stamp: 3, unchanged: true, matches: {} }
+const BUSY = "{\"err\":\"busy\",\"detail\":\"database is locked\"}\n"
+
+test("reply reads one result line per write, then the snapshot, on exit 0, with stderr as the log", () => {
+  const both = [{ id: 1, value: 7 }, { id: 2, err: "not_found", detail: "no such row" }]
+  assert.deepEqual(Db.reply(2, 0, false, R1 + R2 + JSON.stringify(SNAPSHOT) + "\n", MIGRATED),
+    { ok: true, results: both, snapshot: SNAPSHOT, syncErr: null, log: ["omanotes-db: migrated 0 -> 5"] })
+  assert.deepEqual(Db.reply(2, 0, false, R1 + R2, ""), { ok: true, results: both, snapshot: null, syncErr: null, log: [] },
+    "a request with no sync has no snapshot line")
+  assert.deepEqual(Db.reply(1, 0, false, R1 + JSON.stringify(SNAPSHOT), ""),
+    { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: { err: "crash", detail: "unreadable answer" }, log: [] },
+    "a snapshot line with no \"\\n\" is not whole")
+  assert.deepEqual(Db.reply(1, 0, false, R1 + "[1]\n", ""),
     { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: { err: "crash", detail: "unreadable answer" }, log: [] })
-  assert.deepEqual(Db.reply(0, false, "{\"results\":[", ""), { ok: false, err: "crash", detail: "unreadable answer", log: [] })
+  assert.deepEqual(Db.reply(1, 0, false, "{\"results\":[{\"id\":1,\"value\":7}]}\n", ""), { ok: false, err: "crash", detail: "unreadable answer", log: [] },
+    "a protocol 1 results line is not a result")
 })
 
-test("reply keeps the results of line 1 whenever it is whole: a snapshot that failed (exit 3) or a process that died after it", () => {
-  const head = "{\"results\":[{\"id\":4,\"value\":9}]}\n"
-  assert.deepEqual(Db.reply(3, false, head + "{\"stamp\":1,\"items\":[", "{\"syncErr\":{\"err\":\"response_too_large\",\"detail\":\"the snapshot is over 64 MiB\"}}\n"),
-    { ok: true, results: [{ id: 4, value: 9 }], snapshot: null, syncErr: { err: "response_too_large", detail: "the snapshot is over 64 MiB" }, log: [] })
-  assert.deepEqual(Db.reply(9, true, head + "{\"stamp\"", ""),
-    { ok: true, results: [{ id: 4, value: 9 }], snapshot: null, syncErr: { err: "crash", detail: "signal 9" }, log: [] })
-  assert.deepEqual(Db.reply(139, false, head, "Segmentation fault\n"),
-    { ok: true, results: [{ id: 4, value: 9 }], snapshot: null, syncErr: { err: "crash", detail: "exit 139" }, log: ["Segmentation fault"] })
+test("reply keeps every whole result line of a request killed part way, and the writes after them have no result (#57)", () => {
+  assert.deepEqual(Db.reply(2, 9, true, R1 + "{\"id\":2,\"va", ""),
+    { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: { err: "crash", detail: "signal 9" }, log: [] })
+  assert.deepEqual(Db.reply(2, 9, true, R1 + "{\"id\":2}", ""),
+    { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: { err: "crash", detail: "signal 9" }, log: [] },
+    "a last line that parses but has no \"\\n\" is not whole")
+  assert.deepEqual(Db.reply(3, 70, false, R1, "{\"err\":\"internal\",\"detail\":\"IOException\"}\n"),
+    { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: { err: "internal", detail: "IOException" }, log: [] })
+  assert.deepEqual(Db.reply(2, 0, false, R1 + "not json\n" + R2, ""),
+    { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: { err: "crash", detail: "unreadable answer" }, log: [] },
+    "the results stop at the first line that is not one")
 })
 
-test("reply reads 1, 64 and 70 with no line 1 as the last line of stderr, and anything else as a crash", () => {
+test("reply keeps the results once they are all whole: a snapshot that failed (exit 3) or a process that died after them", () => {
+  assert.deepEqual(Db.reply(1, 3, false, R1 + "{\"stamp\":1,\"items\":[", "{\"syncErr\":{\"err\":\"response_too_large\",\"detail\":\"the snapshot is over 64 MiB\"}}\n"),
+    { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: { err: "response_too_large", detail: "the snapshot is over 64 MiB" }, log: [] })
+  assert.deepEqual(Db.reply(1, 9, true, R1 + "{\"stamp\"", ""),
+    { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: { err: "crash", detail: "signal 9" }, log: [] })
+  assert.deepEqual(Db.reply(1, 139, false, R1, "Segmentation fault\n"),
+    { ok: true, results: [{ id: 1, value: 7 }], snapshot: null, syncErr: { err: "crash", detail: "exit 139" }, log: ["Segmentation fault"] })
+})
+
+test("reply with writes and no whole result line reads 1, 64 and 70 as the last line of stderr, and anything else as a crash", () => {
   for (const code of [1, 64, 70]) {
-    assert.deepEqual(Db.reply(code, false, "", "omanotes-db: a line\n{\"err\":\"busy\",\"detail\":\"database is locked\"}\n"),
+    assert.deepEqual(Db.reply(1, code, false, "", "omanotes-db: a line\n" + BUSY),
       { ok: false, err: "busy", detail: "database is locked", log: ["omanotes-db: a line"] })
   }
-  assert.deepEqual(Db.reply(1, false, "", "not json\n"), { ok: false, err: "crash", detail: "exit 1", log: ["not json"] })
-  assert.deepEqual(Db.reply(3, false, "", ""), { ok: false, err: "crash", detail: "exit 3", log: [] })
-  assert.deepEqual(Db.reply(1, true, "", "{\"err\":\"busy\",\"detail\":\"x\"}"), { ok: false, err: "crash", detail: "signal 1", log: ["{\"err\":\"busy\",\"detail\":\"x\"}"] },
+  assert.deepEqual(Db.reply(1, 1, false, "", "not json\n"), { ok: false, err: "crash", detail: "exit 1", log: ["not json"] })
+  assert.deepEqual(Db.reply(1, 3, false, "", ""), { ok: false, err: "crash", detail: "exit 3", log: [] })
+  assert.deepEqual(Db.reply(1, 9, true, "{\"id\":1,\"value\":7}", ""), { ok: false, err: "crash", detail: "signal 9", log: [] })
+  assert.deepEqual(Db.reply(1, 1, true, "", "{\"err\":\"busy\",\"detail\":\"x\"}"), { ok: false, err: "crash", detail: "signal 1", log: ["{\"err\":\"busy\",\"detail\":\"x\"}"] },
     "SIGHUP is exit code 1 with a crash status")
+})
+
+test("reply of a read, a request with no writes, takes line 1 as the snapshot", () => {
+  assert.deepEqual(Db.reply(0, 0, false, JSON.stringify(SNAPSHOT) + "\n", MIGRATED),
+    { ok: true, results: [], snapshot: SNAPSHOT, syncErr: null, log: ["omanotes-db: migrated 0 -> 5"] })
+  assert.deepEqual(Db.reply(0, 0, false, "", ""), { ok: false, err: "crash", detail: "unreadable answer", log: [] })
+  assert.deepEqual(Db.reply(0, 0, false, JSON.stringify(SNAPSHOT), ""), { ok: false, err: "crash", detail: "unreadable answer", log: [] },
+    "a snapshot with no \"\\n\" is not whole")
+  assert.deepEqual(Db.reply(0, 3, false, "{\"stamp\":1,", "{\"syncErr\":{\"err\":\"corrupt\",\"detail\":\"database disk image is malformed\"}}\n"),
+    { ok: true, results: [], snapshot: null, syncErr: { err: "corrupt", detail: "database disk image is malformed" }, log: [] })
+  assert.deepEqual(Db.reply(0, 1, false, "", BUSY), { ok: false, err: "busy", detail: "database is locked", log: [] })
+  assert.deepEqual(Db.reply(0, 9, true, "{\"stamp\":1,", ""), { ok: false, err: "crash", detail: "signal 9", log: [] })
 })
 
 test("errorText keeps the words the toasts compare, SQLite's own words and the path of a missing binary", () => {

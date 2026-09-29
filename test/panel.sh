@@ -137,6 +137,18 @@ ShellRoot {
     function moveItem(id: int, anchorId: int, after: bool): string { return widget.item.panelItem.db.move(id, anchorId, after) }
     function order(): string { return widget.item.panelItem.db.items.map(function(i) { return i.id }).join(",") }
     function reloadPanel(): void { widget.item.panelItem.db.load() }
+    // How long the lanes let a spawn run before they kill it.
+    function setLimits(spawnMs: int, writeMs: int): void {
+      var store = widget.item.panelItem.db._store.target
+      store.spawnLimitMs = spawnMs
+      store.writeLimitMs = writeMs
+    }
+    function commitEditor(): string {
+      var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
+      if (!itemsTab) return "no ItemsTab"
+      itemsTab.commitEditor(false)
+      return "ok"
+    }
     // A search too long for the argv of an IPC call.
     function searchRepeated(text: string, times: int): string {
       var itemsTab = sr.find(widget.item.panelItem, "ItemsTab")
@@ -587,10 +599,76 @@ expect "the drop's write lands" \
   "SELECT group_concat(id) FROM (SELECT id FROM items WHERE status = 0 ORDER BY position, id DESC LIMIT 2)" "$second,$top"
 replies "and the list shows the file's order, the same" "$(ipc omanotes-test order)" "$dropped"
 
+# A request killed part way: its first write, a new note, committed, and the
+# second hung on the disk until the lane killed the request. The note is in
+# the file, so it must not come back to the editor, where saving it again
+# adds it twice (issue #57). With `edit` 1, the user picks another row and
+# types in it before the kill, and the note's result must leave both alone.
+kills_logged() { grep -c "omanotes db: the database helper stopped without an answer" "$cfg_dir/qs.log" || true; }
+editor_view() { ipc omanotes-test panelView | cut -d'|' -f"$1"; }
+# The same poll as expect, for what a command answers.
+settles() {
+  local what="$1" want="$2" got=""
+  shift 2
+  for _ in $(seq 50); do
+    got="$("$@")" && [[ "$got" == "$want" ]] && { pass "$what"; return; }
+    sleep 0.2
+  done
+  fail "$what: want '$want', got '$got'"
+}
+killed_mid_batch() {
+  local title="$1" edit="$2" open_id picked="" typed="" kills
+  open_id="$(sqlite3 "$db" "SELECT id FROM items WHERE status = 0 AND id <> 3 ORDER BY id LIMIT 1")"
+  touch "$cfg_dir/hold-any-write"
+  ipc omanotes-test userWrite setStatus 3 > /dev/null
+  ipc omanotes-test typeDraft "$title" > /dev/null
+  ipc omanotes-test commitEditor > /dev/null
+  ipc omanotes-test userWrite setStatus "$open_id" > /dev/null
+  if (( edit )); then
+    picked="$(sqlite3 "$db" "SELECT id FROM items WHERE status = 0 AND id NOT IN (3, $open_id) ORDER BY id LIMIT 1")"
+    typed="$title TYPED"
+    ipc omanotes-test editItem "$picked" "$typed" > /dev/null
+  fi
+  echo 2 > "$cfg_dir/stall-journal"
+  kills="$(kills_logged)"
+  ipc omanotes-test setLimits 1500 0 > /dev/null
+  rm -f "$cfg_dir/hold-any-write"
+  expect "the note written before the kill is in the file" "SELECT COUNT(*) FROM items WHERE title = '$title'" "1"
+  replies "the add and the status change went out in one request" \
+    "$(grep -c "write:item.add write:item.status .*\"$title\"" "$cfg_dir/db.log")" "1"
+  settles "the lane kills the request" "$((kills + 1))" kills_logged
+  rm -f "$cfg_dir/stall-journal"
+  ipc omanotes-test setLimits 30000 5000 > /dev/null
+  if (( edit )); then
+    settles "the note's result leaves the row the user picked and the text typed in it" "$picked|$typed|draft:false" editor_view 3,4,5
+  else
+    settles "the note does not come back to the editor as a draft" "$title|draft:false" editor_view 4,5
+  fi
+  ipc omanotes-test commitEditor > /dev/null
+  sleep 1
+  expect "saving the editor again does not add the note twice" "SELECT COUNT(*) FROM items WHERE title = '$title'" "1"
+  expect "the write the kill cut off left its item alone" "SELECT status FROM items WHERE id = $open_id" "0"
+  if (( edit )); then
+    expect "the text typed in the row picked is saved to it" "SELECT title FROM items WHERE id = $picked" "$typed"
+  fi
+}
+if stall_journal_lib; then
+  sleep 1
+  killed_mid_batch "KILLED-MID-BATCH" 0
+  killed_mid_batch "KILLED-WHILE-EDITING" 1
+  kill_failures="the database helper stopped without an answer;the database helper stopped without an answer;"
+elif [[ "${OMANOTES_REQUIRE_CC:-}" == 1 ]]; then
+  fail "the request killed part way: OMANOTES_REQUIRE_CC=1, and test/lib/stall-journal.c does not build with cc"
+  kill_failures=""
+else
+  echo "skip the request killed part way: cannot build test/lib/stall-journal.c with cc (OMANOTES_REQUIRE_CC=1 fails instead)"
+  kill_failures=""
+fi
+
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
 replies "only the failure cases are logged" "$(logged_failures)" \
-  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;"
+  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;$kill_failures"
 
 # A Panel.qml that fails to load, as a broken update could leave it: the
 # engine keeps the failed compile, so the widget must stay usable without it.
