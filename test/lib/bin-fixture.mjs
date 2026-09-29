@@ -61,21 +61,32 @@ export function exec(args, input = "", { env = {} } = {}) {
   return { status: r.status, signal: r.signal, stdout: r.stdout.toString("utf8"), stderr: r.stderr.toString("utf8") }
 }
 
-// One `run` request, as { results, snapshot }: stdout's line 1 is the writes'
-// results and line 2 the snapshot. On exit 3 the snapshot failed after line 1
-// went out: { status: 3, results, syncErr } from stderr's last line. On any
-// other failure the error, and stdout must be empty then.
+// One `run` request, as { results, snapshot }: stdout is one line per write,
+// its result, then the snapshot (protocol 2, ADR-0020). On exit 3 the snapshot
+// failed after the results went out: { status: 3, results, syncErr } from
+// stderr's last line. On any other failure the error, and stdout must be empty
+// then.
 export function call(dbPath, request, opts = {}) {
-  return answerOf(exec([PROTOCOL, "run", dbPath], request, opts))
+  return answerOf(exec([PROTOCOL, "run", dbPath], request, opts), writesOf(request))
 }
 
-// The answer of a finished `run`, { status, stdout, stderr }, as call() gives it.
-export function answerOf(r) {
+export function writesOf(request) {
+  return typeof request === "object" && !Buffer.isBuffer(request) ? (request.writes ?? []).length : 0
+}
+
+// The answer of a finished `run` of `writes` writes, { status, stdout, stderr },
+// as call() gives it. On exit 0 every line is whole; on exit 3 the snapshot
+// line after the results may be cut.
+export function answerOf(r, writes) {
   if (r.status === 0 || r.status === 3) {
-    const [head, snapshot] = r.stdout.split("\n")
-    const res = JSON.parse(head)
-    if (r.status === 3) return { status: 3, results: res.results, syncErr: lastError(r.stderr).syncErr, stderr: r.stderr }
-    if (snapshot) res.snapshot = JSON.parse(snapshot)
+    if (r.status === 0) assert.ok(r.stdout === "" || r.stdout.endsWith("\n"), "the last line is whole")
+    const lines = r.stdout.split("\n").slice(0, -1)
+    assert.ok(lines.length >= writes, `one whole line per write: ${r.stdout.slice(0, 200)}`)
+    const results = lines.slice(0, writes).map((line) => JSON.parse(line))
+    if (r.status === 3) return { status: 3, results, syncErr: lastError(r.stderr).syncErr, stderr: r.stderr }
+    const res = { results }
+    if (lines.length > writes) res.snapshot = JSON.parse(lines[writes])
+    assert.ok(lines.length <= writes + 1, "nothing after the snapshot")
     return res
   }
   assert.equal(r.stdout, "", "stdout carries nothing unless the exit is 0 or 3")

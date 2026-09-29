@@ -79,8 +79,8 @@ internal sealed class OpException : Exception
 
 internal static class Protocol
 {
-    /// <summary>The newest protocol this binary speaks. argv[1] names the caller's.</summary>
-    public const int Current = 1;
+    /// <summary>The newest protocol this binary speaks. argv[1] names the caller's. 2 writes one result line per write (ADR-0020).</summary>
+    public const int Current = 2;
 
     /// <summary>
     /// The oldest one it still answers. Between an update's merge and the

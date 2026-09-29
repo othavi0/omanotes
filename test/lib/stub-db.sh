@@ -68,7 +68,8 @@ if [[ "$kinds" == sync ]]; then
     code=$?
     wait_while hold-reads
     (( failing )) && disk
-    printf '%s' "$out"
+    # $(...) drops the last "\n", and a line without it is not whole (ADR-0020).
+    [[ -n "$out" ]] && printf '%s\n' "$out"
     exit "$code"
   fi
 else

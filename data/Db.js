@@ -9,7 +9,7 @@
 // every protocol from its Min to its Current (db/Wire.cs). The installed
 // data/update.sh reads this line from each new version before it merges, so
 // it stays a plain number assigned to PROTOCOL on one line.
-var PROTOCOL = 1
+var PROTOCOL = 2
 
 // A request over this many bytes is refused by the binary as too_large, so
 // the Store never sends one.
@@ -336,24 +336,37 @@ function parsedJson(text) {
   }
 }
 
-// What a finished spawn answered: { ok: true, results, snapshot, syncErr,
-// log } or { ok: false, err, detail, log }. Line 1 of stdout is the writes'
-// results and line 2 the snapshot. Line 1 stands whenever it is whole, even
-// when the process failed or died after it, so a committed write is never
-// told it failed. Exit 3: the snapshot failed, {"syncErr"} on the last line
-// of stderr. Exit 1, 64 or 70: the last line of stderr names the failure.
-// Any other exit, a signal or an answer that does not parse is a crash.
-// `log` is every other line of stderr, such as a migration the binary ran.
-function reply(exitCode, crashed, stdoutText, stderrText) {
-  var text = String(stdoutText || "")
-  var cut = text.indexOf("\n")
-  var head = parsedJson(cut < 0 ? text : text.slice(0, cut))
-  var results = head && Array.isArray(head.results) ? head.results : null
+function parsedObject(text) {
+  var value = parsedJson(text)
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null
+}
+
+// What a finished spawn of a request with `writes` writes answered:
+// { ok: true, results, snapshot, syncErr, log } or { ok: false, err, detail,
+// log }. Protocol 2 writes one line per write, in order, each as soon as its
+// write ends, then the snapshot (ADR-0020). Only a line ended by "\n" is
+// whole. Each whole result line stands even when the process failed or was
+// killed after it, so a write that committed is never told it failed; the
+// writes with no line are the Store's `crash`, and syncErr is the failure.
+// Exit 3: the snapshot failed, {"syncErr"} on the last line of stderr. Exit
+// 1, 64 or 70: the last line of stderr names the failure. Any other exit, a
+// signal or a snapshot that does not parse is a crash. `log` is every other
+// line of stderr, such as a migration the binary ran.
+function reply(writes, exitCode, crashed, stdoutText, stderrText) {
+  var lines = String(stdoutText || "").split("\n")
+  var tail = lines.pop()
+  var results = []
+  while (results.length < writes && results.length < lines.length) {
+    var result = parsedObject(lines[results.length])
+    if (!result || typeof result.id !== "number") break
+    results.push(result)
+  }
+  var whole = results.length === writes
   var log = String(stderrText || "").split("\n").map(function(line) { return line.trim() })
     .filter(function(line) { return line !== "" })
   var last = crashed || log.length === 0 ? null : parsedJson(log[log.length - 1])
   var told = !last ? null
-    : exitCode === 3 ? (results ? last.syncErr : null)
+    : exitCode === 3 ? (whole ? last.syncErr : null)
     : exitCode === 1 || exitCode === 64 || exitCode === 70 ? last : null
   var clean = !crashed && exitCode === 0
   var failure = { err: "crash", detail: clean ? "unreadable answer" : crashed ? "signal " + exitCode : "exit " + exitCode }
@@ -361,15 +374,17 @@ function reply(exitCode, crashed, stdoutText, stderrText) {
     failure = { err: told.err, detail: String(told.detail || "") }
     log.pop()
   }
-  if (!results) return { ok: false, err: failure.err, detail: failure.detail, log: log }
-  var answer = { ok: true, results: results, snapshot: null, syncErr: null, log: log }
-  var rest = cut < 0 ? "" : text.slice(cut + 1)
-  if (!clean) answer.syncErr = failure
-  else if (rest !== "") {
-    answer.snapshot = parsedJson(rest)
-    if (!answer.snapshot) answer.syncErr = failure
+  var syncErr = whole && clean ? null : failure
+  var snapshot = null
+  // A read always asks for the snapshot; a request with writes may not.
+  if (!syncErr && (writes === 0 || lines.length > writes || tail !== "")) {
+    snapshot = lines.length > writes ? parsedObject(lines[writes]) : null
+    if (!snapshot) syncErr = failure
   }
-  return answer
+  if (writes > 0 ? results.length === 0 : !snapshot && !(exitCode === 3 && !crashed)) {
+    return { ok: false, err: failure.err, detail: failure.detail, log: log }
+  }
+  return { ok: true, results: results, snapshot: snapshot, syncErr: syncErr, log: log }
 }
 
 // The words a failure shows, in the toast and the journal. null keeps the

@@ -105,7 +105,7 @@ test("infinity in a number column falls back where the old read failed whole", (
   cli(path, ["PRAGMA ignore_check_constraints = ON", "UPDATE settings SET volume = 9e999, snooze_minutes = -9e999", "UPDATE alarms SET snooze_minutes = 9e999, armed_at_ms = 9e999"])
   const raw = exec([PROTOCOL, "run", path], { sync: { since: -1, views: [] } }).stdout
   assert.ok(raw.includes("\"volume\":9e999") && raw.includes("\"snooze_minutes\":-9e999"), "the cells travel as 9e999")
-  const snap = JSON.parse(raw.split("\n")[1])
+  const snap = JSON.parse(raw.split("\n")[0])
   assert.equal(snap.settings.volume, Infinity)
   const settings = Db.parseSettings(snap.settings).settings
   assert.equal(settings.volume, 100)

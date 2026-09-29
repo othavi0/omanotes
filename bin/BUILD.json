@@ -1,10 +1,10 @@
 {
   "protocol": [
     1,
-    1
+    2
   ],
   "schema": 5,
-  "source": "60db151570c84b00eb46fba02469044cba54adbc3dbb7bb6d07c5d390b62fd70",
+  "source": "02a034b9767426b004baf458a3357014b2b9d26083263de0b8906be1070f4c55",
   "toolchain": {
     "sdk": "10.0.401",
     "ilcompiler": "10.0.12",
@@ -14,13 +14,13 @@
   },
   "targets": {
     "x86_64": {
-      "sha256": "86ed8b3910e4fd66d06899f7c81f7201919480123a89b5a302b288a13d899664",
-      "bytes": 1969576,
+      "sha256": "03ae6f28739b5ce88a93ef0b23661294addecd9f275ad717f89bb7d3d4d3b6d6",
+      "bytes": 1970888,
       "glibc": "2.34"
     },
     "aarch64": {
-      "sha256": "2ed252e9f9d0d2f089b47394b68588d9676d022d8b595bf394b556db20270c05",
-      "bytes": 2030192,
+      "sha256": "e672aebec7c7881d8cc285fc46e21c1a0277291bd76c35a011f588e9035e3ea6",
+      "bytes": 2031744,
       "glibc": "2.34"
     }
   }

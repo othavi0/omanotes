@@ -632,7 +632,7 @@ fi
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
 replies "only the failure cases are logged" "$(logged_failures)" \
-  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;"
+  "item not found;item not found;item not found;item not found;invalid id: abc;database is locked;read failed: disk I/O error;the database helper stopped without an answer;read failed: the database helper stopped without an answer;"
 
 # A Panel.qml that fails to load, as a broken update could leave it: the
 # engine keeps the failed compile, so the widget must stay usable without it.

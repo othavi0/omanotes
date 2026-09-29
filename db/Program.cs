@@ -15,12 +15,15 @@ namespace Omanotes.Db;
 ///   omanotes-db PROTOCOL version       what this binary is, as one JSON line
 ///   omanotes-db PROTOCOL selftest DIR  migrate, write, read and delete a database in DIR
 ///
-/// A run's stdout is line 1, {"results":[...]}, then line 2, the snapshot
-/// when the request asked for one. Exit 0: both are whole. Exit 3: line 1 is
-/// whole and the snapshot failed, {"syncErr":{"err","detail"}} on the last
-/// line of stderr. Exit 1 (a failure), 64 (another protocol or command line)
-/// or 70 (a bug here): no line 1, and the last line of stderr is
-/// {"err","detail"}. No user text ever travels in argv.
+/// Protocol 2: a run's stdout is one line per write, in request order, each
+/// written as soon as its write ends, then the snapshot line when the request
+/// asked for one (ADR-0020). Protocol 1 gets one {"results":[...]} line after
+/// every write, then the snapshot. Exit 0: every line is whole. Exit 3: the
+/// results are whole and the snapshot failed, {"syncErr":{"err","detail"}} on
+/// the last line of stderr. Exit 1 (a failure), 64 (another protocol or
+/// command line) or 70 (a bug here): the last line of stderr is
+/// {"err","detail"}, after the result lines of the writes that ended. No user
+/// text ever travels in argv.
 /// </summary>
 internal static partial class Program
 {
@@ -58,7 +61,7 @@ internal static partial class Program
 
     private static int Dispatch(string[] args)
     {
-        if (args.Length < 2 || !Speaks(args[0]))
+        if (args.Length < 2 || Speaks(args[0]) is not int protocol)
         {
             throw new OpException(ErrorCode.Protocol, args.Length < 2 ? "usage: omanotes-db PROTOCOL run DB | version | selftest DIR" : "the caller speaks another protocol");
         }
@@ -67,29 +70,29 @@ internal static partial class Program
         {
             ["version"] => Version(),
             ["selftest", string dir] => Selftest.Run(Absolute(dir)),
-            ["run", string db] => Run(Absolute(db)),
+            ["run", string db] => Run(Absolute(db), protocol),
             _ => throw new OpException(ErrorCode.Protocol, "usage: omanotes-db PROTOCOL run DB | version | selftest DIR"),
         };
     }
 
-    /// <summary>Compares text to text, so no number is parsed from argv.</summary>
-    private static bool Speaks(string protocol)
+    /// <summary>The protocol the caller named, or null. Compares text to text, so no number is parsed from argv.</summary>
+    private static int? Speaks(string protocol)
     {
         for (int v = Protocol.Min; v <= Protocol.Current; v++)
         {
             if (protocol == v.ToString(CultureInfo.InvariantCulture))
             {
-                return true;
+                return v;
             }
         }
 
-        return false;
+        return null;
     }
 
     private static string Absolute(string path) =>
         Path.IsPathFullyQualified(path) ? path : throw new OpException(ErrorCode.Protocol, "paths are absolute");
 
-    private static int Run(string dbPath)
+    private static int Run(string dbPath, int protocol)
     {
         using Request req = Request.Parse(Fd.ReadStdin(Protocol.MaxRequestBytes, Protocol.StdinIdleMs));
         MakeDirectory(Path.GetDirectoryName(dbPath) ?? "/");
@@ -100,37 +103,82 @@ internal static partial class Program
             Log("migrated " + before.ToString(CultureInfo.InvariantCulture) + " -> " + Schema.Current.ToString(CultureInfo.InvariantCulture));
         }
 
-        // Line 1 goes out before the snapshot is read: what fails or dies
+        // The results go out before the snapshot is read: what fails or dies
         // after this point never takes back a write that was committed.
+        if (protocol == 1)
+        {
+            WriteResultsLine(db, req.Writes);
+        }
+        else
+        {
+            WriteResultLines(db, req.Writes);
+        }
+
+        return req.Sync is SyncReq sync ? WriteSnapshot(db, sync) : 0;
+    }
+
+    /// <summary>
+    /// Protocol 2: each result is one line, in one write(2) of its own buffer
+    /// as soon as its write ends, so a kill during the next write never takes
+    /// back a write that committed (ADR-0020). Through FdWriter it would wait
+    /// for the buffer to fill.
+    /// </summary>
+    private static void WriteResultLines(Conn db, IReadOnlyList<WriteReq> writes)
+    {
+        OpException? busy = null;
+        foreach (WriteReq write in writes)
+        {
+            var line = new ArrayBufferWriter<byte>();
+            using (var w = new Utf8JsonWriter(line, Json))
+            {
+                busy = RunWrite(db, write, busy, w);
+            }
+
+            line.Write("\n"u8);
+            Fd.Write(Fd.Stdout, line.WrittenSpan);
+        }
+    }
+
+    /// <summary>
+    /// Protocol 1: one {"results":[...]} line once every write ended, the bytes
+    /// the QML of before reads between an update and the restart (ADR-0017).
+    /// </summary>
+    private static void WriteResultsLine(Conn db, IReadOnlyList<WriteReq> writes)
+    {
         var results = new ArrayBufferWriter<byte>();
         using (var w = new Utf8JsonWriter(results, Json))
         {
             w.WriteStartObject();
             w.WriteStartArray("results");
             OpException? busy = null;
-            foreach (WriteReq write in req.Writes)
+            foreach (WriteReq write in writes)
             {
-                // A lock held outside is held for the next write too: waiting 5 s again for each would hold the caller's queue N times as long.
-                OpException? failure = busy is null ? Writes.Run(db, write, w) : Writes.Refuse(write, busy, w);
-                if (failure is { Code: ErrorCode.Busy })
-                {
-                    busy = failure;
-                }
+                busy = RunWrite(db, write, busy, w);
             }
 
             w.WriteEndArray();
             w.WriteEndObject();
         }
 
+        results.Write("\n"u8);
         Fd.Write(Fd.Stdout, results.WrittenSpan);
-        Fd.Write(Fd.Stdout, "\n"u8);
-        return req.Sync is SyncReq sync ? WriteSnapshot(db, sync) : 0;
     }
 
     /// <summary>
-    /// Line 2: the snapshot, written as it is read, so the peak does not grow
-    /// with the database. A failure part way leaves line 2 cut: exit 3, and
-    /// {"syncErr":{"err","detail"}} on the last line of stderr.
+    /// Runs one write, or refuses it after a `busy`, and returns the `busy` for
+    /// the next. A lock held outside is held for the next write too: waiting 5 s
+    /// again for each would hold the caller's queue N times as long.
+    /// </summary>
+    private static OpException? RunWrite(Conn db, WriteReq write, OpException? busy, Utf8JsonWriter w)
+    {
+        OpException? failure = busy is null ? Writes.Run(db, write, w) : Writes.Refuse(write, busy, w);
+        return failure is { Code: ErrorCode.Busy } ? failure : busy;
+    }
+
+    /// <summary>
+    /// The last line: the snapshot, written as it is read, so the peak does not
+    /// grow with the database. A failure part way leaves the line cut: exit 3,
+    /// and {"syncErr":{"err","detail"}} on the last line of stderr.
     /// </summary>
     private static int WriteSnapshot(Conn db, SyncReq sync)
     {
@@ -150,7 +198,7 @@ internal static partial class Program
         {
             return FailSync(e);
         }
-#pragma warning disable CA1031 // Only reads run here, and line 1 is out: any failure is the snapshot's, never a lost write.
+#pragma warning disable CA1031 // Only reads run here, and the results are out: any failure is the snapshot's, never a lost write.
         catch (Exception e)
 #pragma warning restore CA1031
         {

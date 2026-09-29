@@ -473,6 +473,10 @@ FocusScope {
         }
         function onAdded(id, type, title) {
             root._selectAfterReload = Number(id)
+            // The watcher's read can list the row before its result lands, as
+            // when a later write of the same request held it (#57): no
+            // itemsUpdated comes for it after that.
+            if (ItemJs.indexOfId(root.itemList, Number(id)) >= 0) root.onItemsSynced()
             if (root.toast) root.toast.show("Added " + type + " — " + title)
         }
         function onUpdated(id, title) {
