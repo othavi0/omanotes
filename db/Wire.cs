@@ -227,7 +227,6 @@ internal readonly struct Args
 
     public bool Has(string name) => _e.ValueKind == JsonValueKind.Object && _e.TryGetProperty(name, out JsonElement v) && v.ValueKind != JsonValueKind.Null;
 
-    /// <summary>Refuses a member not in `names`: a misspelled optional member would otherwise read as absent (a body would be cleared).</summary>
     public void Only(params ReadOnlySpan<string> names)
     {
         if (_e.ValueKind == JsonValueKind.Undefined)
@@ -240,11 +239,17 @@ internal readonly struct Args
             throw new OpException(ErrorCode.BadRequest, "expected an object");
         }
 
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (JsonProperty p in _e.EnumerateObject())
         {
             if (!names.Contains(p.Name))
             {
                 throw new OpException(ErrorCode.BadRequest, "unknown member");
+            }
+
+            if (!seen.Add(p.Name))
+            {
+                throw new OpException(ErrorCode.BadRequest, "repeated member");
             }
         }
     }
