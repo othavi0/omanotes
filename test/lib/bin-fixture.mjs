@@ -1,11 +1,11 @@
 // The fixture of the database tests: the committed binary for this machine,
 // driven over its wire, data/Db.js as the plugin runs it, and the sqlite3 CLI
-// as the oracle and as someone editing the file by hand. test/lib/legacy-db.js
-// keeps the SQL of before the binary, so a parity test runs that SQL on one
-// copy of a database and the binary on the other and compares the tables.
+// as the oracle and as someone editing the file by hand. test/fixtures/parity/
+// holds what the SQL of before the binary left and read, so a parity test runs
+// the binary and compares the tables with the frozen ones.
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { machine, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { loadQmlLib } from "./load-qml-lib.mjs"
@@ -16,28 +16,11 @@ export const Db = loadQmlLib(new URL("../../data/Db.js", import.meta.url), [
   "movedRows", "typeRows", "matchedRows", "wellFormed", "request", "utf8Length", "command", "reply", "ERROR_TEXT", "errorText",
   "MAX_WRITE_BYTES", "MAX_QUERY", "viewQuery", "sameRows", "writeJson", "definitive", "retriesRead"
 ])
-export const Legacy = loadQmlLib(new URL("./legacy-db.js", import.meta.url), [
-  "addSql", "setStatusSql", "updateSql", "deleteItemSql", "convertTypeSql", "moveSql", "deleteHistorySql",
-  "clearHistorySql", "pruneHistorySql", "setSettingsSql", "insertAlarmSql", "saveAlarmSql", "deleteAlarmSql",
-  "listSql", "countsSql", "historySql", "alarmsSql", "settingsSql", "MIGRATIONS", "migrateSql", "searchText",
-  "parseRows", "parseId", "parseFound", "parseSettings", "parseAlarms", "parseCounts"
-])
 
 export const T0 = 1700000000
 // The schema every database had before it was versioned, frozen. The comment
 // lines go: the CLI reads an argument that starts with "--" as an option.
 export const V0_SCHEMA = readFileSync(new URL("./v0.sql", import.meta.url), "utf8").replace(/^--.*\n/gm, "")
-
-// Freezes the clock of the old builders at T0, the `at` the new writes send.
-export function atT0(fn) {
-  const real = Date.now
-  Date.now = () => T0 * 1000
-  try {
-    return fn()
-  } finally {
-    Date.now = real
-  }
-}
 
 export const ROOT = new URL("../../", import.meta.url).pathname
 // The file suffix is `uname -m`, the rule the QML and update.sh use.
@@ -130,31 +113,13 @@ export function cli(dbPath, sql, { json = false } = {}) {
   return r.stdout
 }
 
+// The rows of `sqlite3 -json`, which prints nothing for no rows.
 export function rows(dbPath, sql) {
-  return Legacy.parseRows(cli(dbPath, sql, { json: true }))
-}
-
-// The start-up of before the binary: the version read, then the migrations
-// above it, through the CLI.
-export function legacyStart(path) {
-  mkdirSync(dirname(path), { recursive: true })
-  const sql = Legacy.migrateSql(Number(cli(path, "PRAGMA user_version").trim()))
-  if (sql.length > 0) cli(path, sql)
-}
-
-// A database as the JS of before left it: the v0 schema, the seed rows, then
-// its migrations.
-export function legacyDb(t) {
-  const path = v0Db(t)
-  legacyStart(path)
-  return path
-}
-
-// A file the JS of before created from nothing.
-export function legacyNewDb(t) {
-  const path = tempDb(t)
-  legacyStart(path)
-  return path
+  const text = cli(dbPath, sql, { json: true }).trim()
+  if (text === "") return []
+  const parsed = JSON.parse(text)
+  assert.ok(Array.isArray(parsed), "sqlite3 -json prints an array")
+  return parsed
 }
 
 // A file the binary created from nothing.
@@ -170,14 +135,6 @@ export function seeded(t) {
   const path = v0Db(t)
   sync(path)
   return path
-}
-
-// The same bytes twice: the old SQL runs on `old`, the binary on `bin`.
-export function pair(t) {
-  const old = legacyDb(t)
-  const bin = old.replace("scratchpad.db", "scratchpad-bin.db")
-  copyFileSync(old, bin)
-  return { old, bin }
 }
 
 // A v0 file, before any migration: the live database before versioning. With
@@ -228,11 +185,45 @@ export const TABLES = {
   history: "SELECT * FROM history ORDER BY id",
   alarms: "SELECT * FROM alarms ORDER BY id",
   settings: "SELECT * FROM settings ORDER BY id",
-  sequence: "SELECT * FROM sqlite_sequence ORDER BY name"
+  sequence: "SELECT * FROM sqlite_sequence WHERE name IN ('items', 'history', 'alarms', 'settings') ORDER BY name"
 }
 
-export function sameTables(a, b, label) {
+// What the SQL of before the binary left and read, frozen in test/fixtures/parity/.
+export function fixture(name) {
+  return JSON.parse(readFileSync(new URL("../fixtures/parity/" + name, import.meta.url), "utf8"))
+}
+
+// A live row cut to the columns of its frozen row. The old SQL never knew a
+// column a later step adds, so the frozen rows say nothing of it and its own
+// tests do; a frozen column the live row lost reads as undefined and fails.
+export function projected(live, frozen) {
+  if (live === null || frozen === null || typeof live !== "object" || typeof frozen !== "object") return live
+  return Object.fromEntries(Object.keys(frozen).map((key) => [key, live[key]]))
+}
+
+export function projectedRows(live, frozen) {
+  return live.map((row, i) => (i < frozen.length ? projected(row, frozen[i]) : row))
+}
+
+// Every table of `dbPath` equal to `expected`, a frozen { items, history, … },
+// in the columns the frozen rows have.
+export function tablesAre(dbPath, expected, label) {
+  assert.deepEqual(Object.keys(expected), Object.keys(TABLES), `${label}: the frozen tables`)
   for (const [name, sql] of Object.entries(TABLES)) {
-    assert.deepEqual(rows(b, sql), rows(a, sql), `${label}: ${name}`)
+    assert.deepEqual(projectedRows(rows(dbPath, sql), expected[name]), expected[name], `${label}: ${name}`)
   }
+}
+
+// The search fold of before the binary, one UTF-16 unit at a time, read from
+// db/Schema/search_map.tsv: the table holds every unit the old fold changed,
+// and bin-schema.test.mjs pins its sha256.
+const FOLD = new Map(readFileSync(join(ROOT, "db", "Schema", "search_map.tsv"), "utf8").split("\n").filter((line) => line !== "").map((line) => {
+  const [unit, folded] = line.split("\t")
+  // A combining mark folds to nothing, an empty second field.
+  const units = folded === "" ? [] : folded.split(" ")
+  return [String.fromCharCode(parseInt(unit, 16)), units.map((h) => String.fromCodePoint(parseInt(h, 16))).join("")]
+}))
+
+export function fold(text) {
+  return String(text).replace(/[\s\S]/g, (c) => FOLD.get(c) ?? c)
 }

@@ -1,0 +1,857 @@
+{
+  "cases": {
+    "text number": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":7,\"sound\":\"7\",\"sound_file\":\"7\",\"volume\":7,\"snooze_minutes\":7,\"ring_minutes\":7,\"history_days\":7,\"check_updates\":7}]\n",
+        "alarms": "[{\"id\":1,\"hour\":7,\"minute\":7,\"label\":\"7\",\"days\":7,\"enabled\":7,\"snooze_minutes\":7,\"ring_minutes\":7,\"snoozed_until_ms\":7,\"last_fired_at_ms\":7,\"armed_at_ms\":7,\"auto_snoozes\":7}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":7}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"7\",\"body\":\"b\",\"status\":7,\"created_at\":7,\"updated_at\":7}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"7\",\"ts\":7}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "7",
+              "soundFile": "7",
+              "volume": 7,
+              "snoozeMinutes": 7,
+              "ringMinutes": 7,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 7,
+              "minute": 7,
+              "label": "7",
+              "days": [0,1,2],
+              "enabled": false,
+              "snoozeMinutes": 7,
+              "ringMinutes": 7,
+              "snoozedUntil": 7,
+              "lastFiredAt": 7,
+              "armedAt": 7,
+              "autoSnoozes": 7
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 7
+          }
+        }
+      }
+    },
+    "text with spaces": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":7,\"sound\":\" 7 \",\"sound_file\":\" 7 \",\"volume\":7,\"snooze_minutes\":7,\"ring_minutes\":7,\"history_days\":7,\"check_updates\":7}]\n",
+        "alarms": "[{\"id\":1,\"hour\":7,\"minute\":7,\"label\":\" 7 \",\"days\":7,\"enabled\":7,\"snooze_minutes\":7,\"ring_minutes\":7,\"snoozed_until_ms\":7,\"last_fired_at_ms\":7,\"armed_at_ms\":7,\"auto_snoozes\":7}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":7}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\" 7 \",\"body\":\"b\",\"status\":7,\"created_at\":7,\"updated_at\":7}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\" 7 \",\"ts\":7}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": " 7 ",
+              "soundFile": " 7 ",
+              "volume": 7,
+              "snoozeMinutes": 7,
+              "ringMinutes": 7,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 7,
+              "minute": 7,
+              "label": " 7 ",
+              "days": [0,1,2],
+              "enabled": false,
+              "snoozeMinutes": 7,
+              "ringMinutes": 7,
+              "snoozedUntil": 7,
+              "lastFiredAt": 7,
+              "armedAt": 7,
+              "autoSnoozes": 7
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 7
+          }
+        }
+      }
+    },
+    "hex text": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":\"0x10\",\"sound\":\"0x10\",\"sound_file\":\"0x10\",\"volume\":\"0x10\",\"snooze_minutes\":\"0x10\",\"ring_minutes\":\"0x10\",\"history_days\":\"0x10\",\"check_updates\":\"0x10\"}]\n",
+        "alarms": "[{\"id\":1,\"hour\":\"0x10\",\"minute\":\"0x10\",\"label\":\"0x10\",\"days\":\"0x10\",\"enabled\":\"0x10\",\"snooze_minutes\":\"0x10\",\"ring_minutes\":\"0x10\",\"snoozed_until_ms\":\"0x10\",\"last_fired_at_ms\":\"0x10\",\"armed_at_ms\":\"0x10\",\"auto_snoozes\":\"0x10\"}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":\"0x10\"}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"0x10\",\"body\":\"b\",\"status\":\"0x10\",\"created_at\":\"0x10\",\"updated_at\":\"0x10\"}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"0x10\",\"ts\":\"0x10\"}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "0x10",
+              "soundFile": "0x10",
+              "volume": 16,
+              "snoozeMinutes": 16,
+              "ringMinutes": 16,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 16,
+              "minute": 16,
+              "label": "0x10",
+              "days": [4],
+              "enabled": false,
+              "snoozeMinutes": 16,
+              "ringMinutes": 16,
+              "snoozedUntil": 16,
+              "lastFiredAt": 16,
+              "armedAt": 16,
+              "autoSnoozes": 16
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 16
+          }
+        }
+      }
+    },
+    "comma text": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":\"1,5\",\"sound\":\"1,5\",\"sound_file\":\"1,5\",\"volume\":\"1,5\",\"snooze_minutes\":\"1,5\",\"ring_minutes\":\"1,5\",\"history_days\":\"1,5\",\"check_updates\":\"1,5\"}]\n",
+        "alarms": "[{\"id\":1,\"hour\":\"1,5\",\"minute\":\"1,5\",\"label\":\"1,5\",\"days\":\"1,5\",\"enabled\":\"1,5\",\"snooze_minutes\":\"1,5\",\"ring_minutes\":\"1,5\",\"snoozed_until_ms\":\"1,5\",\"last_fired_at_ms\":\"1,5\",\"armed_at_ms\":\"1,5\",\"auto_snoozes\":\"1,5\"}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":\"1,5\"}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"1,5\",\"body\":\"b\",\"status\":\"1,5\",\"created_at\":\"1,5\",\"updated_at\":\"1,5\"}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"1,5\",\"ts\":\"1,5\"}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "1,5",
+              "soundFile": "1,5",
+              "volume": 100,
+              "snoozeMinutes": 9,
+              "ringMinutes": 5,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": []
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 0
+          }
+        }
+      }
+    },
+    "empty text": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":\"\",\"sound\":\"\",\"sound_file\":\"\",\"volume\":\"\",\"snooze_minutes\":\"\",\"ring_minutes\":\"\",\"history_days\":\"\",\"check_updates\":\"\"}]\n",
+        "alarms": "[{\"id\":1,\"hour\":\"\",\"minute\":\"\",\"label\":\"\",\"days\":\"\",\"enabled\":\"\",\"snooze_minutes\":\"\",\"ring_minutes\":\"\",\"snoozed_until_ms\":\"\",\"last_fired_at_ms\":\"\",\"armed_at_ms\":\"\",\"auto_snoozes\":\"\"}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":\"\"}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"\",\"body\":\"b\",\"status\":\"\",\"created_at\":\"\",\"updated_at\":\"\"}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"\",\"ts\":\"\"}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": false,
+              "sound": "",
+              "soundFile": "",
+              "volume": 100,
+              "snoozeMinutes": 9,
+              "ringMinutes": 5,
+              "historyDays": 0,
+              "checkUpdates": false
+            }
+          }
+        },
+        "alarms": {
+          "value": []
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 0
+          }
+        }
+      }
+    },
+    "real": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":6.6,\"sound\":\"6.6\",\"sound_file\":\"6.6\",\"volume\":6.6,\"snooze_minutes\":6.6,\"ring_minutes\":6.6,\"history_days\":6.6,\"check_updates\":6.6}]\n",
+        "alarms": "[{\"id\":1,\"hour\":6.6,\"minute\":6.6,\"label\":\"6.6\",\"days\":6.6,\"enabled\":6.6,\"snooze_minutes\":6.6,\"ring_minutes\":6.6,\"snoozed_until_ms\":6.6,\"last_fired_at_ms\":6.6,\"armed_at_ms\":6.6,\"auto_snoozes\":6.6}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":6.6}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"6.6\",\"body\":\"b\",\"status\":6.6,\"created_at\":6.6,\"updated_at\":6.6}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"6.6\",\"ts\":6.6}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "6.6",
+              "soundFile": "6.6",
+              "volume": 7,
+              "snoozeMinutes": 7,
+              "ringMinutes": 7,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 7,
+              "minute": 7,
+              "label": "6.6",
+              "days": [1,2],
+              "enabled": false,
+              "snoozeMinutes": 7,
+              "ringMinutes": 7,
+              "snoozedUntil": 7,
+              "lastFiredAt": 7,
+              "armedAt": 7,
+              "autoSnoozes": 7
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 6.6
+          }
+        }
+      }
+    },
+    "real that is whole": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":7,\"sound\":\"7.0\",\"sound_file\":\"7.0\",\"volume\":7,\"snooze_minutes\":7,\"ring_minutes\":7,\"history_days\":7,\"check_updates\":7}]\n",
+        "alarms": "[{\"id\":1,\"hour\":7,\"minute\":7,\"label\":\"7.0\",\"days\":7,\"enabled\":7,\"snooze_minutes\":7,\"ring_minutes\":7,\"snoozed_until_ms\":7,\"last_fired_at_ms\":7,\"armed_at_ms\":7,\"auto_snoozes\":7}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":7}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"7.0\",\"body\":\"b\",\"status\":7,\"created_at\":7,\"updated_at\":7}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"7.0\",\"ts\":7}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "7.0",
+              "soundFile": "7.0",
+              "volume": 7,
+              "snoozeMinutes": 7,
+              "ringMinutes": 7,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 7,
+              "minute": 7,
+              "label": "7.0",
+              "days": [0,1,2],
+              "enabled": false,
+              "snoozeMinutes": 7,
+              "ringMinutes": 7,
+              "snoozedUntil": 7,
+              "lastFiredAt": 7,
+              "armedAt": 7,
+              "autoSnoozes": 7
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 7
+          }
+        }
+      }
+    },
+    "real half": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":2.5,\"sound\":\"2.5\",\"sound_file\":\"2.5\",\"volume\":2.5,\"snooze_minutes\":2.5,\"ring_minutes\":2.5,\"history_days\":2.5,\"check_updates\":2.5}]\n",
+        "alarms": "[{\"id\":1,\"hour\":2.5,\"minute\":2.5,\"label\":\"2.5\",\"days\":2.5,\"enabled\":2.5,\"snooze_minutes\":2.5,\"ring_minutes\":2.5,\"snoozed_until_ms\":2.5,\"last_fired_at_ms\":2.5,\"armed_at_ms\":2.5,\"auto_snoozes\":2.5}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":2.5}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"2.5\",\"body\":\"b\",\"status\":2.5,\"created_at\":2.5,\"updated_at\":2.5}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"2.5\",\"ts\":2.5}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "2.5",
+              "soundFile": "2.5",
+              "volume": 3,
+              "snoozeMinutes": 3,
+              "ringMinutes": 3,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 3,
+              "minute": 3,
+              "label": "2.5",
+              "days": [1],
+              "enabled": false,
+              "snoozeMinutes": 3,
+              "ringMinutes": 3,
+              "snoozedUntil": 3,
+              "lastFiredAt": 3,
+              "armedAt": 3,
+              "autoSnoozes": 3
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 2.5
+          }
+        }
+      }
+    },
+    "negative real half": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":-2.5,\"sound\":\"-2.5\",\"sound_file\":\"-2.5\",\"volume\":-2.5,\"snooze_minutes\":-2.5,\"ring_minutes\":-2.5,\"history_days\":-2.5,\"check_updates\":-2.5}]\n",
+        "alarms": "[{\"id\":1,\"hour\":-2.5,\"minute\":-2.5,\"label\":\"-2.5\",\"days\":-2.5,\"enabled\":-2.5,\"snooze_minutes\":-2.5,\"ring_minutes\":-2.5,\"snoozed_until_ms\":-2.5,\"last_fired_at_ms\":-2.5,\"armed_at_ms\":-2.5,\"auto_snoozes\":-2.5}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":-2.5}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"-2.5\",\"body\":\"b\",\"status\":-2.5,\"created_at\":-2.5,\"updated_at\":-2.5}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"-2.5\",\"ts\":-2.5}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "-2.5",
+              "soundFile": "-2.5",
+              "volume": 0,
+              "snoozeMinutes": 1,
+              "ringMinutes": 1,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 0,
+              "minute": 0,
+              "label": "-2.5",
+              "days": [1,2,3,4,5,6],
+              "enabled": false,
+              "snoozeMinutes": 1,
+              "ringMinutes": 1,
+              "snoozedUntil": 0,
+              "lastFiredAt": 0,
+              "armedAt": 0,
+              "autoSnoozes": 0
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": -2.5
+          }
+        }
+      }
+    },
+    "tiny real": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":1.0e-300,\"sound\":\"1.0e-300\",\"sound_file\":\"1.0e-300\",\"volume\":1.0e-300,\"snooze_minutes\":1.0e-300,\"ring_minutes\":1.0e-300,\"history_days\":1.0e-300,\"check_updates\":1.0e-300}]\n",
+        "alarms": "[{\"id\":1,\"hour\":1.0e-300,\"minute\":1.0e-300,\"label\":\"1.0e-300\",\"days\":1.0e-300,\"enabled\":1.0e-300,\"snooze_minutes\":1.0e-300,\"ring_minutes\":1.0e-300,\"snoozed_until_ms\":1.0e-300,\"last_fired_at_ms\":1.0e-300,\"armed_at_ms\":1.0e-300,\"auto_snoozes\":1.0e-300}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":1.0e-300}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"1.0e-300\",\"body\":\"b\",\"status\":1.0e-300,\"created_at\":1.0e-300,\"updated_at\":1.0e-300}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"1.0e-300\",\"ts\":1.0e-300}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "1.0e-300",
+              "soundFile": "1.0e-300",
+              "volume": 0,
+              "snoozeMinutes": 1,
+              "ringMinutes": 1,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 0,
+              "minute": 0,
+              "label": "1.0e-300",
+              "days": [],
+              "enabled": false,
+              "snoozeMinutes": 1,
+              "ringMinutes": 1,
+              "snoozedUntil": 0,
+              "lastFiredAt": 0,
+              "armedAt": 0,
+              "autoSnoozes": 0
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 1e-300
+          }
+        }
+      }
+    },
+    "negative zero": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":0,\"sound\":\"0.0\",\"sound_file\":\"0.0\",\"volume\":0,\"snooze_minutes\":0,\"ring_minutes\":0,\"history_days\":0,\"check_updates\":0}]\n",
+        "alarms": "[{\"id\":1,\"hour\":0,\"minute\":0,\"label\":\"0.0\",\"days\":0,\"enabled\":0,\"snooze_minutes\":0,\"ring_minutes\":0,\"snoozed_until_ms\":0,\"last_fired_at_ms\":0,\"armed_at_ms\":0,\"auto_snoozes\":0}]\n",
+        "counts": "[{\"unreadNotes\":1,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":0}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"0.0\",\"body\":\"b\",\"status\":0,\"created_at\":0,\"updated_at\":0}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"0.0\",\"ts\":0}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": false,
+              "sound": "0.0",
+              "soundFile": "0.0",
+              "volume": 0,
+              "snoozeMinutes": 1,
+              "ringMinutes": 1,
+              "historyDays": 0,
+              "checkUpdates": false
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 0,
+              "minute": 0,
+              "label": "0.0",
+              "days": [],
+              "enabled": false,
+              "snoozeMinutes": 1,
+              "ringMinutes": 1,
+              "snoozedUntil": 0,
+              "lastFiredAt": 0,
+              "armedAt": 0,
+              "autoSnoozes": 0
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 1,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 0
+          }
+        }
+      }
+    },
+    "huge integer": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":9007199254740993,\"sound\":\"9007199254740993\",\"sound_file\":\"9007199254740993\",\"volume\":9007199254740993,\"snooze_minutes\":9007199254740993,\"ring_minutes\":9007199254740993,\"history_days\":9007199254740993,\"check_updates\":9007199254740993}]\n",
+        "alarms": "[{\"id\":1,\"hour\":9007199254740993,\"minute\":9007199254740993,\"label\":\"9007199254740993\",\"days\":9007199254740993,\"enabled\":9007199254740993,\"snooze_minutes\":9007199254740993,\"ring_minutes\":9007199254740993,\"snoozed_until_ms\":9007199254740993,\"last_fired_at_ms\":9007199254740993,\"armed_at_ms\":9007199254740993,\"auto_snoozes\":9007199254740993}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":9007199254740993}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"9007199254740993\",\"body\":\"b\",\"status\":9007199254740993,\"created_at\":9007199254740993,\"updated_at\":9007199254740993}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"9007199254740993\",\"ts\":9007199254740993}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "9007199254740993",
+              "soundFile": "9007199254740993",
+              "volume": 100,
+              "snoozeMinutes": 180,
+              "ringMinutes": 60,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 23,
+              "minute": 59,
+              "label": "9007199254740993",
+              "days": [],
+              "enabled": false,
+              "snoozeMinutes": 180,
+              "ringMinutes": 60,
+              "snoozedUntil": 9007199254740991,
+              "lastFiredAt": 9007199254740991,
+              "armedAt": 9007199254740991,
+              "autoSnoozes": 99
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 9007199254740992
+          }
+        }
+      }
+    },
+    "negative": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":-4,\"sound\":\"-4\",\"sound_file\":\"-4\",\"volume\":-4,\"snooze_minutes\":-4,\"ring_minutes\":-4,\"history_days\":-4,\"check_updates\":-4}]\n",
+        "alarms": "[{\"id\":1,\"hour\":-4,\"minute\":-4,\"label\":\"-4\",\"days\":-4,\"enabled\":-4,\"snooze_minutes\":-4,\"ring_minutes\":-4,\"snoozed_until_ms\":-4,\"last_fired_at_ms\":-4,\"armed_at_ms\":-4,\"auto_snoozes\":-4}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":-4}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"-4\",\"body\":\"b\",\"status\":-4,\"created_at\":-4,\"updated_at\":-4}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"-4\",\"ts\":-4}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "-4",
+              "soundFile": "-4",
+              "volume": 0,
+              "snoozeMinutes": 1,
+              "ringMinutes": 1,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": [
+            {
+              "id": 1,
+              "hour": 0,
+              "minute": 0,
+              "label": "-4",
+              "days": [2,3,4,5,6],
+              "enabled": false,
+              "snoozeMinutes": 1,
+              "ringMinutes": 1,
+              "snoozedUntil": 0,
+              "lastFiredAt": 0,
+              "armedAt": 0,
+              "autoSnoozes": 0
+            }
+          ]
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": -4
+          }
+        }
+      }
+    },
+    "blob": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"sound\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"sound_file\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"volume\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"snooze_minutes\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"ring_minutes\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"history_days\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"check_updates\":\"\\u0000\\u00ff\\u0041\\u00e9\"}]\n",
+        "alarms": "[{\"id\":1,\"hour\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"minute\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"label\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"days\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"enabled\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"snooze_minutes\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"ring_minutes\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"snoozed_until_ms\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"last_fired_at_ms\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"armed_at_ms\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"auto_snoozes\":\"\\u0000\\u00ff\\u0041\\u00e9\"}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":\"\\u0000\\u00ff\\u0041\\u00e9\"}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"body\":\"b\",\"status\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"created_at\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"updated_at\":\"\\u0000\\u00ff\\u0041\\u00e9\"}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"\\u0000\\u00ff\\u0041\\u00e9\",\"ts\":\"\\u0000\\u00ff\\u0041\\u00e9\"}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "\u0000ÿAé",
+              "soundFile": "\u0000ÿAé",
+              "volume": 100,
+              "snoozeMinutes": 9,
+              "ringMinutes": 5,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": []
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 0
+          }
+        }
+      }
+    },
+    "invalid UTF-8": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":\"a�b\",\"sound\":\"a�b\",\"sound_file\":\"a�b\",\"volume\":\"a�b\",\"snooze_minutes\":\"a�b\",\"ring_minutes\":\"a�b\",\"history_days\":\"a�b\",\"check_updates\":\"a�b\"}]\n",
+        "alarms": "[{\"id\":1,\"hour\":\"a�b\",\"minute\":\"a�b\",\"label\":\"a�b\",\"days\":\"a�b\",\"enabled\":\"a�b\",\"snooze_minutes\":\"a�b\",\"ring_minutes\":\"a�b\",\"snoozed_until_ms\":\"a�b\",\"last_fired_at_ms\":\"a�b\",\"armed_at_ms\":\"a�b\",\"auto_snoozes\":\"a�b\"}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":\"a�b\"}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"a�b\",\"body\":\"b\",\"status\":\"a�b\",\"created_at\":\"a�b\",\"updated_at\":\"a�b\"}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"a�b\",\"ts\":\"a�b\"}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "a�b",
+              "soundFile": "a�b",
+              "volume": 100,
+              "snoozeMinutes": 9,
+              "ringMinutes": 5,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": []
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 0
+          }
+        }
+      }
+    },
+    "emoji": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":\"😀\",\"sound\":\"😀\",\"sound_file\":\"😀\",\"volume\":\"😀\",\"snooze_minutes\":\"😀\",\"ring_minutes\":\"😀\",\"history_days\":\"😀\",\"check_updates\":\"😀\"}]\n",
+        "alarms": "[{\"id\":1,\"hour\":\"😀\",\"minute\":\"😀\",\"label\":\"😀\",\"days\":\"😀\",\"enabled\":\"😀\",\"snooze_minutes\":\"😀\",\"ring_minutes\":\"😀\",\"snoozed_until_ms\":\"😀\",\"last_fired_at_ms\":\"😀\",\"armed_at_ms\":\"😀\",\"auto_snoozes\":\"😀\"}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":\"😀\"}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"😀\",\"body\":\"b\",\"status\":\"😀\",\"created_at\":\"😀\",\"updated_at\":\"😀\"}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"😀\",\"ts\":\"😀\"}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "😀",
+              "soundFile": "😀",
+              "volume": 100,
+              "snoozeMinutes": 9,
+              "ringMinutes": 5,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": []
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 0
+          }
+        }
+      }
+    },
+    "control characters": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":\"\\u0001\\n\\\"\\\\\",\"sound\":\"\\u0001\\n\\\"\\\\\",\"sound_file\":\"\\u0001\\n\\\"\\\\\",\"volume\":\"\\u0001\\n\\\"\\\\\",\"snooze_minutes\":\"\\u0001\\n\\\"\\\\\",\"ring_minutes\":\"\\u0001\\n\\\"\\\\\",\"history_days\":\"\\u0001\\n\\\"\\\\\",\"check_updates\":\"\\u0001\\n\\\"\\\\\"}]\n",
+        "alarms": "[{\"id\":1,\"hour\":\"\\u0001\\n\\\"\\\\\",\"minute\":\"\\u0001\\n\\\"\\\\\",\"label\":\"\\u0001\\n\\\"\\\\\",\"days\":\"\\u0001\\n\\\"\\\\\",\"enabled\":\"\\u0001\\n\\\"\\\\\",\"snooze_minutes\":\"\\u0001\\n\\\"\\\\\",\"ring_minutes\":\"\\u0001\\n\\\"\\\\\",\"snoozed_until_ms\":\"\\u0001\\n\\\"\\\\\",\"last_fired_at_ms\":\"\\u0001\\n\\\"\\\\\",\"armed_at_ms\":\"\\u0001\\n\\\"\\\\\",\"auto_snoozes\":\"\\u0001\\n\\\"\\\\\"}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":\"\\u0001\\n\\\"\\\\\"}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"\\u0001\\n\\\"\\\\\",\"body\":\"b\",\"status\":\"\\u0001\\n\\\"\\\\\",\"created_at\":\"\\u0001\\n\\\"\\\\\",\"updated_at\":\"\\u0001\\n\\\"\\\\\"}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"\\u0001\\n\\\"\\\\\",\"ts\":\"\\u0001\\n\\\"\\\\\"}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "value": {
+            "settings": {
+              "soundOn": true,
+              "sound": "\u0001\n\"\\",
+              "soundFile": "\u0001\n\"\\",
+              "volume": 100,
+              "snoozeMinutes": 9,
+              "ringMinutes": 5,
+              "historyDays": 0,
+              "checkUpdates": true
+            }
+          }
+        },
+        "alarms": {
+          "value": []
+        },
+        "counts": {
+          "value": {
+            "unreadNotes": 0,
+            "pendingTodos": 0,
+            "notes": 1,
+            "todos": 0,
+            "history": 1,
+            "oldestHistory": 0
+          }
+        }
+      }
+    },
+    "infinity": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":Inf,\"sound\":\"Inf\",\"sound_file\":\"Inf\",\"volume\":Inf,\"snooze_minutes\":Inf,\"ring_minutes\":Inf,\"history_days\":Inf,\"check_updates\":Inf}]\n",
+        "alarms": "[{\"id\":1,\"hour\":Inf,\"minute\":Inf,\"label\":\"Inf\",\"days\":Inf,\"enabled\":Inf,\"snooze_minutes\":Inf,\"ring_minutes\":Inf,\"snoozed_until_ms\":Inf,\"last_fired_at_ms\":Inf,\"armed_at_ms\":Inf,\"auto_snoozes\":Inf}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":Inf}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"Inf\",\"body\":\"b\",\"status\":Inf,\"created_at\":Inf,\"updated_at\":Inf}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"Inf\",\"ts\":Inf}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "threw": "unreadable sqlite3 output"
+        },
+        "alarms": {
+          "threw": "unreadable sqlite3 output"
+        },
+        "counts": {
+          "threw": "unreadable sqlite3 output"
+        }
+      }
+    },
+    "minus infinity": {
+      "text": {
+        "settings": "[{\"id\":1,\"sound_on\":-Inf,\"sound\":\"-Inf\",\"sound_file\":\"-Inf\",\"volume\":-Inf,\"snooze_minutes\":-Inf,\"ring_minutes\":-Inf,\"history_days\":-Inf,\"check_updates\":-Inf}]\n",
+        "alarms": "[{\"id\":1,\"hour\":-Inf,\"minute\":-Inf,\"label\":\"-Inf\",\"days\":-Inf,\"enabled\":-Inf,\"snooze_minutes\":-Inf,\"ring_minutes\":-Inf,\"snoozed_until_ms\":-Inf,\"last_fired_at_ms\":-Inf,\"armed_at_ms\":-Inf,\"auto_snoozes\":-Inf}]\n",
+        "counts": "[{\"unreadNotes\":0,\"pendingTodos\":0,\"notes\":1,\"todos\":0,\"history\":1,\"oldest\":-Inf}]\n",
+        "items": "[{\"id\":1,\"type\":\"note\",\"title\":\"-Inf\",\"body\":\"b\",\"status\":-Inf,\"created_at\":-Inf,\"updated_at\":-Inf}]\n",
+        "history": "[{\"id\":1,\"type\":\"note\",\"title\":\"n\",\"action\":\"-Inf\",\"ts\":-Inf}]\n"
+      },
+      "parsed": {
+        "settings": {
+          "threw": "unreadable sqlite3 output"
+        },
+        "alarms": {
+          "threw": "unreadable sqlite3 output"
+        },
+        "counts": {
+          "threw": "unreadable sqlite3 output"
+        }
+      }
+    }
+  },
+  "deletedSettings": "[{\"id\":null,\"sound_on\":null,\"sound\":null,\"sound_file\":null,\"volume\":null,\"snooze_minutes\":null,\"ring_minutes\":null,\"history_days\":null,\"check_updates\":null}]\n",
+  "nulTitle": "a"
+}
