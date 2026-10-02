@@ -665,6 +665,40 @@ else
   kill_failures=""
 fi
 
+# An add's result lands before the snapshot that lists its row, so the new
+# note is selected once that snapshot lands. With `edit` 1, the user picks
+# another row and types in it while the add waits, and that row keeps the
+# selection and the text.
+added_while_editing() {
+  local title="$1" edit="$2" picked="" typed="" added_id rows
+  rows="$(ipc omanotes-test panelRows)"
+  touch "$cfg_dir/hold-any-write"
+  ipc omanotes-test typeDraft "$title" > /dev/null
+  ipc omanotes-test commitEditor > /dev/null
+  if (( edit )); then
+    picked="$(sqlite3 "$db" "SELECT id FROM items WHERE status = 0 ORDER BY id LIMIT 1")"
+    typed="$title TYPED"
+    ipc omanotes-test editItem "$picked" "$typed" > /dev/null
+  fi
+  rm -f "$cfg_dir/hold-any-write"
+  expect "the added note is in the file" "SELECT COUNT(*) FROM items WHERE title = '$title'" "1"
+  added_id="$(sqlite3 "$db" "SELECT id FROM items WHERE title = '$title'")"
+  settles "the list shows the added note" "$((rows + 1))" ipc omanotes-test panelRows
+  if (( edit )); then
+    replies "the added note leaves the row the user picked and the text typed in it" "$(editor_view 3,4,5)" "$picked|$typed|draft:false"
+  else
+    replies "the added note is selected once its row is listed" "$(editor_view 3,4,5)" "$added_id|$title|draft:false"
+  fi
+  ipc omanotes-test commitEditor > /dev/null
+  sleep 1
+  expect "saving the editor again does not add the note twice" "SELECT COUNT(*) FROM items WHERE title = '$title'" "1"
+  if (( edit )); then
+    expect "the text typed in the row picked is saved to it" "SELECT title FROM items WHERE id = $picked" "$typed"
+  fi
+}
+added_while_editing "ADDED-FROM-DRAFT" 0
+added_while_editing "ADDED-WHILE-EDITING" 1
+
 ipc omanotes-test quit > /dev/null || true
 wait "$qs_pid" || true
 replies "only the failure cases are logged" "$(logged_failures)" \
