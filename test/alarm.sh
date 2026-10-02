@@ -25,14 +25,30 @@ sound_file="$cfg_dir/alarm.oga"
 # fails the ones a check names; the player and the notification are stubs in PATH.
 stub_db
 # The player logs its start and its end on TERM, and fails at once while
-# sound-fails exists.
+# sound-fails exists. While sound-short exists it plays for 0.2 s and logs
+# when it started and ended.
 cat > "$cfg_dir/bin/pw-play" <<SH
 #!/usr/bin/env bash
 if [[ -e "$cfg_dir/sound-fails" ]]; then echo "fail \$\$" >> "$cfg_dir/sound.log"; exit 1; fi
+began=\$EPOCHREALTIME
 echo "start \$\$ \$*" >> "$cfg_dir/sound.log"
 trap 'echo "end \$\$" >> "$cfg_dir/sound.log"; exit 0' TERM
+if [[ -e "$cfg_dir/sound-short" ]]; then
+  sleep 0.2 &
+  wait \$!
+  echo "done \$\$ \$began \$EPOCHREALTIME" >> "$cfg_dir/sound.log"
+  exit 0
+fi
 sleep 30 &
 wait \$!
+SH
+# Every process the service starts for a ring runs bash with omanotes-ring as
+# its name, so this bash counts them.
+real_bash="$(command -v bash)"
+cat > "$cfg_dir/bin/bash" <<SH
+#!$real_bash
+[[ "\${1:-}" == -c && "\${3:-}" == omanotes-ring ]] && echo "chain \$\$" >> "$cfg_dir/sound.log"
+exec "$real_bash" "\$@"
 SH
 cat > "$cfg_dir/bin/omarchy-notification-send" <<SH
 #!/usr/bin/env bash
@@ -683,6 +699,86 @@ contains "the default sound instead" "$(last_start)" "-- /usr/share/sounds/freed
 state_has "with the sound not latched as broken" '"ringing":[92],"cards":3,"soundBroken":false'
 stop_ring "Stop ends that ring too"
 
+# The ring's arguments name a file under $cfg_dir, so a ring of the owner's
+# own shell never counts here.
+running_players() { { pgrep -f -- "$cfg_dir/bin/pw-play" || true; } | wc -l; }
+running_rings() { { pgrep -f -- "omanotes-ring $cfg_dir/" || true; } | wc -l; }
+sound_left() { echo $(( $(running_players) + $(running_rings) )); }
+none_left() {
+  local what="$1" got=""
+  for _ in $(seq 20); do
+    got="$(sound_left)"
+    [[ "$got" == 0 ]] && { pass "$what"; return; }
+    sleep 0.1
+  done
+  fail "$what: $got processes still running"
+}
+# Each play forks a copy of the ring's bash for a moment before setpriv
+# replaces it, so one read can see two.
+settles() {
+  local what="$1" count="$2" want="$3" got=""
+  for _ in $(seq 10); do
+    got="$("$count")"
+    [[ "$got" == "$want" ]] && { pass "$what"; return; }
+    sleep 0.1
+  done
+  fail "$what: want '$want', got '$got'"
+}
+players_and_rings() { echo "$(running_players)/$(running_rings)"; }
+# Waits for a player started with `want` in its arguments.
+start_has() {
+  local what="$1" want="$2" got=""
+  for _ in $(seq 50); do
+    got="$(last_start)"
+    [[ "$got" == *"$want"* ]] && { pass "$what"; return; }
+    sleep 0.1
+  done
+  fail "$what: want '$want' in '$got'"
+}
+# Each gap runs from the end of one play to the start of the next.
+gaps_after() {
+  grep '^done' "$cfg_dir/sound.log" | tail -n "+$(( $1 + 1 ))" | awk '{ gsub(",", ".") }
+    NR > 1 { gap = $3 - last; if (gap < 0.33 || gap > 1) off++ } { last = $4 }
+    END { print (NR >= 3 && !off) ? "ok" : NR " plays, " off + 0 " gaps off" }'
+}
+touch "$cfg_dir/sound-short"
+c0="$(sound_lines chain)"; s0="$(starts)"; e0="$(ends)"; d0="$(sound_lines done)"
+contains "an alarm rings with a sound of 0.2 s" "$(ring_at 96 11 25)" '"ringing":[96],"cards":3'
+sleep 3
+replies "the sound repeats for as long as the ring lasts" "$(( $(starts) - s0 >= 3 ))" "1"
+replies "from the one process the service started for the ring" "$(( $(sound_lines chain) - c0 ))" "1"
+replies "with the same 350 ms of silence between plays" "$(gaps_after "$d0")" "ok"
+settles "the ring's process is found running while it rings" running_rings 1
+contains "Snooze on the card quiets the repeating sound" "$(ipc click 2 "Snooze")" '"ringing":[]'
+none_left "and leaves no player and no ring process running"
+replies "every player that started ended or was stopped" \
+  "$(( $(starts) - s0 ))" "$(( $(ends) - e0 + $(sound_lines done) - d0 ))"
+sql "DELETE FROM alarms WHERE id = 96"
+c0="$(sound_lines chain)"
+contains "another alarm rings with the sound of 0.2 s" "$(ring_at 97 11 26)" '"ringing":[97],"cards":3'
+sleep 1.5
+replies "again from one process" "$(( $(sound_lines chain) - c0 ))" "1"
+# Each change after the first comes well inside 1.5 s of the loop's start,
+# so three of them would latch the sound as broken if the restarts counted as
+# quick failures.
+sql "UPDATE settings SET volume = 80"
+settings_has "the service reads a volume saved during the ring" '"volume":80'
+start_has "and the ring in progress plays at it" "--volume 0.80 -- /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
+sql "UPDATE settings SET sound_file = '$sound_file'"
+settings_has "the service reads a sound saved during the ring" "\"soundFile\":\"$sound_file\""
+start_has "and the ring in progress plays it" "--volume 0.80 -- $sound_file"
+sql "UPDATE settings SET volume = 60"
+start_has "and a second volume" "--volume 0.60 -- $sound_file"
+sql "UPDATE settings SET volume = 70"
+start_has "and a third" "--volume 0.70 -- $sound_file"
+state_has "with the sound not latched as broken by the restarts" '"ringing":[97],"cards":3,"soundBroken":false'
+replies "each change restarts the one process" "$(( $(sound_lines chain) - c0 ))" "5"
+stop_ring "Stop ends the repeating ring"
+none_left "and leaves no player and no ring process running either"
+rm "$cfg_dir/sound-short"
+sql "UPDATE settings SET volume = 50, sound_file = '$cfg_dir/gone.oga'"
+settings_has "the service reads the volume and the file of before" '"volume":50'
+
 preview_is() {
   local what="$1" want="$2" got=""
   for _ in $(seq 50); do
@@ -785,8 +881,15 @@ updater_is "and ends updated" "updated|blocked:false"
 replies "with the clone at origin/main" "$(git -C "$cfg_dir/clone" rev-parse HEAD)" "$(git -C "$cfg_dir/dev" rev-parse HEAD)"
 replies "and the shell restarted once, through the stub" "$(cat "$cfg_dir/restart.log" 2> /dev/null)" "restart"
 
+sql "UPDATE settings SET sound = 'custom', sound_file = '$sound_file'"
+settings_has "the service reads the custom file again" "\"soundFile\":\"$sound_file\""
+s0="$(starts)"; e0="$(ends)"
+contains "an alarm rings as the shell quits" "$(ring_at 98 11 56)" '"ringing":[98],"cards":3'
+sound_is "with a player that would play for 30 s" "$(( s0 + 1 ))" "$e0"
+settles "which is found running with its ring's process" players_and_rings 1/1
 ipc quit > /dev/null || true
 wait "$qs_pid" || true
+none_left "the shell gone, no player and no ring process runs on"
 logged_failures="$(grep -o "omanotes db: .*" "$cfg_dir/qs.log" | sed 's/^omanotes db: //' | sort -u | tr '\n' ';' || true)"
 replies "only the injected failures are logged" "$logged_failures" "disk I/O error;the database helper refused the request;"
 replies "the failed save was retried at least once before it landed" \
