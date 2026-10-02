@@ -86,6 +86,23 @@ test("a write with wrong args is its own bad_request and the others run", (t) =>
   assert.deepEqual(rows(db, "SELECT title FROM items"), [{ title: "kept" }])
 })
 
+test("a repeated member is bad_request and the last copy does not win", (t) => {
+  const db = tempDb(t)
+  assert.equal(run(db, "item.add", { type: "note", title: "kept", body: "b" }).value, 1)
+
+  const deleted = exec([PROTOCOL, "run", db],
+    "{\"writes\":[{\"id\":2,\"by\":\"widget\",\"op\":\"history.delete\",\"op\":\"item.delete\",\"at\":1,\"args\":{\"id\":1}}]}")
+  fails(deleted, 1, "bad_request")
+  assert.equal(lastError(deleted.stderr).detail, "repeated member")
+  assert.deepEqual(rows(db, "SELECT title FROM items"), [{ title: "kept" }])
+
+  const titled = answerOf(exec([PROTOCOL, "run", db],
+    "{\"writes\":[{\"id\":3,\"by\":\"widget\",\"op\":\"item.add\",\"at\":2,\"args\":{\"type\":\"note\",\"title\":\"FIRST\",\"title\":\"SECOND\",\"body\":\"b\"}},{\"id\":4,\"by\":\"widget\",\"op\":\"item.add\",\"at\":3,\"args\":{\"type\":\"note\",\"title\":\"other\",\"body\":\"b\"}}]}"), 2)
+  assert.deepEqual(titled.results[0], { id: 3, err: "bad_request", detail: "repeated member" })
+  assert.equal(titled.results[1].value, 2)
+  assert.deepEqual(rows(db, "SELECT title FROM items ORDER BY id"), [{ title: "kept" }, { title: "other" }])
+})
+
 test("a request up to 1 MiB goes through; one byte more is too_large and writes nothing", (t) => {
   const db = tempDb(t)
   const frame = (body) => JSON.stringify({ writes: [write("item.add", { type: "note", title: "big", body })] })
