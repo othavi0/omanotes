@@ -89,6 +89,13 @@ test("definitive is true for the failures a retry would get again", () => {
   }
 })
 
+test("retriesRead asks again for every read failure but a snapshot over 64 MiB", () => {
+  assert.equal(Db.retriesRead("response_too_large"), false)
+  for (const err of ["busy", "io", "corrupt", "sqlite", "internal", "crash", "no_binary", "timeout", "protocol", "bad_request"]) {
+    assert.equal(Db.retriesRead(err), true, err)
+  }
+})
+
 test("parseCounts of no row counts zero", () => {
   assert.deepEqual(Db.parseCounts(null), { unreadNotes: 0, pendingTodos: 0, notes: 0, todos: 0, history: 0, oldestHistory: 0 })
 })

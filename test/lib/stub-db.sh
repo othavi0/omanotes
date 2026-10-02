@@ -23,6 +23,8 @@
 #   fail-insert       requests with alarm.insert fail with "disk I/O error"
 #   fail-sync         requests with no writes fail as a lock held outside
 #   first-fails       the next request fails as a lock held outside, once
+#   too-large         every request fails its snapshot as response_too_large: exit 3,
+#                     the result line of each write first, then {"syncErr"} on stderr
 #   crash             the next request dies by SIGKILL with no answer, once
 #   stall-journal     holds N: requests run with lib/stall-journal.c preloaded, so the Nth
 #                     write of each stalls on the disk until the Lane kills the request
@@ -87,6 +89,19 @@ else
   (( inserts )) && [[ -e "$cfg/fail-insert" ]] && disk
   (( saves )) && [[ -e "$cfg/fail-writes" ]] && disk
   (( saves )) && [[ -e "$cfg/refuse-writes" ]] && refuse
+fi
+if [[ -e "$cfg/too-large" ]]; then
+  writes=0
+  for word in $kinds; do [[ "$word" == write:* ]] && writes=$(( writes + 1 )); done
+  if (( writes > 0 )); then
+    out="$("$real" "$@" <<< "$req"; c=$?; printf x; exit "$c")"
+    code=$?
+    (( code == 0 )) || { printf '%s' "${out%x}"; exit "$code"; }
+    mapfile -t -n "$writes" results <<< "${out%x}"
+    printf '%s\n' "${results[@]}"
+  fi
+  printf '{"syncErr":{"err":"response_too_large","detail":"the snapshot is over 64 MiB"}}\n' >&2
+  exit 3
 fi
 if [[ -e "$cfg/stall-journal" ]]; then
   read -r stall < "$cfg/stall-journal"

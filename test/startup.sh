@@ -156,6 +156,9 @@ ShellRoot {
       return sr.widgetDb(0).add("note", title, "x".repeat(size))
     }
     function lastFailure(): string { return sr.lastFailure }
+    function clearFailure(): void { sr.lastFailure = "" }
+    // How many alarms the service's own view holds.
+    function serviceAlarms(): int { return svc.item ? sr.dbsIn(svc.item, [])[0].alarms.length : -1 }
     function setPlugin(on: bool): void { sr.pluginOn = on }
     function loaded(): int {
       var n = svc.item ? 1 : 0
@@ -347,6 +350,38 @@ ipc setSpawnLimit 30000 > /dev/null
 sleep 1.5
 replies "and no omanotes-db process is left behind" "$(pgrep -af "$probe" || true)" ""
 
+# A snapshot over 64 MiB fails only after the binary wrote 64 MiB, so a
+# retry costs the shell 64 MiB again: the Store does not retry it.
+sleep 1
+: > "$cfg_dir/db.log"
+touch "$cfg_dir/too-large"
+ipc loadAll > /dev/null
+sleep 3
+replies "a snapshot over 64 MiB fails once and is not asked again" "$(requests)" "sync;"
+replies "and the read failure is in the journal" \
+  "$(grep -c "omanotes db: read failed: the notes are over 64 MiB, too large to read" "$cfg_dir/qs.log" || true)" "1"
+# The binary commits a write and answers its result before the snapshot
+# fails. The watcher waits 30 s here, so the write's own change reads nothing.
+ipc setWatcherDelay 30000 > /dev/null
+ipc clearFailure > /dev/null
+: > "$cfg_dir/db.log"
+replies "a write while the snapshot is over 64 MiB is queued" "$(ipc addFromPanel BIG-WRITE 1)" ""
+wait_for_count BIG-WRITE 1
+sleep 1.5
+replies "it lands, and its failed snapshot is not asked again" "$(requests)|$(count BIG-WRITE)" "write write:item.add;|1"
+replies "the write hears its own result, and the read failure is told once more" \
+  "$(ipc lastFailure)|$(grep -c "omanotes db: read failed: the notes are over 64 MiB, too large to read" "$cfg_dir/qs.log" || true)" "|2"
+rm -f "$cfg_dir/too-large"
+ipc setWatcherDelay 80 > /dev/null
+sqlite3 "$file" "INSERT INTO items (type, title, status, created_at, updated_at) VALUES ('note', 'SHRUNK', 0, 1, 1)"
+seen=""
+for _ in $(seq 30); do
+  seen="$(ipc seen SHRUNK)"
+  [[ "$seen" == "$monitors" ]] && break
+  sleep 0.1
+done
+replies "the next change of the file reads again, and a file that fits shows" "$seen" "$monitors"
+
 # A read that ran before a write lands after the write's own snapshot. The
 # watcher waits 5 s, so nothing else decides for it. In rollback-journal mode
 # the stamp orders the two; in WAL the stamp is -1 and the write that ended
@@ -373,6 +408,34 @@ for mode in delete wal; do
   sleep 1
   replies "$mode: the read held from before the write lands after it and is dropped" "$(ipc seen "FRESH-$mode")" "$monitors"
 done
+
+# In WAL the dropped read can be the newer one: it ran after a change made
+# outside that the write's snapshot does not hold. The watcher waits 30 s, so
+# only the Store can show that change in time.
+ipc setWatcherDelay 30000 > /dev/null
+sleep 0.5
+: > "$cfg_dir/db.log"
+touch "$cfg_dir/hold-sync"
+ipc loadAll > /dev/null
+for _ in $(seq 30); do grep -q '^[0-9]* sync ' "$cfg_dir/db.log" && break; sleep 0.1; done
+replies "wal: a read is sent and held before it runs" "$(grep -c '^[0-9]* sync ' "$cfg_dir/db.log" || true)" "1"
+ipc addNote "WRITTEN-wal" > /dev/null
+seen=""
+for _ in $(seq 30); do
+  seen="$(ipc seen "WRITTEN-wal")"
+  [[ "$seen" == "$monitors" ]] && break
+  sleep 0.1
+done
+replies "wal: a write lands with its own snapshot" "$seen" "$monitors"
+sqlite3 "$file" "INSERT INTO items (type, title, status, created_at, updated_at) VALUES ('note', 'OUTSIDE-wal', 0, 1, 1)"
+rm -f "$cfg_dir/hold-sync"
+seen=""
+for _ in $(seq 20); do
+  seen="$(ipc seen "OUTSIDE-wal")"
+  [[ "$seen" == "$monitors" ]] && break
+  sleep 0.1
+done
+replies "wal: the change made outside, which only the dropped read held, shows" "$seen" "$monitors"
 sqlite3 "$file" "PRAGMA journal_mode = delete" > /dev/null
 ipc setWatcherDelay 80 > /dev/null
 
@@ -410,6 +473,42 @@ replies "only the refused writes and the injected failures are logged" \
 replies "and the missing binary is in the journal" \
   "$(grep -c "omanotes db: cannot run the database helper $stub_tree/bin/omanotes-db.$arch" "$cfg_dir/qs.log" || true)" "1"
 
-(( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
+# A shell that starts on a snapshot over 64 MiB has no snapshot, and no panel
+# is opened to ask for one: once the file fits, only its next change can show
+# the rows and the service's alarms.
+sqlite3 "$file" "INSERT INTO alarms (hour, minute, label, enabled) VALUES (0, 0, 'TOO-LARGE', 0)"
+alarms="$(sqlite3 "$file" "SELECT COUNT(*) FROM alarms")"
+: > "$cfg_dir/db.log"
+touch "$cfg_dir/too-large"
+PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$stub_tree" "${qs_cmd[@]}" > "$cfg_dir/qs2.log" 2>&1 &
+qs_pid=$!
+up=0
+for _ in $(seq 50); do
+  [[ "$(ipc ping)" == "ok" ]] && { up=1; break; }
+  sleep 0.2
+done
+if (( ! up )); then cat "$cfg_dir/qs2.log"; echo "the second test shell never answered ping"; exit 2; fi
+too_large="omanotes db: the notes are over 64 MiB, too large to read"
+for _ in $(seq 50); do grep -q "$too_large" "$cfg_dir/qs2.log" && break; sleep 0.1; done
+sleep 1.5
+replies "a shell that starts on a snapshot over 64 MiB reads it once, and the failure is in the journal" \
+  "$(requests)|$(grep -c "$too_large" "$cfg_dir/qs2.log" || true)" "sync;|1"
+replies "and the service has no alarms loaded" "$(ipc serviceState)" "Service|false|1"
+rm -f "$cfg_dir/too-large"
+sqlite3 "$file" "INSERT INTO items (type, title, status, created_at, updated_at) VALUES ('note', 'SHRUNK-AT-START', 0, 1, 1)"
+seen=""
+for _ in $(seq 50); do
+  seen="$(ipc seen SHRUNK-AT-START)"
+  [[ "$seen" == "$monitors" ]] && break
+  sleep 0.1
+done
+replies "with no panel opened, the next change of the file shows the rows" "$seen" "$monitors"
+replies "and the service's alarms" "$(ipc serviceState)|$(ipc serviceAlarms)" "Service|true|1|$alarms"
+none='{"dbs":1,"ready":1,"panel":"none","clocksAndWindows":0}'
+replies "and no panel was loaded" "$(ipc state)" "[$none$(printf ",$none%.0s" $(seq 2 $monitors))]"
+ipc quit > /dev/null || true
+wait "$qs_pid" || true
+
+(( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log" "$cfg_dir/qs2.log"
 echo "startup: $checks checks, $failures failed"
 exit $(( failures > 0 ))
