@@ -122,12 +122,6 @@ function lateText(ms) {
   return spanText(ms) + " late"
 }
 
-// The shell draws a notification body as StyledText, so the user's label
-// goes in with its markup characters escaped.
-function markupEscaped(text) {
-  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-}
-
 // The one notification for every alarm a tick found too late to ring.
 function missedText(missed, alarmsById, nowMs) {
   if (!missed || missed.length === 0) return null
@@ -135,13 +129,27 @@ function missedText(missed, alarmsById, nowMs) {
     var alarm = alarmOf(alarmsById, event.id)
     var d = new Date(event.at)
     var line = alarm ? clockOf(alarm) : timeText(d.getHours(), d.getMinutes())
-    if (alarm && alarm.label !== "") line += " · " + markupEscaped(alarm.label)
+    if (alarm && alarm.label !== "") line += " · " + alarm.label
     return line + ", " + lateText(nowMs - event.at)
   })
   return {
     headline: missed.length === 1 ? "Missed alarm" : missed.length + " missed alarms",
     body: lines.join("\n")
   }
+}
+
+// The shell draws a notification body as StyledText, so text goes in with
+// its markup characters escaped.
+function markupEscaped(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+// The argv of omarchy-notification-send at `program` for the missed alarms,
+// or null when there are none. The body is escaped here, where it becomes
+// StyledText; it starts with a time, so it never reads as an option.
+function missedNotifyArgv(program, glyph, missed, alarmsById, nowMs) {
+  var text = missedText(missed, alarmsById, nowMs)
+  return text ? [program, "-g", glyph, text.headline, markupEscaped(text.body)] : null
 }
 
 // What the card and the chip show, or null when nothing rings. The meter is

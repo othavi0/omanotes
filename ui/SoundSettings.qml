@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
@@ -49,7 +50,10 @@ ColumnLayout {
     // the chooser took focus still saves.
     Process {
         id: picker
-        command: ["omarchy-file-select", "--title", "Alarm sound", "--extensions", "oga ogg wav mp3 flac opus"]
+        // Omarchy's helper by its full path. It opens a window, so it keeps
+        // the shell's environment.
+        command: [(Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy") + "/bin/omarchy-file-select",
+            "--title", "Alarm sound", "--extensions", "oga ogg wav mp3 flac opus"]
         stdout: StdioCollector { id: picked; waitForEnd: true }
         onExited: function(exitCode) {
             var path = String(picked.text || "").trim().split("\n")[0]

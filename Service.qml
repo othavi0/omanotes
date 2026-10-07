@@ -30,6 +30,8 @@ Item {
     // at its stub players.
     property string bashPath: "/usr/bin/bash"
     property string playerPath: "/usr/bin"
+    // Omarchy's helper by its full path, not the PATH the shell inherited.
+    property string notifySendPath: (Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy") + "/bin/omarchy-notification-send"
 
     // The ring reads the settings row and never writes it (ADR-0016). A
     // custom file that is gone plays the default inside the player script,
@@ -184,9 +186,11 @@ Item {
         root.ringing = out.keep.length === 0 ? null : { startedAt: root.ringing.startedAt, events: out.keep }
     }
 
+    // It keeps the shell's environment: the notification goes over the
+    // session's D-Bus.
     function _notifyMissed(missed, byId) {
-        var text = Alarms.missedText(missed, byId, root.nowMs)
-        Quickshell.execDetached(["omarchy-notification-send", "-g", Icons.alarm, text.headline, text.body])
+        var argv = Alarms.missedNotifyArgv(root.notifySendPath, Icons.alarm, missed, byId, root.nowMs)
+        if (argv) Quickshell.execDetached(argv)
     }
 
     function _dropLostOutside() {

@@ -301,7 +301,7 @@ FocusScope {
                             iconText: Icons.folder
                             text: "Open folder"
                             foreground: root.foreground
-                            onClicked: if (root.db) Util.execArgv(["xdg-open", root.db.dataDir])
+                            onClicked: if (root.db) Quickshell.execDetached(["/usr/bin/xdg-open", root.db.dataDir])
                         }
                     }
                     Item { Layout.fillHeight: true }

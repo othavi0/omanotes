@@ -121,7 +121,8 @@ ShellRoot {
     id: svc
     Component.onCompleted: setSource("file://" + Quickshell.env("OMANOTES_WORKTREE") + "/Service.qml",
       { clockRunning: false, screens: [1, 2, 3], ringWindow: stubRing,
-        bashPath: Quickshell.env("STUB_BIN") + "/bash", playerPath: Quickshell.env("STUB_BIN") + ":/usr/bin" })
+        bashPath: Quickshell.env("STUB_BIN") + "/bash", playerPath: Quickshell.env("STUB_BIN") + ":/usr/bin",
+        notifySendPath: Quickshell.env("STUB_BIN") + "/omarchy-notification-send" })
   }
 
   function find(obj, typeName, out) {
