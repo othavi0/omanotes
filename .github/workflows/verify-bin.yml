@@ -1,0 +1,53 @@
+# Rebuilds bin/omanotes-db.{x86_64,aarch64} from source in the toolchain of tools/toolchain.env
+# and fails when either differs from the committed bytes (tools/verify-bin.sh --rebuild: exit 1 on
+# other bytes, exit 2 when the toolchain here is not the one bin/BUILD.json records). No filter on
+# paths: a commit listed in the marketplace needs a run on that exact commit.
+name: verify-bin
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # A job's container image cannot be read from a file, so this job reads it for the next one.
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      image: ${{ steps.toolchain.outputs.IMAGE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools/toolchain.env
+            tools/toolchain.sh
+          sparse-checkout-cone-mode: false
+      # Checked here, on the runner: inside the container the image would check itself.
+      - id: toolchain
+        run: tools/toolchain.sh --image >> "$GITHUB_OUTPUT"
+
+  rebuild:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: ${{ needs.image.outputs.image }}
+    env:
+      SYSROOT_AARCH64: /opt/sysroot-aarch64
+    steps:
+      # The image has no git yet, so this is the commit's tarball through the REST API.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Toolchain
+        run: tools/toolchain.sh
+
+      - name: Rebuild and compare bytes
+        run: tools/verify-bin.sh --rebuild
