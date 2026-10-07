@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# The only writer of bin/. The analysis build and the canaries first (the
-# gates), then one NativeAOT publish per architecture with the same toolchain,
-# the glibc floor and the ELF machine of each, and bin/BUILD.json.
+# The only writer of bin/, run through tools/build-in-container.sh so the
+# toolchain is the one CI rebuilds with. The analysis build and the canaries
+# first (the gates), then one NativeAOT publish per architecture with the same
+# toolchain, the glibc floor and the ELF machine of each, and bin/BUILD.json.
 #   OUT=<dir>              where to write (default bin/; verify-bin.sh --rebuild uses a temp dir)
 #   BUILD_ROOT=<dir>       build products (default $HOME/.cache/omanotes-build), never inside the plugin folder
 #   SYSROOT_AARCH64=<dir>  the aarch64 sysroot (default $BUILD_ROOT/sysroot-aarch64, made by tools/sysroot.sh)
@@ -64,7 +65,6 @@ OUT="$out" SOURCE="$source_hash" ROOT="$root" node --input-type=module -e '
   const { OUT, SOURCE, ROOT, SYSROOT_AARCH64 } = process.env
   const run = (file, args, opts = {}) => execFileSync(file, args, { encoding: "utf8", ...opts }).trim()
   const sha = (path) => createHash("sha256").update(readFileSync(path)).digest("hex")
-  const lock = JSON.parse(readFileSync(ROOT + "/db/packages.lock.json", "utf8"))
   const wire = readFileSync(ROOT + "/db/Wire.cs", "utf8")
   const current = Number(/const int Current = (\d+);/.exec(wire)[1])
   const targets = {}
@@ -80,13 +80,7 @@ OUT="$out" SOURCE="$source_hash" ROOT="$root" node --input-type=module -e '
     protocol: version.protocol,
     schema: version.schema,
     source: SOURCE,
-    toolchain: {
-      sdk: run("dotnet", ["--version"], { cwd: ROOT + "/db" }),
-      ilcompiler: lock.dependencies["net10.0"]["Microsoft.DotNet.ILCompiler"].resolved,
-      clang: run("clang", ["--version"]).split("\n")[0],
-      lld: run("ld.lld", ["--version"]).split("\n")[0],
-      sysroot: sha(ROOT + "/tools/sysroot.lock")
-    },
+    toolchain: JSON.parse(run(process.execPath, [ROOT + "/tools/toolchain.mjs"])),
     targets
   }
   if (version.source !== SOURCE) throw new Error("the binary reports source " + version.source)
