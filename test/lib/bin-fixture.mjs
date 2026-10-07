@@ -23,7 +23,7 @@ export const T0 = 1700000000
 export const V0_SCHEMA = readFileSync(new URL("./v0.sql", import.meta.url), "utf8").replace(/^--.*\n/gm, "")
 
 export const ROOT = new URL("../../", import.meta.url).pathname
-// The file suffix is `uname -m`, the rule the QML and update.sh use.
+// The file suffix is `uname -m`, the rule the QML uses.
 // OMANOTES_DB_BIN points the suite at another build, to see a test fail on a planted defect.
 export const BIN = process.env.OMANOTES_DB_BIN ?? join(ROOT, "bin", "omanotes-db." + machine())
 export const BUILD = JSON.parse(readFileSync(join(ROOT, "bin", "BUILD.json"), "utf8"))

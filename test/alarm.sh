@@ -196,23 +196,7 @@ ShellRoot {
     function clearSettingsToasts(): void {
       for (var i = 0; i < 3; ++i) sr.find(monitors.instances[i].widget.panelItem, "SettingsTab")[0].toast.text = ""
     }
-    function updaters(): string {
-      return [0, 1, 2].map(function(i) {
-        var updater = monitors.instances[i].widget.panelItem.updater
-        return updater && updater === svc.item.updater ? "service" : String(updater)
-      }).join("|")
-    }
-    function useClone(dir: string): string {
-      var updater = svc.item.updater
-      updater.pluginDir = dir
-      updater.launcher = []
-      updater.refresh()
-      return "ok"
-    }
-    function checkUpdates(): void { svc.item.updater.check() }
     function alarmsDbSetSettings(): string { return typeof sr.find(svc.item, "AlarmsDb")[0].setSettings }
-    function updaterView(): string { return svc.item.updater.view.phase + "|blocked:" + svc.item.updater.blocked }
-    function applyUpdate(): string { return "[" + svc.item.updater.apply() + "]" + svc.item.updater.view.phase }
     function tooltip(n: int): string { return sr.chip(n).tooltipText }
     function pressChip(n: int, button: string): string {
       sr.chip(n).triggerPress(button === "right" ? Qt.RightButton : Qt.LeftButton)
@@ -834,52 +818,6 @@ ipc startNew > /dev/null
 replies "a new alarm opens with the defaults of the settings row" "$(ipc editorMinutes)" "12/3"
 ipc discard > /dev/null
 ipc closePanel 1
-
-# The service's one Updater, against a clone one commit behind its origin.
-# The ring the update's reload would drop blocks it.
-(
-  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
-    GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
-  git init --quiet --bare -b main "$cfg_dir/origin.git"
-  git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/dev" 2> /dev/null
-  printf '{\n  "version": "1.1.0"\n}\n' > "$cfg_dir/dev/manifest.json"
-  # What the smoke of update.sh runs before it merges.
-  mkdir "$cfg_dir/dev/bin" "$cfg_dir/dev/data"
-  cp "$worktree/bin/omanotes-db.$(uname -m)" "$cfg_dir/dev/bin/"
-  cp "$worktree/data/Db.js" "$cfg_dir/dev/data/"
-  git -C "$cfg_dir/dev" add -A && git -C "$cfg_dir/dev" commit --quiet -m "feat: first"
-  git -C "$cfg_dir/dev" push --quiet origin main
-  git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/clone"
-  git -C "$cfg_dir/dev" commit --quiet --allow-empty -m "feat: second"
-  git -C "$cfg_dir/dev" push --quiet origin main
-)
-printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/omarchy-plugin-validate"
-printf '#!/usr/bin/env bash\necho restart >> "%s/restart.log"\n' "$cfg_dir" > "$cfg_dir/bin/omarchy-restart-shell"
-chmod +x "$cfg_dir/bin/omarchy-plugin-validate" "$cfg_dir/bin/omarchy-restart-shell"
-updater_is() {
-  local what="$1" want="$2" got=""
-  for _ in $(seq 50); do
-    got="$(ipc updaterView)"
-    [[ "$got" == "$want" ]] && { pass "$what"; return; }
-    sleep 0.2
-  done
-  fail "$what: want '$want', got '$got'"
-}
-replies "every panel uses the service's one Updater" "$(ipc updaters)" "service|service|service"
-ipc useClone "$cfg_dir/clone" > /dev/null
-updater_is "the service's Updater reads the clone" "unchecked|blocked:false"
-ipc checkUpdates
-updater_is "and finds its new commit" "available|blocked:false"
-clone_head="$(git -C "$cfg_dir/clone" rev-parse HEAD)"
-contains "an alarm rings" "$(ring_at 95 11 50)" '"ringing":[95],"cards":3'
-replies "which blocks the update" "$(ipc updaterView)" "available|blocked:true"
-replies "so apply refuses, whoever calls it" "$(ipc applyUpdate)" "[An alarm is ringing]available"
-replies "and the clone did not move" "$(git -C "$cfg_dir/clone" rev-parse HEAD)" "$clone_head"
-stop_ring "Stop ends that ring"
-replies "then apply runs" "$(ipc applyUpdate)" "[]updating"
-updater_is "and ends updated" "updated|blocked:false"
-replies "with the clone at origin/main" "$(git -C "$cfg_dir/clone" rev-parse HEAD)" "$(git -C "$cfg_dir/dev" rev-parse HEAD)"
-replies "and the shell restarted once, through the stub" "$(cat "$cfg_dir/restart.log" 2> /dev/null)" "restart"
 
 sql "UPDATE settings SET sound = 'custom', sound_file = '$sound_file'"
 settings_has "the service reads the custom file again" "\"soundFile\":\"$sound_file\""

@@ -25,6 +25,8 @@ ln -s "$shell_root/Commons" "$cfg_dir/Commons"
 ln -s "$shell_root/Ui" "$cfg_dir/Ui"
 ln -s "$worktree/ui" "$cfg_dir/ui"
 ln -s "$worktree/data" "$cfg_dir/data"
+# Settings reads the installed version from ../manifest.json.
+ln -s "$worktree/manifest.json" "$cfg_dir/manifest.json"
 
 mkdir -p "$data_home/omarchy"
 db="$data_home/omarchy/scratchpad.db"
@@ -83,9 +85,7 @@ migrate_db
 
 # A plain command, so a caller that backgrounds it gets the pid of `timeout`
 # in `$!`; killing that pid then reaches qs.
-# XDG_STATE_HOME keeps the update state file of every Updater away from the
-# user's.
-qs_cmd=(env XDG_DATA_HOME="$data_home" XDG_STATE_HOME="$data_home/state" QT_QPA_PLATFORM=offscreen timeout 120 qs -p "$cfg_dir")
+qs_cmd=(env XDG_DATA_HOME="$data_home" QT_QPA_PLATFORM=offscreen timeout 120 qs -p "$cfg_dir")
 run_qs() { "${qs_cmd[@]}" "$@"; }
 
 # The kit's KeyboardPanel is a layer-shell PanelWindow, which has no backend

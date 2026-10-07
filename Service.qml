@@ -35,8 +35,6 @@ Item {
     // The sound Settings is testing, "" when none.
     property string previewKey: ""
 
-    readonly property QtObject updater: updates
-
     readonly property var alarms: store.alarms
     readonly property bool loaded: store.alarmsLoaded
     property real nowMs: 0
@@ -226,17 +224,6 @@ Item {
         onShown: root._dropLostOutside()
         onAlarmAdded: function(id, caller) { root.alarmAdded(id, caller) }
         onAlarmWriteFailed: function(kind, record, message, caller) { root.writeFailed(kind, record, message, caller) }
-    }
-
-    // The shell's one Updater: every panel uses it, and it makes the only
-    // automatic check, so several monitors never mean several fetches. A
-    // test drives the clock and never fetches. The reload and the restart an
-    // update sets off would drop a ring, so a ring blocks it.
-    Data.Updater {
-        id: updates
-        daily: root.clockRunning && root.settings.checkUpdates
-        checkUpdates: root.settings.checkUpdates
-        blocked: root.ringing !== null
     }
 
     SystemClock {

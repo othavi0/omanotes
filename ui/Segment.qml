@@ -8,8 +8,8 @@ import qs.Ui
 // Mutually exclusive segmented control: the panel's tabs, the
 // All/Notes/Todos filter, the draft's Note/Todo picker and the On/Off
 // choices of Settings. Each chip is pinned to Style.spacing.controlHeight,
-// like ActionButton and Field. An option may carry an icon, a count, a
-// tooltip and a dot; an empty label leaves the icon alone.
+// like ActionButton and Field. An option may carry an icon, a count and a
+// tooltip; an empty label leaves the icon alone.
 RowLayout {
     id: root
 
@@ -71,19 +71,6 @@ RowLayout {
                     font.pixelSize: Style.font.bodySmall
                     anchors.verticalCenter: parent.verticalCenter
                 }
-            }
-
-            // Marks an option that wants a look, such as Settings with an
-            // update waiting.
-            Rectangle {
-                visible: !!chip.modelData.dot
-                width: Style.space(7)
-                height: width
-                radius: width / 2
-                color: Color.urgent
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: Style.space(4)
             }
 
             MouseArea {

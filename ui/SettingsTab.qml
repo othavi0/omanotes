@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "../data/Sound.js" as Sound
@@ -20,7 +21,6 @@ FocusScope {
 
     property QtObject db: null
     property QtObject service: null
-    property QtObject updater: null
     property var toast: null
     property QtObject bar: null
     property color foreground: Color.foreground
@@ -34,8 +34,7 @@ FocusScope {
     readonly property var info: ({
         sound: Sound.soundName(root.settings),
         bytes: root.db ? root.db.dbBytes : 0,
-        version: root.updater && root.updater.local ? root.updater.local.version : "",
-        hasUpdate: root.updater ? root.updater.showDot : false
+        version: root.version
     })
     readonly property var sectionIds: Settings.SECTIONS.map(function(s) { return s.id })
     readonly property var sectionIcons: ({ sound: Icons.volume, alarms: Icons.alarm, updates: Icons.update, history: Icons.history, data: Icons.database })
@@ -48,7 +47,6 @@ FocusScope {
 
     function pickSection(id) {
         confirm.cancel()
-        if (id === "updates" && root.updater) root.updater.refresh()
         root.section = id
         focusSink.forceActiveFocus()
     }
@@ -71,6 +69,15 @@ FocusScope {
     }
 
     ArmedConfirm { id: confirm }
+
+    // The installed version, for the Updates page and the header.
+    property string version: ""
+    FileView {
+        id: manifest
+        path: String(Qt.resolvedUrl("../manifest.json")).replace(/^file:\/\//, "")
+        printErrors: false
+        onLoaded: root.version = Settings.manifestVersion(manifest.text())
+    }
 
     function backup() {
         if (root.db) root.db.backup()
@@ -144,13 +151,6 @@ FocusScope {
                         color: sectionRow.selected ? Style.selectedStateColor(root.foreground, Color.accent) : root.foreground
                         font.family: Style.font.family
                         font.pixelSize: Style.font.body
-                    }
-                    Rectangle {
-                        visible: sectionRow.modelData.id === "updates" && root.info.hasUpdate
-                        Layout.preferredWidth: Style.space(7)
-                        Layout.preferredHeight: Style.space(7)
-                        radius: width / 2
-                        color: Color.urgent
                     }
                     Text {
                         text: Settings.sectionMeta(sectionRow.modelData.id, root.settings, root.info)
@@ -253,11 +253,9 @@ FocusScope {
                 }
 
                 UpdateSettings {
-                    updater: root.updater
-                    settings: root.settings
+                    version: root.version
                     toast: root.toast
                     foreground: root.foreground
-                    onSave: function(patch) { root.save(patch) }
                 }
 
                 ColumnLayout {
