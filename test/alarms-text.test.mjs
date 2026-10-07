@@ -114,6 +114,15 @@ test("missedText is one notification for every missed alarm", () => {
   assert.equal(T.missedText([], byId, NOW), null)
 })
 
+// The shell shows a notification body as StyledText, so a label is text
+// there, never markup: `<img src=...>` would load the image.
+test("missedText escapes the label's &, < and > and leaves its own text alone", () => {
+  const byId = { 1: alarm({ label: '<img src="http://x/y.png"> Tom & Jerry' }) }
+  const one = T.missedText([{ id: 1, at: at(0, 11, 48), kind: "scheduled" }], byId, NOW)
+  assert.equal(one.body, '07:30 · &lt;img src="http://x/y.png"&gt; Tom &amp; Jerry, 2 h 12 min late')
+  assert.equal(one.headline, "Missed alarm")
+})
+
 test("ringView is what the card and the chip show, with the meter as the first event's elapsed share", () => {
   const byId = { 1: alarm({ days: [0, 6] }), 2: alarm({ id: 2, label: "Pills", hour: 6, minute: 0, ringMinutes: 1 }) }
   const ring = { startedAt: NOW, events: [{ id: 1, startedAt: NOW }, { id: 2, startedAt: NOW + 30 * 1000 }] }

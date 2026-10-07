@@ -122,6 +122,12 @@ function lateText(ms) {
   return spanText(ms) + " late"
 }
 
+// The shell draws a notification body as StyledText, so the user's label
+// goes in with its markup characters escaped.
+function markupEscaped(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
 // The one notification for every alarm a tick found too late to ring.
 function missedText(missed, alarmsById, nowMs) {
   if (!missed || missed.length === 0) return null
@@ -129,7 +135,7 @@ function missedText(missed, alarmsById, nowMs) {
     var alarm = alarmOf(alarmsById, event.id)
     var d = new Date(event.at)
     var line = alarm ? clockOf(alarm) : timeText(d.getHours(), d.getMinutes())
-    if (alarm && alarm.label !== "") line += " · " + alarm.label
+    if (alarm && alarm.label !== "") line += " · " + markupEscaped(alarm.label)
     return line + ", " + lateText(nowMs - event.at)
   })
   return {
