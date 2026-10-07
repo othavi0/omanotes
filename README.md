@@ -20,7 +20,8 @@ Notes, todos and alarms in one panel on the Omarchy bar, for Omarchy users who w
 - The Omarchy shell. Omanotes is a shell plugin with a bar widget and a service.
 - An x86_64 or aarch64 machine with glibc 2.34 or later.
 - `libsqlite3.so.0` from SQLite 3.44 or later.
-- For the alarm sound only, one of `pw-play`, `paplay`, `mpv` or `ffplay`. Without any of them, an alarm rings silently.
+- For the alarm sound only, one of `pw-play`, `paplay`, `mpv` or `ffplay` in `/usr/bin`. A player elsewhere in your `PATH` is not used. Without any of them, an alarm rings silently.
+- `wl-copy` in `/usr/bin` (the `wl-clipboard` package, part of Omarchy) for the **Copy** button of Settings.
 
 A current Arch Linux, the base of Omarchy, has all of them. On a machine without glibc 2.34 or `libsqlite3.so.0`, the panel says it cannot run the database helper and names the file it tried.
 
@@ -41,7 +42,7 @@ omarchy plugin update othavi0.omanotes
 omarchy restart shell
 ```
 
-`omarchy plugin update` shows the changes and asks before it pulls. The restart is needed because the shell's own reload keeps the code it already compiled. The **Updates** page in Settings shows both commands and copies them as one line, `omarchy plugin update othavi0.omanotes && omarchy restart shell`.
+`omarchy plugin update` shows the changes and asks before it pulls. Run `omarchy restart shell` only after it prints `Updated othavi0.omanotes.`: the shell's own reload keeps the code it already compiled, so only a restart loads the new version. The update also exits 0 when there is nothing new or when you answer no, and a restart then would only stop an alarm that rings. The **Updates** page in Settings shows both commands, and its **Copy** button copies the update alone.
 
 ## Remove
 
@@ -49,13 +50,17 @@ omarchy restart shell
 omarchy plugin remove othavi0.omanotes
 ```
 
-Removing the plugin keeps your data: the database `~/.local/share/omarchy/scratchpad.db` and the backups `scratchpad-<date>.db` next to it. If `XDG_DATA_HOME` is set, they are in `$XDG_DATA_HOME/omarchy/` instead. To delete them too, run:
+Removing the plugin keeps your data: the database `~/.local/share/omarchy/scratchpad.db`, the backups `scratchpad-<date>.db` next to it, and the `-wal`, `-shm` or `-journal` file SQLite can leave beside them. If `XDG_DATA_HOME` is set, they are in `$XDG_DATA_HOME/omarchy/` instead. `scratchpad.db` is the file omatodolist used too ([ADR-0003](docs/adr/0003-keep-the-scratchpad-name-for-data-and-ipc.md)), so if you still use omatodolist, keep it. To delete them, run this in bash or zsh. It prints each file it deletes, and does nothing when there is no backup:
 
 ```sh
-rm -i ~/.local/share/omarchy/scratchpad.db ~/.local/share/omarchy/scratchpad-*.db
+find "${XDG_DATA_HOME:-$HOME/.local/share}/omarchy" -maxdepth 1 -name 'scratchpad*.db*' -print -delete
 ```
 
-SQLite can leave a `scratchpad.db-wal`, `scratchpad.db-shm` or `scratchpad.db-journal` file next to the database. Delete those too if they exist.
+Version 1.1.0 and older kept the state of their self-update in `~/.local/state/omanotes/` (or `$XDG_STATE_HOME/omanotes/`). Nothing reads it any more, and you can delete the folder:
+
+```sh
+rm -r "${XDG_STATE_HOME:-$HOME/.local/state}/omanotes"
+```
 
 ## Using the panel
 
@@ -91,7 +96,7 @@ The gear at the end of the tabs opens Settings. Changes save as you make them.
 
 - **Alarm sound** switches the sound on or off, picks one of six sounds or a file of your own, and sets the volume. The play button on a row and **Test** play the sound once, at the volume shown; they need the plugin's service.
 - **Alarms** sets the snooze and ring lengths a new alarm starts with. Alarms you already have keep their own.
-- **Updates** shows the installed version, the two commands that update the plugin with a **Copy** button, and **Open**, which opens the plugin's listing on omarchyplugins.com in the browser. The plugin never checks for or downloads updates by itself.
+- **Updates** shows the version that runs, the two commands that update the plugin, and **Copy**, which copies the update. The restart comes after the update prints `Updated othavi0.omanotes.`. The plugin never checks for or downloads updates by itself.
 - **History** keeps entries forever, 90 days or 30 days. A shorter choice that removes entries needs a second click, and older entries are removed again each time the panel opens.
 - **Data** shows where the database is and its size. **Back up now** copies it next to itself as `scratchpad-<date>.db`, and a second backup the same day replaces the first.
 
@@ -126,20 +131,25 @@ The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/
 
 ## Privacy and network
 
-Omanotes does not use the network. Nothing in it fetches, uploads or checks for updates. This was checked three ways:
+Omanotes does not use the network. Nothing in it fetches, uploads or checks for updates, and it opens no web address. What was measured:
 
-- The shipped QML and JavaScript contain no network API. The only URL is the listing that **Open** hands to `xdg-open` when you click it.
-- `bin/omanotes-db.x86_64` and `bin/omanotes-db.aarch64` import no `socket`, `connect`, `bind`, `sendto` or `getaddrinfo` symbol (`readelf --dyn-syms`).
-- `omanotes-db selftest` passes inside `unshare -rn`, a namespace with no network.
+- The shipped QML and JavaScript contain no network API and no URL.
+- `omanotes-db selftest`, which creates a database on disk, migrates it, writes to it and reads it back, exits 0 inside `unshare -rn`, a namespace with no network.
+- `bin/omanotes-db.x86_64` and `bin/omanotes-db.aarch64` import no `socket`, `connect`, `bind`, `sendto` or `getaddrinfo` symbol (`readelf --dyn-syms`), and the x86_64 one links only `libc`, `libm` and the loader. Its strings name `libssl` symbols, which the .NET runtime it is built with can load on demand, so this check alone does not show that the binary has no network code.
 
 The files Omanotes reads and writes:
 
 - `~/.local/share/omarchy/scratchpad.db`, or `$XDG_DATA_HOME/omarchy/scratchpad.db`: your notes, todos, history, alarms and settings. `omanotes-db` creates the folder and the file when they are missing.
 - `scratchpad-<date>.db` in the same folder, written only by **Back up now**, through a `scratchpad-<date>.db.tmp` file it then renames.
-- The plugin's own `manifest.json`, read for the version shown in Settings.
 - The alarm sound: a file in `/usr/share/sounds/freedesktop/stereo/` or the file you picked, read by the player.
 
-The programs Omanotes starts are `omanotes-db`, the sound player, `omarchy-notification-send` for a missed alarm, `omarchy-file-select` when you pick a sound file, and `xdg-open` for **Open folder** and **Open**.
+The programs Omanotes starts, each by its full path:
+
+- `bin/omanotes-db.<machine>` from the plugin folder, for every read and write.
+- `/usr/bin/bash` running the sound script, which starts the first of `pw-play`, `paplay`, `mpv` and `ffplay` in `/usr/bin`, through `/usr/bin/setpriv` for a ringing alarm so the player ends with the shell.
+- `/usr/bin/wl-copy` for **Copy** in Settings.
+- `/usr/bin/xdg-open` for **Open folder** in Settings.
+- Omarchy's `omarchy-notification-send`, for a missed alarm, and `omarchy-file-select`, when you pick a sound file, from `$OMARCHY_PATH/bin` (`/usr/share/omarchy/bin` by default).
 
 ## About omanotes-db
 
