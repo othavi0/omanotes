@@ -24,10 +24,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: tools/toolchain.env
+          sparse-checkout: |
+            tools/toolchain.env
+            tools/toolchain.sh
           sparse-checkout-cone-mode: false
+      # Checked here, on the runner: inside the container the image would check itself.
       - id: toolchain
-        run: grep '^IMAGE=' tools/toolchain.env >> "$GITHUB_OUTPUT"
+        run: tools/toolchain.sh --image >> "$GITHUB_OUTPUT"
 
   rebuild:
     needs: image

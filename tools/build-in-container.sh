@@ -15,6 +15,7 @@ case "${1:-}" in
     exit 64
     ;;
 esac
+"$root/tools/toolchain.sh" --image > /dev/null
 # shellcheck source=tools/toolchain.env
 source "$root/tools/toolchain.env"
 

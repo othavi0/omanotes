@@ -2,10 +2,22 @@
 # Installs the toolchain of tools/toolchain.env, as root, in a container of its IMAGE. CI runs it
 # in the job's container and tools/build-in-container.sh in a local one, so the package list is
 # this one. Afterwards dotnet is on PATH and the aarch64 sysroot is /opt/sysroot-aarch64.
+#   tools/toolchain.sh --image  checks IMAGE and prints IMAGE=..., before any container runs it
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=tools/toolchain.env
 source "$root/tools/toolchain.env"
+
+# The image runs the rebuild and the cmp, so an image from anyone else could report equal bytes.
+# Only Docker Hub's official archlinux, by digest; no "/", which would name another registry.
+if ! [[ "$IMAGE" =~ ^archlinux(:[A-Za-z0-9_.-]+)?@sha256:[0-9a-f]{64}$ ]]; then
+  echo "toolchain: IMAGE is $IMAGE, not archlinux[:tag]@sha256:<digest>" >&2
+  exit 1
+fi
+if [[ "${1:-}" == --image ]]; then
+  echo "IMAGE=$IMAGE"
+  exit 0
+fi
 
 # The keyring of the image or of the archive day can hold a packager key that has expired since.
 # The current keyring, from the live repos, checks the old signatures too. It is not in the
