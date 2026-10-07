@@ -1,49 +1,65 @@
-using System.Runtime.Versioning;
-
-// tools/build.sh publishes for linux-x64 and linux-arm64 only.
-[assembly: SupportedOSPlatform("linux")]
+using System.Runtime.InteropServices;
 
 namespace Omanotes.Db;
 
 /// <summary>
-/// The notes are the user's alone, in a folder other users can list. SQLite
-/// creates a database 0644 less the umask, and its -journal, -wal and -shm
-/// take the mode of the database (findCreateFileMode in os_unix.c), so the
-/// database is the one file to keep at 0600. The owner never changes here.
+/// The notes are the user's alone, in a folder other users can list. Under
+/// the umask every file this process creates is 0600: the database, a
+/// backup's .tmp and what VACUUM INTO writes in it, and any file to come.
+/// SQLite gives a -journal, -wal or -shm the mode of the database
+/// (findCreateFileMode in os_unix.c). A file that is already there keeps its
+/// mode, so <see cref="Restrict"/> takes the bits of group and others off the
+/// ones a release before this left 0644.
 /// </summary>
-internal static class OwnerOnly
+internal static partial class OwnerOnly
 {
-    private const UnixFileMode Mode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+    private const string Libc = "libc.so.6";
+
+    /// <summary>0o077: no bit for group or others on a file or folder created from now on.</summary>
+    private const uint GroupAndOthersBits = 0x3F;
 
     private const UnixFileMode Others =
         UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
         UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
 
+    private static readonly string[] Sidecars = ["-wal", "-shm", "-journal"];
+
+    /// <summary>Every file and folder this process creates from here on is its owner's alone.</summary>
+    public static void FromNowOn() => _ = umask(GroupAndOthersBits);
+
     /// <summary>
-    /// Creates an empty file at 0600 when nothing is at the path, so the file
-    /// is never readable by others, not even empty: a descriptor opened then
-    /// would read the notes written later. SQLite takes an empty file as a new
-    /// database, and VACUUM INTO writes into one.
+    /// The database, its -wal, -shm and -journal, and the backups of every
+    /// day with their .tmp, back to their owner's bits. Runs before SQLite
+    /// opens the database, so a -wal or -shm that is there is restricted
+    /// before it is read.
     /// </summary>
-    public static void Create(string path)
+    public static void Restrict(string dbPath)
     {
+        RestrictFile(dbPath);
+        foreach (string suffix in Sidecars)
+        {
+            RestrictFile(dbPath + suffix);
+        }
+
+        string dir = Path.GetDirectoryName(dbPath) ?? "/";
         try
         {
-#pragma warning disable RS0030 // SQLite has not opened the file yet, so closing this descriptor drops no lock.
-            File.Open(path, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = Mode }).Dispose();
-#pragma warning restore RS0030
+            // The names Writes.Backup gives; the folder is Omarchy's, and other files in it are not ours to chmod.
+            foreach (string pattern in (string[])["scratchpad-*.db", "scratchpad-*.db.tmp"])
+            {
+                foreach (string file in Directory.EnumerateFiles(dir, pattern))
+                {
+                    RestrictFile(file);
+                }
+            }
         }
-        catch (IOException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            // There already, or no folder: SQLite opens the file or says why it cannot.
-        }
-        catch (UnauthorizedAccessException)
-        {
+            Unexpected(dir, e);
         }
     }
 
-    /// <summary>Takes a file that group or others may use back to its owner's bits.</summary>
-    public static void Restrict(string path)
+    private static void RestrictFile(string path)
     {
         try
         {
@@ -53,13 +69,27 @@ internal static class OwnerOnly
                 File.SetUnixFileMode(path, mode & ~Others);
             }
         }
-        catch (IOException)
+        catch (FileNotFoundException)
         {
-            // Missing: SQLite creates it. chmod belongs to the owner, so a file of
-            // another user that this one may write keeps its mode.
+            // ENOENT: not there, or gone since the folder was listed. SQLite creates a missing one under the umask.
         }
         catch (UnauthorizedAccessException)
         {
+            // EPERM: chmod is the owner's, so a file of another user that this one may write keeps its mode.
+        }
+        catch (IOException e)
+        {
+            Unexpected(path, e);
         }
     }
+
+    /// <summary>
+    /// Goes to the journal through stderr, and the request goes on: a mode
+    /// bit is no reason to keep the user from the notes, and the line names
+    /// the file to look at.
+    /// </summary>
+    private static void Unexpected(string path, Exception e) => Program.Log("cannot restrict " + path + ": " + e.GetType().Name);
+
+    [LibraryImport(Libc)]
+    private static partial uint umask(uint mask);
 }

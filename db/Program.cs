@@ -97,6 +97,10 @@ internal static partial class Program
     {
         using Request req = Request.Parse(Fd.ReadStdin(Protocol.MaxRequestBytes, Protocol.StdinIdleMs));
         MakeDirectory(Path.GetDirectoryName(dbPath) ?? "/");
+
+        // After the folder: ~/.local/share/omarchy is Omarchy's and keeps the mode it is made with.
+        OwnerOnly.FromNowOn();
+        OwnerOnly.Restrict(dbPath);
         using Conn db = Conn.Open(dbPath);
         int before = Schema.Migrate(db);
         if (before < Schema.Current)

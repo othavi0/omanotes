@@ -105,8 +105,6 @@ internal sealed partial class Conn : IDisposable
             throw new OpException(ErrorCode.SqliteTooOld, "libsqlite3 " + LibraryVersion() + " is older than " + MinVersionText);
         }
 
-        OwnerOnly.Create(path);
-        OwnerOnly.Restrict(path);
         int rc = Native.sqlite3_open_v2(path, out DbHandle handle, Native.OpenReadWrite | Native.OpenCreate, null);
         var conn = new Conn(handle, path);
         try
