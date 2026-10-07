@@ -138,6 +138,7 @@ FocusScope {
                     spacing: Style.space(9)
 
                     Text {
+                        textFormat: Text.PlainText
                         text: root.sectionIcons[sectionRow.modelData.id] || ""
                         color: sectionRow.selected ? Style.selectedStateColor(root.foreground, Color.accent)
                             : Util.alpha(root.foreground, Tone.secondary)
@@ -145,6 +146,7 @@ FocusScope {
                         font.pixelSize: Style.font.icon
                     }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: sectionRow.modelData.label
                         elide: Text.ElideRight
@@ -153,6 +155,7 @@ FocusScope {
                         font.pixelSize: Style.font.body
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: Settings.sectionMeta(sectionRow.modelData.id, root.settings, root.info)
                         color: Util.alpha(root.foreground, Tone.secondary)
                         font.family: Style.font.family
@@ -178,12 +181,14 @@ FocusScope {
                 spacing: Style.spacing.md
 
                 Text {
+                    textFormat: Text.PlainText
                     text: root.sectionIcons[root.section] || ""
                     color: Color.accent
                     font.family: Style.font.family
                     font.pixelSize: Style.font.icon
                 }
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: Settings.SECTIONS[root.sectionIndex].label
                     color: root.foreground
@@ -242,6 +247,7 @@ FocusScope {
                         }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: "Applies to new alarms. Each alarm keeps its own values."
                         wrapMode: Text.WordWrap

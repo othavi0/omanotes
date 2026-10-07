@@ -36,6 +36,7 @@ Rectangle {
 
     Text {
         id: clock
+        textFormat: Text.PlainText
         x: Style.space(10)
         anchors.verticalCenter: parent.verticalCenter
         width: Style.space(74)
@@ -54,6 +55,7 @@ Rectangle {
         spacing: Style.spacing.xxs
 
         Text {
+            textFormat: Text.PlainText
             width: parent.width
             text: root.alarm.label !== "" ? root.alarm.label : Alarms.timeText(root.alarm.hour, root.alarm.minute)
             elide: Text.ElideRight
@@ -62,6 +64,7 @@ Rectangle {
             font.pixelSize: Style.font.body
         }
         Text {
+            textFormat: Text.PlainText
             width: parent.width
             text: Alarms.rowDetail(root.alarm, Alarm.alarmNextAt(root.alarm, root.nowMs), root.nowMs)
             wrapMode: Text.Wrap

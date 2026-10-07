@@ -142,6 +142,7 @@ ColumnLayout {
                 }
             }
             Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: row.name
                 elide: Text.ElideMiddle
@@ -150,6 +151,7 @@ ColumnLayout {
                 font.pixelSize: Style.font.body
             }
             Text {
+                textFormat: Text.PlainText
                 visible: row.detail !== ""
                 text: row.detail
                 color: Util.alpha(root.foreground, Tone.muted)
@@ -258,6 +260,7 @@ ColumnLayout {
             onReleased: function(v) { root.save({ volume: Math.round(v) }) }
         }
         Text {
+            textFormat: Text.PlainText
             Layout.preferredWidth: Style.space(38)
             horizontalAlignment: Text.AlignRight
             text: Math.round(volume.liveValue) + "%"

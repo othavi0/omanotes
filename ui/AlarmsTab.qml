@@ -276,6 +276,7 @@ FocusScope {
             Layout.fillHeight: true
 
             Text {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 text: "Your alarm opens here."
                 color: Util.alpha(root.foreground, Tone.muted)

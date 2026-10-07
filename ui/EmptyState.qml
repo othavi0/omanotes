@@ -27,6 +27,7 @@ Column {
     spacing: Style.spacing.xxl
 
     Text {
+        textFormat: Text.PlainText
         visible: root.glyph !== ""
         anchors.horizontalCenter: parent.horizontalCenter
         text: root.glyph
@@ -36,6 +37,7 @@ Column {
     }
 
     Text {
+        textFormat: Text.PlainText
         anchors.horizontalCenter: parent.horizontalCenter
         text: root.title
         color: root.foreground
@@ -45,6 +47,7 @@ Column {
     }
 
     Text {
+        textFormat: Text.PlainText
         visible: root.message !== ""
         anchors.horizontalCenter: parent.horizontalCenter
         text: root.message

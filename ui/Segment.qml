@@ -47,6 +47,7 @@ RowLayout {
                 spacing: Style.spacing.md
 
                 Text {
+                    textFormat: Text.PlainText
                     visible: !!chip.modelData.icon
                     text: chip.modelData.icon || ""
                     color: root.foreground
@@ -55,6 +56,7 @@ RowLayout {
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
+                    textFormat: Text.PlainText
                     visible: chip.modelData.label !== ""
                     text: chip.modelData.label
                     color: root.foreground
@@ -64,6 +66,7 @@ RowLayout {
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
+                    textFormat: Text.PlainText
                     visible: chip.modelData.count !== undefined
                     text: chip.modelData.count === undefined ? "" : String(chip.modelData.count)
                     color: Util.alpha(root.foreground, 0.55)

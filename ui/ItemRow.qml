@@ -84,6 +84,7 @@ Rectangle {
 
     Text {
         id: glyph
+        textFormat: Text.PlainText
         x: Style.space(10)
         y: (root.height - height) / 2
         text: root.todo ? (root.readOrCompleted ? Icons.boxOn : Icons.boxOff) : Icons.note
@@ -104,6 +105,7 @@ Rectangle {
 
     Text {
         id: title
+        textFormat: Text.PlainText
         anchors.left: glyph.right
         anchors.leftMargin: Style.space(9)
         anchors.right: meta.left
@@ -121,6 +123,7 @@ Rectangle {
 
     Text {
         id: meta
+        textFormat: Text.PlainText
         anchors.right: parent.right
         anchors.rightMargin: Style.space(10)
         y: (root.height - height) / 2

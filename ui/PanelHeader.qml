@@ -42,6 +42,7 @@ RowLayout {
     Item { Layout.fillWidth: true }
 
     Text {
+        textFormat: Text.PlainText
         text: root.activeTab === Tabs.settings ? root.version
             : root.activeTab === Tabs.alarms && root.service ? root.service.nextSummary
             : (root.db ? root.db.unreadNotes : 0) + " unread · " + (root.db ? root.db.pendingTodos : 0) + " pending"

@@ -87,12 +87,14 @@ ColumnLayout {
         spacing: Style.spacing.md
 
         Text {
+            textFormat: Text.PlainText
             text: Icons.alarm
             color: Color.accent
             font.family: Style.font.family
             font.pixelSize: Style.font.icon
         }
         Text {
+            textFormat: Text.PlainText
             text: root.draft ? "New alarm" : "Alarm"
             color: root.foreground
             font.bold: true
@@ -107,6 +109,7 @@ ColumnLayout {
             color: root.on ? Util.alpha(Color.accent, Style.selectedFillAlpha) : Util.alpha(root.foreground, Style.hoverFillAlpha)
             Text {
                 id: stateText
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 text: root.on ? "on" : "off"
                 color: root.on ? Color.accent : Util.alpha(root.foreground, Tone.secondary)
@@ -125,6 +128,7 @@ ColumnLayout {
                 color: root.unsaved ? Color.urgent : Util.alpha(root.foreground, Tone.muted)
             }
             Text {
+                textFormat: Text.PlainText
                 text: root.draft ? "Unsaved draft" : (root.dirty ? "Unsaved changes" : "Saved")
                 color: Util.alpha(root.foreground, Tone.secondary)
                 font.family: Style.font.family
@@ -143,6 +147,7 @@ ColumnLayout {
             onAccepted: labelField.forceActiveFocus()
         }
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: root.fields ? Alarms.nextInText(root.nextAt, root.nowMs) : (root.timeText === "" ? "" : "Needs a time like 07:30")
             elide: Text.ElideRight
@@ -153,6 +158,7 @@ ColumnLayout {
     }
 
     component Key: Text {
+        textFormat: Text.PlainText
         Layout.preferredWidth: Style.space(64)
         color: Util.alpha(root.foreground, Tone.secondary)
         font.family: Style.font.family
@@ -166,6 +172,7 @@ ColumnLayout {
         rightPadding: Style.space(34)
         validator: IntValidator { bottom: 1; top: 180 }
         Text {
+            textFormat: Text.PlainText
             anchors.right: parent.right
             anchors.rightMargin: Style.spacing.controlPaddingX
             anchors.verticalCenter: parent.verticalCenter
@@ -214,6 +221,7 @@ ColumnLayout {
             }
         }
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: Alarms.daysText(root.days)
             elide: Text.ElideRight
