@@ -24,14 +24,16 @@ sound_file="$cfg_dir/alarm.oga"
 # The binary is a stub (lib/stub-db.sh) that logs every request in db.log and holds or
 # fails the ones a check names; the player and the notification are stubs in PATH.
 stub_db
+real_bash="$(command -v bash)"
 # The player logs its start and its end on TERM, and fails at once while
 # sound-fails exists. While sound-short exists it plays for 0.2 s and logs
-# when it started and ended.
+# when it started and ended. It logs the environment it was given in env.log.
 cat > "$cfg_dir/bin/pw-play" <<SH
-#!/usr/bin/env bash
+#!$real_bash
 if [[ -e "$cfg_dir/sound-fails" ]]; then echo "fail \$\$" >> "$cfg_dir/sound.log"; exit 1; fi
 began=\$EPOCHREALTIME
-echo "canary=\${OMANOTES_CANARY:-none} path=\$PATH" >> "$cfg_dir/env.log"
+given() { tr '\\0' '\\n' < /proc/\$\$/environ | sed -n "s/^\$1=//p"; }
+echo "canary=\${OMANOTES_CANARY:-none} path=\$PATH home=\$(given HOME) runtime=\$(given XDG_RUNTIME_DIR)" >> "$cfg_dir/env.log"
 echo "start \$\$ \$*" >> "$cfg_dir/sound.log"
 trap 'echo "end \$\$" >> "$cfg_dir/sound.log"; exit 0' TERM
 if [[ -e "$cfg_dir/sound-short" ]]; then
@@ -45,14 +47,23 @@ wait \$!
 SH
 # Every process the service starts for a ring runs bash with omanotes-ring as
 # its name, so this bash counts them.
-real_bash="$(command -v bash)"
 cat > "$cfg_dir/bin/bash" <<SH
 #!$real_bash
 [[ "\${1:-}" == -c && "\${3:-}" == omanotes-ring ]] && echo "chain \$\$" >> "$cfg_dir/sound.log"
 exec "$real_bash" "\$@"
 SH
+# A bash first in the shell's PATH, which the sound must never run: it runs
+# the bash the service names.
+mkdir "$cfg_dir/decoy"
+cat > "$cfg_dir/decoy/bash" <<SH
+#!$real_bash
+echo "wrong bash \$*" >> "$cfg_dir/decoy.log"
+exec "$real_bash" "\$@"
+SH
+chmod +x "$cfg_dir/decoy/bash"
+: > "$cfg_dir/decoy.log"
 cat > "$cfg_dir/bin/omarchy-notification-send" <<SH
-#!/usr/bin/env bash
+#!$real_bash
 printf '%s' "\$*" | tr '\n' '/' >> "$cfg_dir/notify.log"
 echo >> "$cfg_dir/notify.log"
 SH
@@ -272,7 +283,7 @@ QML
 touch "$cfg_dir/hold-reads"
 # OMANOTES_CANARY stands for what the shell's environment carries that a
 # player must not get, such as LD_PRELOAD.
-PATH="$cfg_dir/bin:$PATH" STUB_BIN="$cfg_dir/bin" OMANOTES_CANARY=leak OMANOTES_WORKTREE="$stub_tree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
+PATH="$cfg_dir/decoy:$cfg_dir/bin:$PATH" STUB_BIN="$cfg_dir/bin" OMANOTES_CANARY=leak OMANOTES_WORKTREE="$stub_tree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
 trap 'kill "$qs_pid" 2> /dev/null || true; wait "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
 
@@ -382,7 +393,8 @@ replies "at 07:30 the daily alarm rings on every screen and the two one-shots fr
   "$(ipc tick "$t0730")" '{"loaded":true,"alarms":4,'"$ringing_wake"
 sound_is "one player runs for three screens" 1 0
 contains "the player plays the custom file of the settings row at full volume" "$(grep '^start' "$cfg_dir/sound.log" | tail -1)" "--volume 1.00 -- $sound_file"
-replies "the player runs with the fixed PATH and none of the shell's other variables" "$(tail -1 "$cfg_dir/env.log")" "canary=none path=$cfg_dir/bin:/usr/bin"
+replies "the player runs with the fixed PATH, HOME and XDG_RUNTIME_DIR, and none of the shell's other variables" \
+  "$(tail -1 "$cfg_dir/env.log")" "canary=none path=$cfg_dir/bin:/usr/bin home=$HOME runtime=$XDG_RUNTIME_DIR"
 replies "every chip reads the bell and the title, painted active" "$(ipc chips)" "{bell} Wake up*|{bell} Wake up*|{bell} Wake up*"
 replies "the chip's tooltip names the ring, for a vertical bar that shows the bell alone" "$(ipc tooltip 2)" "Omanotes: Wake up is ringing · click to stop"
 replies "one notification lists both missed alarms" "$(wc -l < "$cfg_dir/notify.log")" "1"
@@ -782,6 +794,9 @@ s0="$(starts)"; e0="$(ends)"
 replies "Test plays a sound once at the volume it is given" "$(ipc preview bell "$sound_file" 30)" "[]bell"
 sound_is "with one player" "$(( s0 + 1 ))" "$e0"
 contains "at that volume" "$(last_start)" "--volume 0.30 -- $sound_file"
+replies "and in the same environment as the ring's player" \
+  "$(tail -1 "$cfg_dir/env.log")" "canary=none path=$cfg_dir/bin:/usr/bin home=$HOME runtime=$XDG_RUNTIME_DIR"
+replies "the bash first in the shell's PATH ran for no ring and no test" "$(cat "$cfg_dir/decoy.log")" ""
 replies "the same sound again stops it" "$(ipc preview bell "$sound_file" 30)" "[]"
 sound_is "and ends its player" "$(( s0 + 1 ))" "$(( e0 + 1 ))"
 preview_is "which reports the end of a playable sound" "|bell:true;"
@@ -839,6 +854,7 @@ replies "only the injected failures are logged" "$logged_failures" "disk I/O err
 replies "the failed save was retried at least once before it landed" \
   "$(( $(grep -c "omanotes db: disk I/O error" "$cfg_dir/qs.log" || true) >= 3 ))" "1"
 replies "the broken player is logged once" "$(grep -c "omanotes: cannot play" "$cfg_dir/qs.log" || true)" "1"
+replies "the bash first in the shell's PATH never ran, through every ring and test" "$(cat "$cfg_dir/decoy.log")" ""
 
 (( failures == 0 )) || tail -n 40 "$cfg_dir/qs.log"
 echo "alarm: $checks checks, $failures failed"

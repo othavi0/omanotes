@@ -269,16 +269,17 @@ Item {
         + 'read -rt ' + (repeatGapMs / 1000) + '; (( $? > 128 )) || exit 0; done'
     // The players run in an environment of their own, not the shell's, which
     // can carry LD_PRELOAD and the like: PATH, and what pw-play, paplay, mpv
-    // and ffplay need to reach the sound server.
-    readonly property var playerEnvironment: {
-        var env = { PATH: root.playerPath }
-        var keys = ["HOME", "XDG_RUNTIME_DIR", "PIPEWIRE_RUNTIME_DIR", "PULSE_SERVER", "DBUS_SESSION_BUS_ADDRESS"]
-        for (var i = 0; i < keys.length; ++i) {
-            var value = Quickshell.env(keys[i])
-            if (value !== undefined && value !== null && String(value) !== "") env[keys[i]] = String(value)
-        }
-        return env
-    }
+    // and ffplay need to reach the sound server. With clearEnvironment, a key
+    // set to null passes the shell's value, and one the shell lacks stays
+    // unset (Quickshell 0.3.1).
+    readonly property var playerEnvironment: ({
+        PATH: root.playerPath,
+        HOME: null,
+        XDG_RUNTIME_DIR: null,
+        PIPEWIRE_RUNTIME_DIR: null,
+        PULSE_SERVER: null,
+        DBUS_SESSION_BUS_ADDRESS: null
+    })
     readonly property int quickFailureMs: 1500
     readonly property int maxQuickFailures: 3
     property double soundStartedAt: 0
