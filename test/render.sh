@@ -87,7 +87,7 @@ ShellRoot {
   Loader {
     id: svc
     Component.onCompleted: setSource("file://" + Quickshell.env("OMANOTES_WORKTREE") + "/Service.qml",
-      { clockRunning: false, screens: [], ringWindow: noWindow })
+      { clockRunning: false, screens: [], ringWindow: noWindow, playerPath: Quickshell.env("STUB_BIN") + ":/usr/bin" })
   }
   Connections {
     target: svc.item
@@ -406,7 +406,7 @@ if [[ -n "${1:-}" ]]; then
   echo "output dir: $out_dir"
 fi
 status=0
-export OMANOTES_WORKTREE="$worktree" NOW_MS="$now_ms" PATH="$cfg_dir/bin:$PATH" \
+export OMANOTES_WORKTREE="$worktree" NOW_MS="$now_ms" PATH="$cfg_dir/bin:$PATH" STUB_BIN="$cfg_dir/bin" \
   MANIFEST_VERSION="$(node -p 'require(process.argv[1]).version' "$worktree/manifest.json")"
 SCENES=browse,draft,empty,toast,history,menu,trash,drag,alarms,alarmdraft,alarmconfirm,settings,settingsalarms,settingsupdates,settingshistory,settingsdata OUT_DIR="$out_dir" run_qs || status=1
 # A one-shot due one minute after NOW_MS rings in its own run, so the other

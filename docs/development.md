@@ -29,6 +29,7 @@ Omarchy shell plugin (Quickshell/QML) with a bar widget and a service: notes and
 - Every spawn of the binary goes through `data/Lane.qml`, and only `data/Store.qml` runs Lanes.
 - Only `Service.qml` writes the `alarms` table, through its own `Data.AlarmsDb` (ADR-0015), and the binary refuses alarm writes that are not the service's. Alarm time inside the service comes from `tick(nowMs)`, never `Date.now()`; only the player latch reads the wall clock.
 - Every `Text` sets `textFormat`, `Text.PlainText` unless it shows markup on purpose, so a title or a label is never read as rich text (`test/text-format.test.mjs`). Text that goes into a notification body, which the shell draws as StyledText, escapes `&`, `<` and `>`.
+- The sound runs as `Service.bashPath` with `clearEnvironment` and `Service.playerEnvironment`: a fixed `PATH` and only the variables a player needs. A custom sound file is used only as an absolute path (`data/Sound.js`).
 - The plugin does not update itself: nothing in it fetches, pulls or restarts the shell. The Updates page shows `omarchy plugin update othavi0.omanotes` and `omarchy restart shell` (ADR-0021).
 - The database file and IPC target keep the `scratchpad` name (ADR-0003). `NOTICE` is not removed (ADR-0010).
 

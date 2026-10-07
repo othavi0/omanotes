@@ -25,6 +25,11 @@ Item {
     property bool clockRunning: true
     property var screens: Quickshell.screens
     property Component ringWindow: null
+    // The bash and the PATH the sound runs with: fixed system paths, so a
+    // player found first in the user's PATH never plays. A test points them
+    // at its stub players.
+    property string bashPath: "/usr/bin/bash"
+    property string playerPath: "/usr/bin"
 
     // The ring reads the settings row and never writes it (ADR-0016). A
     // custom file that is gone plays the default inside the player script,
@@ -133,7 +138,7 @@ Item {
         }
         root.previewKey = key
         root._queuedPreview = { key: key, caller: caller || null,
-            command: ["bash", "-c", root.soundScript, "omanotes-preview", String(file), String(volume)] }
+            command: [root.bashPath, "-c", root.soundScript, "omanotes-preview", String(file), String(volume)] }
         if (preview.running) preview.running = false
         else root._startQueuedPreview()
         return ""
@@ -258,6 +263,18 @@ Item {
         + 'p=(setpriv --pdeathsig TERM -- "${p[@]}"); '
         + 'while :; do "${p[@]}" || exit; '
         + 'read -rt ' + (repeatGapMs / 1000) + '; (( $? > 128 )) || exit 0; done'
+    // The players run in an environment of their own, not the shell's, which
+    // can carry LD_PRELOAD and the like: PATH, and what pw-play, paplay, mpv
+    // and ffplay need to reach the sound server.
+    readonly property var playerEnvironment: {
+        var env = { PATH: root.playerPath }
+        var keys = ["HOME", "XDG_RUNTIME_DIR", "PIPEWIRE_RUNTIME_DIR", "PULSE_SERVER", "DBUS_SESSION_BUS_ADDRESS"]
+        for (var i = 0; i < keys.length; ++i) {
+            var value = Quickshell.env(keys[i])
+            if (value !== undefined && value !== null && String(value) !== "") env[keys[i]] = String(value)
+        }
+        return env
+    }
     readonly property int quickFailureMs: 1500
     readonly property int maxQuickFailures: 3
     property double soundStartedAt: 0
@@ -265,7 +282,7 @@ Item {
     property bool _soundRestarting: false
 
     function _ringCommand() {
-        return ["bash", "-c", root.soundScript, "omanotes-ring", Sound.soundPath(root.settings),
+        return [root.bashPath, "-c", root.soundScript, "omanotes-ring", Sound.soundPath(root.settings),
             String(root.settings.volume), root.fallbackSoundFile, "repeat"]
     }
 
@@ -278,6 +295,8 @@ Item {
 
     Process {
         id: sound
+        clearEnvironment: true
+        environment: root.playerEnvironment
         // Held open for the ring's gap, and closed when the shell is gone.
         stdinEnabled: true
         onExited: function(exitCode) {
@@ -301,6 +320,8 @@ Item {
 
     Process {
         id: preview
+        clearEnvironment: true
+        environment: root.playerEnvironment
         property string key: ""
         property var caller: null
         onExited: function(exitCode) {

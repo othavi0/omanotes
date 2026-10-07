@@ -31,6 +31,7 @@ cat > "$cfg_dir/bin/pw-play" <<SH
 #!/usr/bin/env bash
 if [[ -e "$cfg_dir/sound-fails" ]]; then echo "fail \$\$" >> "$cfg_dir/sound.log"; exit 1; fi
 began=\$EPOCHREALTIME
+echo "canary=\${OMANOTES_CANARY:-none} path=\$PATH" >> "$cfg_dir/env.log"
 echo "start \$\$ \$*" >> "$cfg_dir/sound.log"
 trap 'echo "end \$\$" >> "$cfg_dir/sound.log"; exit 0' TERM
 if [[ -e "$cfg_dir/sound-short" ]]; then
@@ -119,7 +120,8 @@ ShellRoot {
   Loader {
     id: svc
     Component.onCompleted: setSource("file://" + Quickshell.env("OMANOTES_WORKTREE") + "/Service.qml",
-      { clockRunning: false, screens: [1, 2, 3], ringWindow: stubRing })
+      { clockRunning: false, screens: [1, 2, 3], ringWindow: stubRing,
+        bashPath: Quickshell.env("STUB_BIN") + "/bash", playerPath: Quickshell.env("STUB_BIN") + ":/usr/bin" })
   }
 
   function find(obj, typeName, out) {
@@ -267,7 +269,9 @@ ShellRoot {
 QML
 
 touch "$cfg_dir/hold-reads"
-PATH="$cfg_dir/bin:$PATH" OMANOTES_WORKTREE="$stub_tree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
+# OMANOTES_CANARY stands for what the shell's environment carries that a
+# player must not get, such as LD_PRELOAD.
+PATH="$cfg_dir/bin:$PATH" STUB_BIN="$cfg_dir/bin" OMANOTES_CANARY=leak OMANOTES_WORKTREE="$stub_tree" "${qs_cmd[@]}" > "$cfg_dir/qs.log" 2>&1 &
 qs_pid=$!
 trap 'kill "$qs_pid" 2> /dev/null || true; wait "$qs_pid" 2> /dev/null || true; rm -rf "$cfg_dir" "$data_home"' EXIT
 
@@ -377,6 +381,7 @@ replies "at 07:30 the daily alarm rings on every screen and the two one-shots fr
   "$(ipc tick "$t0730")" '{"loaded":true,"alarms":4,'"$ringing_wake"
 sound_is "one player runs for three screens" 1 0
 contains "the player plays the custom file of the settings row at full volume" "$(grep '^start' "$cfg_dir/sound.log" | tail -1)" "--volume 1.00 -- $sound_file"
+replies "the player runs with the fixed PATH and none of the shell's other variables" "$(tail -1 "$cfg_dir/env.log")" "canary=none path=$cfg_dir/bin:/usr/bin"
 replies "every chip reads the bell and the title, painted active" "$(ipc chips)" "{bell} Wake up*|{bell} Wake up*|{bell} Wake up*"
 replies "the chip's tooltip names the ring, for a vertical bar that shows the bell alone" "$(ipc tooltip 2)" "Omanotes: Wake up is ringing · click to stop"
 replies "one notification lists both missed alarms" "$(wc -l < "$cfg_dir/notify.log")" "1"
