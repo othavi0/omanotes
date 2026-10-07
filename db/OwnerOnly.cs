@@ -35,10 +35,14 @@ internal static partial class OwnerOnly
     /// </summary>
     public static void Restrict(string dbPath)
     {
-        RestrictFile(dbPath);
+        // A database that is a link is one the user made, to a synced folder say. SQLite opens
+        // the file it points to and keeps the -wal, -shm and -journal beside that file, so the
+        // notes are there, and those are the files to restrict.
+        string real = RealPath(dbPath);
+        RestrictFile(real);
         foreach (string suffix in Sidecars)
         {
-            RestrictFile(dbPath + suffix);
+            RestrictUnlessLink(real + suffix);
         }
 
         string dir = Path.GetDirectoryName(dbPath) ?? "/";
@@ -49,7 +53,7 @@ internal static partial class OwnerOnly
             {
                 foreach (string file in Directory.EnumerateFiles(dir, pattern))
                 {
-                    RestrictFile(file);
+                    RestrictUnlessLink(file);
                 }
             }
         }
@@ -57,6 +61,52 @@ internal static partial class OwnerOnly
         {
             Unexpected(dir, e);
         }
+    }
+
+    private static string RealPath(string path)
+    {
+        try
+        {
+            return File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path;
+        }
+        catch (FileNotFoundException)
+        {
+            // ENOENT: no database yet. SQLite creates it under the umask.
+            return path;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Unexpected(path, e);
+            return path;
+        }
+    }
+
+    /// <summary>
+    /// The binary writes no link in place of a backup or a sidecar, so a link
+    /// with one of their names is someone else's, and chmod would change the
+    /// file it points to, which may be anywhere.
+    /// </summary>
+    private static void RestrictUnlessLink(string path)
+    {
+        try
+        {
+            if (File.ResolveLinkTarget(path, returnFinalTarget: false) is not null)
+            {
+                return;
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            // ENOENT: not there, or gone since the folder was listed.
+            return;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Unexpected(path, e);
+            return;
+        }
+
+        RestrictFile(path);
     }
 
     private static void RestrictFile(string path)
@@ -75,7 +125,8 @@ internal static partial class OwnerOnly
         }
         catch (UnauthorizedAccessException)
         {
-            // EPERM: chmod is the owner's, so a file of another user that this one may write keeps its mode.
+            // EPERM, a file of another user (chmod is the owner's), or EACCES, a folder on the path
+            // this user may not search: the file keeps its mode, and SQLite says what it can open.
         }
         catch (IOException e)
         {

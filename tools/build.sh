@@ -39,8 +39,9 @@ for arch in x86_64 aarch64; do
     aarch64) rid=linux-arm64 machine=AArch64 extra=("-p:SysRoot=$SYSROOT_AARCH64") ;;
   esac
   rm -rf -- "$work/$arch" "$work/out-$arch"
-  # From db/, so global.json pins the SDK.
-  (cd "$root/db" && quiet dotnet publish -c Release -r "$rid" -nologo \
+  # From db/, so global.json pins the SDK. -noAutoResponse: a Directory.Build.rsp in any parent
+  # folder would add switches that tools/source-hash.sh does not see.
+  (cd "$root/db" && quiet dotnet publish -c Release -r "$rid" -nologo -noAutoResponse \
     -p:InvariantGlobalization=true -p:SourceHash="$source_hash" \
     -p:LinkerFlavor=lld -p:ObjCopyName=llvm-objcopy \
     -p:BuildRoot="$work/$arch/" -o "$work/out-$arch" "${extra[@]}")

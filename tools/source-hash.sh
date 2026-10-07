@@ -12,7 +12,7 @@ checkout=false
 if $checkout; then
   # The csproj compiles every .cs under db/, tracked or not, so an untracked
   # build input would change the bytes without changing this hash.
-  stray="$(git ls-files -o --exclude-standard -- db | grep -E '\.(cs|csproj|props|targets|json|txt|tsv|editorconfig)$' || true)"
+  stray="$(git ls-files -o --exclude-standard -- db | grep -iE '(\.(cs|csproj|props|targets|json|txt|tsv|editorconfig|globalconfig|rsp)|/nuget\.config)$' || true)"
   if [[ -n "$stray" ]]; then
     printf 'source-hash: untracked build input in db/, add or remove it:\n%s\n' "$stray" >&2
     exit 1

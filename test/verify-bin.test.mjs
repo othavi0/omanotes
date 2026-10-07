@@ -44,3 +44,36 @@ test("--rebuild refuses bytes that differ from a rebuild without running them", 
   assert.equal(r.status, 1, r.stderr)
   assert.match(r.stderr, /x86_64: a rebuild from source gives other bytes than bin\//)
 })
+
+// tools/source-hash.sh hashes db/ and not the folders above it, so MSBuild and NuGet must read
+// nothing there: a Directory.Build.targets at the root could copy bin/ over the rebuild's output.
+// Evaluation only, so no linker is needed; tools/build.sh passes -noAutoResponse for the .rsp.
+test("the build reads no MSBuild or NuGet file above db/", (t) => {
+  if (spawnSync("dotnet", ["--version"], { cwd: join(ROOT, "db") }).status !== 0) {
+    t.skip("no dotnet SDK of db/global.json")
+    return
+  }
+  const dir = mkdtempSync(join(tmpdir(), "omanotes-imports-"))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const tree = join(dir, "tree")
+  cpSync(join(ROOT, "db"), join(tree, "db"), { recursive: true })
+  const planted = (name) => `<Project><PropertyGroup><Planted>${name}</Planted></PropertyGroup></Project>\n`
+  writeFileSync(join(tree, "Directory.Build.targets"), planted("targets"))
+  writeFileSync(join(tree, "Directory.Packages.props"), planted("packages"))
+  writeFileSync(join(tree, ".globalconfig"), "is_global = true\n")
+  const packages = join(dir, "planted-packages")
+  writeFileSync(join(tree, "NuGet.Config"), `<configuration><config><add key="globalPackagesFolder" value="${packages}" /></config></configuration>\n`)
+
+  const r = spawnSync(
+    "dotnet",
+    ["msbuild", "Omanotes.Db.csproj", "-nologo", "-noAutoResponse", "-t:_GetRestoreSettings", `-p:BuildRoot=${dir}/build/`,
+      "-getProperty:Planted", "-getProperty:_OutputPackagesPath", "-getProperty:_OutputConfigFilePaths", "-getItem:EditorConfigFiles"],
+    { cwd: join(tree, "db"), encoding: "utf8", env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: "1", DOTNET_NOLOGO: "1" } }
+  )
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  const { Properties: p, Items: i } = JSON.parse(r.stdout)
+  assert.equal(p.Planted, "", "a Directory.Build.targets or Directory.Packages.props above db/ was imported")
+  assert.deepEqual(i.EditorConfigFiles.map((f) => f.FullPath).filter((f) => f.startsWith(dir)), [join(tree, "db/.editorconfig")])
+  assert.equal(p._OutputConfigFilePaths, join(tree, "db/NuGet.Config"))
+  assert.notEqual(p._OutputPackagesPath.replace(/\/$/, ""), packages)
+})
