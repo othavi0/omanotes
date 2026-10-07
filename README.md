@@ -169,13 +169,13 @@ To build both binaries again from `db/` in a temporary folder and compare them b
 npm run verify:bin:rebuild
 ```
 
-The rebuild needs the .NET SDK named in `db/global.json` and the aarch64 sysroot that `tools/sysroot.sh` unpacks. It exits with code 2 when the installed toolchain is not the one `bin/BUILD.json` records.
+The rebuild runs in docker, in the `archlinux` image and the toolchain that `tools/toolchain.env` pins, and it exits with code 2 when that toolchain is not the one `bin/BUILD.json` records. The `verify-bin` workflow runs the same rebuild on every pull request and every push to `main`, so each commit of `main` has a check run that says whether its `bin/` is what its `db/` makes.
 
 ## Development
 
 - `npm run validate` runs `omarchy plugin validate .`.
 - `npm test` runs `node --test test/`, then `test/render.sh`, `test/behavior.sh`, `test/panel.sh`, `test/alarm.sh`, `test/startup.sh` and `test/teardown.sh`. The unit tests need `sqlite3` and run the committed binary for this machine. One of them runs `tools/verify-bin.sh --check`, which fails when `bin/` does not match `db/`. The other six start Quickshell offscreen and need `qs`, `sqlite3` and the Omarchy shell installed.
-- `npm run build:db` runs `tools/build.sh`, the only writer of `bin/`. It builds both architectures and records their hashes in `bin/BUILD.json`. It needs the .NET SDK named in `db/global.json`, and for aarch64 a sysroot that `tools/sysroot.sh` unpacks from the packages `tools/sysroot.lock` pins. Commit a change to `db/` together with the rebuilt `bin/`.
+- `npm run build:db` runs `tools/build.sh`, the only writer of `bin/`, inside the docker toolchain of `tools/toolchain.env`. It builds both architectures and records their hashes and the toolchain in `bin/BUILD.json`. Commit a change to `db/` together with the rebuilt `bin/`.
 
 Design decisions are in [`docs/adr/`](docs/adr/), the project vocabulary is in [`CONTEXT.md`](CONTEXT.md), and the layout and rules of the code are in [`docs/development.md`](docs/development.md).
 

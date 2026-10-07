@@ -16,15 +16,15 @@ Omarchy shell plugin (Quickshell/QML) with a bar widget and a service: notes and
 - `npm test` runs everything, `tools/verify-bin.sh --check` included. It needs `qs`, `sqlite3` and the Omarchy shell under `$OMARCHY_PATH` (default `/usr/share/omarchy`). The aarch64 test skips without `qemu-aarch64-static` and the sysroot; `OMANOTES_REQUIRE_ARM=1` makes that a failure, for a release. The two tests of a request killed part way (`test/panel.sh`, `test/bin-concurrency.test.mjs`) skip without `cc`; `OMANOTES_REQUIRE_CC=1` makes that a failure too.
 - `node --test test/` runs only the unit tests.
 - `npm run validate` runs `omarchy plugin validate .`.
-- `npm run build:db` (`tools/build.sh`) rebuilds `bin/` for x86_64 and aarch64 and writes `bin/BUILD.json`. It needs the .NET SDK of `db/global.json`, and the aarch64 sysroot that `tools/sysroot.sh` unpacks.
-- `npm run verify:bin:rebuild` builds again into a temporary folder and compares the bytes of both binaries. It exits 2 when the toolchain is not the one `bin/BUILD.json` records.
+- `npm run build:db` (`tools/build-in-container.sh`) rebuilds `bin/` for x86_64 and aarch64 and writes `bin/BUILD.json`. It runs `tools/build.sh`, analysis and canaries included, in the toolchain of `tools/toolchain.env`, the one CI rebuilds with, and it needs docker. `tools/build.sh` run on the host gives bytes CI does not reproduce.
+- `npm run verify:bin:rebuild` (`tools/build-in-container.sh --verify`) builds again into a temporary folder in the same container and compares the bytes of both binaries. `.github/workflows/verify-bin.yml` does the same on every pull request and every push to `main`.
 
 ## Rules
 
 - Use the vocabulary in `CONTEXT.md`, in code and in user-facing text.
 - Read the ADRs in `docs/adr/` that touch the area before changing it. Say so when a change contradicts one.
 - All SQL lives in `db/` and runs in the binary; nothing in `data/` or `ui/` builds SQL (ADR-0018). A schema change appends a step to `db/Schema.cs` (ADR-0011). `Db.js`, `Alarm.js`, `Sound.js`, `Item.js`, `Alarms.js` and `Settings.js` stay free of QML imports so Node can load them (ADR-0009).
-- Only `tools/build.sh` writes `bin/`. A change to `db/`, `tools/build.sh` or `tools/sysroot.lock` goes in the same commit as the rebuilt binaries and `bin/BUILD.json`, or `npm test` fails in `tools/verify-bin.sh --check`.
+- Only `tools/build.sh` writes `bin/`, through `tools/build-in-container.sh` (ADR-0018). A change to `db/`, `tools/build.sh` or `tools/sysroot.lock` goes in the same commit as the rebuilt binaries and `bin/BUILD.json`, or `npm test` fails in `tools/verify-bin.sh --check`.
 - A release that raises `Protocol.Current` in `db/Wire.cs` keeps `Min = Current - 1` and raises `PROTOCOL` in `data/Db.js` to match.
 - Every spawn of the binary goes through `data/Lane.qml`, and only `data/Store.qml` runs Lanes.
 - Only `Service.qml` writes the `alarms` table, through its own `Data.AlarmsDb` (ADR-0015), and the binary refuses alarm writes that are not the service's. Alarm time inside the service comes from `tick(nowMs)`, never `Date.now()`; only the player latch reads the wall clock.

@@ -27,6 +27,17 @@
     <InformationalVersion>1</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
 
+    <!-- tools/source-hash.sh hashes db/ only, so nothing above db/ may reach
+         the build: MSBuild and NuGet would otherwise read a
+         Directory.Build.targets, a Directory.Packages.props, a .globalconfig or
+         a NuGet.Config from any parent folder. This file stops the search for
+         Directory.Build.props, .editorconfig has root = true, and
+         tools/build.sh passes -noAutoResponse for Directory.Build.rsp. -->
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+    <ImportDirectoryPackagesProps>false</ImportDirectoryPackagesProps>
+    <DiscoverGlobalAnalyzerConfigFiles>false</DiscoverGlobalAnalyzerConfigFiles>
+    <RestoreConfigFile>$(MSBuildThisFileDirectory)NuGet.Config</RestoreConfigFile>
+
     <!-- The shell reloads the plugin on any write inside its folder except
          under .git, so build products live outside it. -->
     <BuildRoot Condition="'$(BuildRoot)' == ''">$(HOME)/.cache/omanotes-build/</BuildRoot>
@@ -41,5 +52,9 @@
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23" PrivateAssets="all" />
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" />
+    <!-- tools/build.sh publishes for linux-x64 and linux-arm64 only, so the Unix file APIs are no CA1416. -->
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+      <_Parameter1>linux</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 </Project>

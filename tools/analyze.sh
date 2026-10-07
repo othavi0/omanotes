@@ -7,4 +7,4 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 work="${BUILD_ROOT:-$HOME/.cache/omanotes-build}"
 cd "$root/db"
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
-  dotnet build -c Release -p:InvariantGlobalization=false -p:BuildRoot="$work/analyze/" "$@"
+  dotnet build -c Release -noAutoResponse -p:InvariantGlobalization=false -p:BuildRoot="$work/analyze/" "$@"

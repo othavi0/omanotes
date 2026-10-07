@@ -4,23 +4,33 @@
     2
   ],
   "schema": 5,
-  "source": "be80a88248ec539cf7f5fe2c61abe088cec30cc3a14bae145a9c7eba79d9cc57",
+  "source": "609275cb6ff65421cf625a604cc8e64defee5b68c8b46fb753c61bf9e4103881",
   "toolchain": {
     "sdk": "10.0.401",
     "ilcompiler": "10.0.12",
     "clang": "clang version 22.1.8",
     "lld": "LLD 22.1.8 (compatible with GNU linkers)",
-    "sysroot": "580d7490193257bb05153eaf0829eeee58f8092539eb341bde46db150d40743a"
+    "sysroot": "580d7490193257bb05153eaf0829eeee58f8092539eb341bde46db150d40743a",
+    "ala_date": "2026/08/24",
+    "packages": {
+      "clang": "22.1.8-1",
+      "lld": "22.1.8-1",
+      "llvm": "22.1.8-2",
+      "gcc": "16.2.1+r23+gd564253eb6c8-1",
+      "glibc": "2.44+r24+g16be1518495f-1",
+      "binutils": "2.47-4",
+      "zlib": "1:1.3.2-3"
+    }
   },
   "targets": {
     "x86_64": {
-      "sha256": "f74e6fb7c77f20ef645033fe0981426b5acbab24010bb575576178504bf80f0b",
-      "bytes": 1971128,
+      "sha256": "ab40247035d76483d1d194393b37118c56e73d0d455a9d0ac25f74ae933ec9d4",
+      "bytes": 2005800,
       "glibc": "2.34"
     },
     "aarch64": {
-      "sha256": "86f31dc3a2a22340b47522293d6112a69c5cf235e8d3539c79e63ff7df4c06e7",
-      "bytes": 2031696,
+      "sha256": "eb08c7890a6064d995f395caa6cb0170a2e03e261d92be6eb32f1a074d1b587b",
+      "bytes": 2067504,
       "glibc": "2.34"
     }
   }
