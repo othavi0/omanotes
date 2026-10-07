@@ -319,6 +319,7 @@ internal static class Writes
         try
         {
             File.Delete(temporary);
+            OwnerOnly.Create(temporary);
             _ = db.Run($"VACUUM INTO ?1", Value.Of(temporary));
             File.Move(temporary, target, overwrite: true);
         }
