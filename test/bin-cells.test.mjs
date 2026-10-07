@@ -44,6 +44,11 @@ function cliRows(text) {
 
 const hasInf = (text) => /:-?Inf[,}]/.test(text)
 
+// The old parse read checkUpdates too; the plugin reads only the keys of Db.SETTINGS now.
+function settingsNowRead(value) {
+  return { ...value, settings: Object.fromEntries(Object.keys(Db.SETTINGS).map((key) => [key, value.settings[key]])) }
+}
+
 // The frozen text leaves db_bytes out: the size of the file hangs on SQLite's page layout.
 function withoutBytes(row) {
   const { db_bytes: bytes, ...rest } = row
@@ -98,7 +103,7 @@ for (const [name, cell] of Object.entries(HOSTILE)) {
       if (hasInf(frozen.text[key])) {
         assert.equal(fromCli[key].threw, "unreadable sqlite3 output", `${key}: the old read failed on Inf`)
       } else {
-        assert.deepEqual(fromBin[key], fromCli[key].value, key)
+        assert.deepEqual(fromBin[key], key === "settings" ? settingsNowRead(fromCli[key].value) : fromCli[key].value, key)
       }
     }
   })

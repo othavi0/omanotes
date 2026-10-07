@@ -136,12 +136,10 @@ function mergeAlarms(rows, pending) {
 }
 
 // The settings record, { soundOn, sound, soundFile, volume, snoozeMinutes,
-// ringMinutes, historyDays, checkUpdates }, one spec per key. It drives the
-// read, the write and the fallbacks, and the binary only checks each column
-// name against the schema (ADR-0016). Nothing reads checkUpdates since the
-// plugin stopped updating itself (ADR-0021); the column stays in the schema,
-// and the cells the binary is held to in test/fixtures/parity/cells.json
-// still carry it. The sound catalog lives in
+// ringMinutes, historyDays }, one spec per key. It drives the read, the write
+// and the fallbacks, and the binary only checks each column name against the
+// schema (ADR-0016). The schema still has check_updates, which nothing reads
+// since the plugin stopped updating itself (ADR-0021). The sound catalog lives in
 // data/Sound.js and is not checked here, so a new sound needs no migration.
 // The sound fallback repeats Sound.DEFAULT_SOUND, which this file cannot
 // import under Node; test/sound.test.mjs holds them equal.
@@ -152,8 +150,7 @@ var SETTINGS = {
   volume: { column: "volume", kind: "int", min: 0, max: 100, fallback: 100 },
   snoozeMinutes: { column: "snooze_minutes", kind: "int", min: 1, max: 180, fallback: 9 },
   ringMinutes: { column: "ring_minutes", kind: "int", min: 1, max: 60, fallback: 5 },
-  historyDays: { column: "history_days", kind: "pick", options: [0, 90, 30], fallback: 0 },
-  checkUpdates: { column: "check_updates", kind: "bool", fallback: true }
+  historyDays: { column: "history_days", kind: "pick", options: [0, 90, 30], fallback: 0 }
 }
 
 function settingValue(key, value) {
