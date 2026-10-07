@@ -1357,6 +1357,7 @@ import QtTest
 import Quickshell
 import "data" as Data
 import "ui/Icons.js" as Icons
+import "ui/Settings.js" as Settings
 
 ShellRoot {
   id: sr
@@ -1411,7 +1412,12 @@ ShellRoot {
     function() { sr.click(sr.gear()) },
     function() { sr.state("GEAR") },
     function() { sr.click(sr.named(settingsTab, "sound:bell")) },
-    function() { sr.state("BELL") },
+    function() { sr.state("BELL"); db.setSettings({ soundFile: "relative.oga" }) },
+    function() {
+      var row = sr.named(settingsTab, "sound:custom")
+      console.log("CUSTOM-RELATIVE name=[" + row.name + "] play=" + !!sr.buttonWithIcon(row, Icons.play))
+      db.setSettings({ soundFile: "" })
+    },
     function() { sr.click(sr.buttonWithIcon(sr.named(settingsTab, "sound:service-login"), Icons.play)) },
     function() { sr.state("PLAY-WITHOUT-SERVICE") },
     function() { sr.clickAt(sr.findWhere(settingsTab, function(it) { return String(it).indexOf("PanelSlider") === 0 }), 0.4) },
@@ -1436,12 +1442,22 @@ ShellRoot {
       var caption = sr.findWhere(settingsTab, function(it) { return it.visible && typeof it.text === "string" && it.text.indexOf("scratchpad.db · ") >= 0 })
       console.log("BACKUP toast=[" + toast.text + "] database=[" + (caption ? caption.text : "none") + "]")
     },
-    function() { sr.click(sr.named(settingsTab, "section:updates")) },
+    function() {
+      sr.click(sr.named(settingsTab, "section:updates"))
+      sr.named(settingsTab, "updatesPage").wlCopyPath = Quickshell.env("OMANOTES_WL_COPY")
+    },
     function() { toast.text = ""; sr.click(sr.named(settingsTab, "copyUpdate")) },
     function() {
-      console.log("UPDATES version=[" + settingsTab.version + "] header=[" + sr.findByText(header, settingsTab.version) + "] toast=[" + toast.text
-        + "] clipboard=[" + Quickshell.clipboardText + "]")
+      console.log("UPDATES header=[" + sr.findByText(header, Settings.VERSION) + "] toast=[" + toast.text + "] urgent=" + toast.urgent)
+      Quickshell.execDetached(["/usr/bin/mv", Quickshell.env("OMANOTES_WL_COPY") + "-fails.ready", Quickshell.env("OMANOTES_WL_COPY") + "-fails"])
     },
+    function() { toast.text = ""; sr.click(sr.named(settingsTab, "copyUpdate")) },
+    function() {
+      console.log("COPY-FAILED toast=[" + toast.text + "] urgent=" + toast.urgent)
+      sr.named(settingsTab, "updatesPage").wlCopyPath = Quickshell.env("OMANOTES_WL_COPY") + "-gone"
+    },
+    function() { toast.text = ""; sr.click(sr.named(settingsTab, "copyUpdate")) },
+    function() { console.log("COPY-MISSING toast=[" + toast.text + "] urgent=" + toast.urgent) },
     function() { sr.click(sr.named(settingsTab, "section:alarms")); Quickshell.execDetached(["chmod", "444", db.dbPath]) },
     function() { toast.text = ""; sr.click(sr.buttonWithIcon(sr.named(settingsTab, "ring"), Icons.plus)); sr.state("WRITE-SENT") },
     function() { sr.state("WRITE-FAILED") },
@@ -1489,10 +1505,13 @@ ShellRoot {
 }
 QML
 log_file="$cfg_dir/qs-settings.log"
-run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
+stub_wl_copy
+printf 'Failed to connect to a Wayland server\n' > "$cfg_dir/wl-copy-fails.ready"
+OMANOTES_WL_COPY="$cfg_dir/wl-copy" OMANOTES_CANARY=leak WAYLAND_DISPLAY=wayland-omanotes-test run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
 logged "the gear opens Settings on the Alarm sound page, which reads the defaults" \
   "GEAR tab=3 section=sound sound=alarm-clock-elapsed on=true volume=100 snooze=9 ring=5 meta=\[Alarm clock\|9 / 5 min\]"
 logged "a click on a sound row picks it, and its row in the list names it" "BELL .* sound=bell .* meta=\[Bell\|9 / 5 min\]"
+logged "a custom file that is not an absolute path reads as no file, with no play button" "CUSTOM-RELATIVE name=\[Custom file…\] play=false$"
 logged "without the service a play button plays nothing and says nothing" "PLAY-WITHOUT-SERVICE .* toast=\[\]$"
 logged "a click on the volume track sets the volume there" "VOLUME .* volume=40 "
 logged "Off switches the sound off, and the list says off" "OFF .* on=false .* meta=\[off\|9 / 5 min\]"
@@ -1510,10 +1529,19 @@ logged "the second click keeps 30 days and removes the older entries at once" "K
 logged "a longer Keep that removes nothing saves on the first click" "KEEP-90 days=90 armed=false history=$recent_history toast=\[\]$"
 logged "Back up now copies the database and names the copy" "BACKUP toast=\[Saved scratchpad-$(date +%F).db\] "
 logged "the Data page shows where the database is and its size" "BACKUP .* database=\[$db · [0-9]+ KB\]$"
-logged "the Updates page and the header name the version of manifest.json" \
-  "UPDATES version=\[$(node -p 'require(process.argv[1]).version' "$worktree/manifest.json")\] header=\[QQuickText"
-logged "Copy puts the update and the restart on the clipboard as one line" \
-  "UPDATES .* toast=\[Copied. Paste it in a terminal.\] clipboard=\[omarchy plugin update othavi0.omanotes && omarchy restart shell\]$"
+logged "the header names the version of manifest.json" "UPDATES header=\[QQuickText"
+logged "Copy says Copied once wl-copy is done" "UPDATES .* toast=\[Copied. Paste it in a terminal.\] urgent=false$"
+expect_text() {
+  if [[ "$2" == "$3" ]]; then pass "$1"; else fail "$1: want '$3', got '$2'"; fi
+}
+expect_text "wl-copy gets the update alone on stdin, and no restart" "$(sed -n 2p "$cfg_dir/clipboard.log")" \
+  "stdin=[omarchy plugin update othavi0.omanotes]"
+expect_text "wl-copy gets no arguments, the Wayland socket and nothing else of the shell's environment" \
+  "$(sed -n 1p "$cfg_dir/clipboard.log")" "args=0 wayland=wayland-omanotes-test runtime=$XDG_RUNTIME_DIR env=WAYLAND_DISPLAY,XDG_RUNTIME_DIR"
+expect_text "wl-copy ran once for the one copy that worked" "$(wc -l < "$cfg_dir/clipboard.log")" "2"
+logged "a wl-copy that fails shows its error, not Copied" \
+  "COPY-FAILED toast=\[Not copied: Failed to connect to a Wayland server\] urgent=true$"
+logged "a wl-copy that is not there says so" "COPY-MISSING toast=\[Not copied: $cfg_dir/wl-copy-gone did not start\] urgent=true$"
 expect "the copy holds the items of the database" "SELECT COUNT(*) FROM items" \
   "$(sqlite3 "$data_home/omarchy/scratchpad-$(date +%F).db" "SELECT COUNT(*) FROM items" 2>&1)"
 logged "an entry past the Keep can age in while the panel is closed" "AGED-WHILE-CLOSED history=$(( recent_history + 1 ))$"

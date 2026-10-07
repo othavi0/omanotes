@@ -87,7 +87,6 @@ Panel {
                 Layout.fillWidth: true
                 db: root.db
                 service: root.service
-                version: settingsTab.version
                 activeTab: root.activeTab
                 foreground: root.barForeground
                 onTabPicked: function(index) { root.activeTab = index }

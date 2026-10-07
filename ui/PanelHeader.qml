@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
 import "Icons.js" as Icons
+import "Settings.js" as Settings
 import "Tabs.js" as Tabs
 
 RowLayout {
@@ -11,8 +12,6 @@ RowLayout {
 
     property QtObject db: null
     property QtObject service: null
-    // The installed version, shown while Settings is open.
-    property string version: ""
     property int activeTab: Tabs.items
     property color foreground: Color.foreground
 
@@ -43,7 +42,7 @@ RowLayout {
 
     Text {
         textFormat: Text.PlainText
-        text: root.activeTab === Tabs.settings ? root.version
+        text: root.activeTab === Tabs.settings ? Settings.VERSION
             : root.activeTab === Tabs.alarms && root.service ? root.service.nextSummary
             : (root.db ? root.db.unreadNotes : 0) + " unread · " + (root.db ? root.db.pendingTodos : 0) + " pending"
         color: Util.alpha(root.foreground, 0.62)

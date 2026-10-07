@@ -31,4 +31,3 @@ var folder = g(0xF0DCF)      // md-folder_open_outline
 var database = g(0xF1632)    // md-database_outline
 var save = g(0xF0818)        // md-content_save_outline
 var update = g(0xF06B0)      // md-update
-var openInNew = g(0xF03CC)   // md-open_in_new

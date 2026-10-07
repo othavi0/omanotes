@@ -3,7 +3,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "../data/Sound.js" as Sound
@@ -33,8 +32,7 @@ FocusScope {
     readonly property int sectionIndex: Math.max(0, root.sectionIds.indexOf(root.section))
     readonly property var info: ({
         sound: Sound.soundName(root.settings),
-        bytes: root.db ? root.db.dbBytes : 0,
-        version: root.version
+        bytes: root.db ? root.db.dbBytes : 0
     })
     readonly property var sectionIds: Settings.SECTIONS.map(function(s) { return s.id })
     readonly property var sectionIcons: ({ sound: Icons.volume, alarms: Icons.alarm, updates: Icons.update, history: Icons.history, data: Icons.database })
@@ -69,15 +67,6 @@ FocusScope {
     }
 
     ArmedConfirm { id: confirm }
-
-    // The installed version, for the Updates page and the header.
-    property string version: ""
-    FileView {
-        id: manifest
-        path: String(Qt.resolvedUrl("../manifest.json")).replace(/^file:\/\//, "")
-        printErrors: false
-        onLoaded: root.version = Settings.manifestVersion(manifest.text())
-    }
 
     function backup() {
         if (root.db) root.db.backup()
@@ -259,7 +248,7 @@ FocusScope {
                 }
 
                 UpdateSettings {
-                    version: root.version
+                    objectName: "updatesPage"
                     toast: root.toast
                     foreground: root.foreground
                 }

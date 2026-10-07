@@ -37,7 +37,8 @@ function customFile(settings) {
 // key without a usable file plays the default, so the ring is never silent
 // for a name.
 function pathFor(key, settings) {
-  if (key === CUSTOM && customFile(settings) !== "") return customFile(settings)
+  var file = key === CUSTOM ? customFile(settings) : ""
+  if (file !== "") return file
   return SOUND_DIR + (catalogEntry(key) ? key : DEFAULT_SOUND) + ".oga"
 }
 
@@ -53,7 +54,8 @@ function baseName(path) {
 // What `key` plays, by name: "Bell", or the custom file's name. A key the
 // catalog does not know reads as the default it plays.
 function nameOf(key, settings) {
-  if (key === CUSTOM && customFile(settings) !== "") return baseName(customFile(settings))
+  var file = key === CUSTOM ? customFile(settings) : ""
+  if (file !== "") return baseName(file)
   return (catalogEntry(key) || catalogEntry(DEFAULT_SOUND)).name
 }
 

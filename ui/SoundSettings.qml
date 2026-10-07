@@ -26,7 +26,7 @@ ColumnLayout {
 
     readonly property string previewKey: root.service ? root.service.previewKey : ""
     readonly property bool soundOn: !!root.settings.soundOn
-    readonly property bool hasCustomFile: String(root.settings.soundFile || "") !== ""
+    readonly property bool hasCustomFile: Sound.customFile(root.settings) !== ""
     readonly property string noService: "Needs the Omanotes service"
 
     function play(key) {

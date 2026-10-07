@@ -5,7 +5,7 @@ import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const S = loadQmlLib(new URL("../ui/Settings.js", import.meta.url), [
   "SECTIONS", "snoozeCaption", "ringCaption", "sectionMeta", "KEEP_CHOICES", "keepText", "sizeText", "pathText",
-  "PLUGIN_ID", "UPDATE_COMMANDS", "LISTING_URL", "updateCommandLine", "manifestVersion"
+  "VERSION", "PLUGIN_ID", "UPDATE_COMMAND", "UPDATE_COMMANDS", "RESTART_NOTE", "copyFailedText"
 ])
 
 function settings(patch) {
@@ -43,18 +43,21 @@ test("the Data row reads the file size in the unit that fits, and the path from 
 
 const MANIFEST = JSON.parse(readFileSync(new URL("../manifest.json", import.meta.url), "utf8"))
 
-test("the Updates page names the installed version, and its row in the list repeats it", () => {
-  assert.equal(S.manifestVersion(JSON.stringify(MANIFEST)), MANIFEST.version)
-  assert.equal(S.manifestVersion(""), "")
-  assert.equal(S.manifestVersion("{ not json"), "")
-  assert.equal(S.manifestVersion('{"version": 12}'), "")
-  assert.equal(S.sectionMeta("updates", settings(), { version: "1.2.0" }), "1.2.0")
-  assert.equal(S.sectionMeta("updates", settings(), {}), "")
+test("the version the code carries is the version of manifest.json, and the Updates row repeats it", () => {
+  assert.equal(S.VERSION, MANIFEST.version)
+  assert.equal(S.sectionMeta("updates", settings(), {}), MANIFEST.version)
 })
 
-test("the update goes through Omarchy for this plugin's id, and the restart runs only when the update did not fail", () => {
+test("Copy takes only the update, and the restart waits for the line that says the update happened", () => {
   assert.equal(S.PLUGIN_ID, MANIFEST.id)
+  assert.equal(S.UPDATE_COMMAND, "omarchy plugin update othavi0.omanotes")
   assert.deepEqual(S.UPDATE_COMMANDS, ["omarchy plugin update othavi0.omanotes", "omarchy restart shell"])
-  assert.equal(S.updateCommandLine(), "omarchy plugin update othavi0.omanotes && omarchy restart shell")
-  assert.equal(S.LISTING_URL, "https://omarchyplugins.com/plugin.html?id=othavi0.omanotes")
+  assert.doesNotMatch(S.UPDATE_COMMAND, /&&|;|restart/)
+  assert.match(S.RESTART_NOTE, /omarchy restart shell only after the update prints .Updated othavi0\.omanotes\../)
+})
+
+test("a copy that fails says why", () => {
+  assert.equal(S.copyFailedText(1, "Failed to connect to a Wayland server\nmore", "/usr/bin/wl-copy"), "Not copied: Failed to connect to a Wayland server")
+  assert.equal(S.copyFailedText(3, "", "/usr/bin/wl-copy"), "Not copied: /usr/bin/wl-copy exited with 3")
+  assert.equal(S.copyFailedText(null, "", "/usr/bin/wl-copy"), "Not copied: /usr/bin/wl-copy did not start")
 })

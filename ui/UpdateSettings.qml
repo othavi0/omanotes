@@ -2,25 +2,57 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
-import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Icons.js" as Icons
 import "Settings.js" as Settings
+import "Tone.js" as Tone
 
-// The Updates page: the installed version and the commands that update the
-// plugin through Omarchy (ADR-0021). The plugin never fetches or pulls by
-// itself.
+// The Updates page: the version of the code that runs and the commands that
+// update the plugin through Omarchy (ADR-0021). The plugin never fetches or
+// pulls by itself.
 ColumnLayout {
     id: root
 
-    property string version: ""
     property var toast: null
     property color foreground: Color.foreground
+    // A test points it at a stub.
+    property string wlCopyPath: "/usr/bin/wl-copy"
 
+    function say(text, urgent) {
+        if (root.toast) root.toast.show(text, urgent)
+    }
+
+    // The text goes on wl-copy's stdin, the way the shell's own panels copy:
+    // Quickshell's clipboard only takes on Wayland while one of its windows
+    // has the keyboard.
     function copyCommand() {
-        Quickshell.clipboardText = Settings.updateCommandLine()
-        if (root.toast) root.toast.show("Copied. Paste it in a terminal.")
+        if (clipboard.running) return
+        clipboard.began = false
+        clipboard.stdinEnabled = true
+        clipboard.running = true
+    }
+
+    Process {
+        id: clipboard
+        property bool began: false
+        command: [root.wlCopyPath]
+        clearEnvironment: true
+        // null passes the shell's own value (Quickshell 0.3.1).
+        environment: ({ WAYLAND_DISPLAY: null, XDG_RUNTIME_DIR: null })
+        stdout: StdioCollector { waitForEnd: true }
+        stderr: StdioCollector { id: copyError; waitForEnd: true }
+        onStarted: {
+            clipboard.began = true
+            clipboard.write(Settings.UPDATE_COMMAND)
+            clipboard.stdinEnabled = false
+        }
+        onExited: function(exitCode) {
+            if (exitCode === 0) root.say(Settings.COPIED_TEXT, false)
+            else root.say(Settings.copyFailedText(exitCode, copyError.text, root.wlCopyPath), true)
+        }
+        onRunningChanged: if (!clipboard.running && !clipboard.began) root.say(Settings.copyFailedText(null, "", root.wlCopyPath), true)
     }
 
     spacing: Style.spacing.lg
@@ -28,14 +60,14 @@ ColumnLayout {
     SettingRow {
         Layout.fillWidth: true
         label: "Version"
-        caption: root.version !== "" ? root.version : "manifest.json not found"
+        caption: Settings.VERSION
         foreground: root.foreground
     }
 
     SettingRow {
         Layout.fillWidth: true
         label: "Update"
-        caption: "Run in a terminal. Omarchy shows the changes and asks before it pulls. The restart loads the new version."
+        caption: Settings.UPDATE_CAPTION
         foreground: root.foreground
 
         ActionButton {
@@ -79,19 +111,15 @@ ColumnLayout {
         }
     }
 
-    SettingRow {
+    Text {
         Layout.fillWidth: true
-        label: "Listing"
-        caption: "Omanotes on omarchyplugins.com."
-        foreground: root.foreground
-
-        ActionButton {
-            bordered: true
-            iconText: Icons.openInNew
-            text: "Open"
-            foreground: root.foreground
-            onClicked: Util.execArgv(["xdg-open", Settings.LISTING_URL])
-        }
+        objectName: "restartNote"
+        text: Settings.RESTART_NOTE
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        color: Util.alpha(root.foreground, Tone.secondary)
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
     }
 
     Item { Layout.fillHeight: true }

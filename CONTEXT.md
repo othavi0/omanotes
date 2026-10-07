@@ -173,7 +173,7 @@ A copy of the database next to it, named with the day it was made. A second back
 _Avoid_: export, snapshot
 
 **Update**:
-Running `omarchy plugin update othavi0.omanotes` and then `omarchy restart shell` in a terminal. The Updates section shows both commands and copies them; the plugin never fetches or pulls by itself (ADR-0021).
+Running `omarchy plugin update othavi0.omanotes` in a terminal and, once it prints `Updated othavi0.omanotes.`, `omarchy restart shell`. The Updates section shows both commands and copies the first; the plugin never fetches or pulls by itself (ADR-0021).
 _Avoid_: upgrade, install, self-update
 
 **Restart**:

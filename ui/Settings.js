@@ -53,35 +53,41 @@ function pathText(path, home) {
 
 // What a section row shows on its right, from the same settings the page
 // edits: "Bell" or "off", "9 / 5 min". `info` carries what is not a
-// setting: { sound, bytes, version }, `sound` being the name of the sound
-// the ring plays.
+// setting: { sound, bytes }, `sound` being the name of the sound the ring
+// plays.
 function sectionMeta(id, settings, info) {
   if (!settings) return ""
   if (id === "sound") return settings.soundOn ? (info ? info.sound : "") : "off"
   if (id === "alarms") return settings.snoozeMinutes + " / " + settings.ringMinutes + " min"
   if (id === "history") return keepText(settings.historyDays)
   if (id === "data") return sizeText(info ? info.bytes : 0)
-  if (id === "updates") return (info && info.version) || ""
+  if (id === "updates") return VERSION
   return ""
 }
 
-// The plugin updates through Omarchy, not by itself (ADR-0021): the Updates
-// page shows these commands and copies them as one line, joined by &&, so
-// an update that fails does not restart the shell.
+// The version of this code. It ships with the code, so after an update and
+// before the restart the page still names the version that runs;
+// test/settings-text.test.mjs holds it to manifest.json.
+var VERSION = "1.2.0"
+
+// The plugin updates through Omarchy, not by itself (ADR-0021). The page
+// shows both commands and copies only the update: `omarchy plugin update`
+// exits 0 also when there is nothing new or the user says no, so a restart
+// chained to it would drop a ringing alarm for nothing.
 var PLUGIN_ID = "othavi0.omanotes"
-var UPDATE_COMMANDS = ["omarchy plugin update " + PLUGIN_ID, "omarchy restart shell"]
-var LISTING_URL = "https://omarchyplugins.com/plugin.html?id=" + PLUGIN_ID
+var UPDATE_COMMAND = "omarchy plugin update " + PLUGIN_ID
+var RESTART_COMMAND = "omarchy restart shell"
+var UPDATE_COMMANDS = [UPDATE_COMMAND, RESTART_COMMAND]
+var UPDATED_LINE = "Updated " + PLUGIN_ID + "."
 
-function updateCommandLine() {
-  return UPDATE_COMMANDS.join(" && ")
-}
+var UPDATE_CAPTION = "Copy the update and run it in a terminal. Omarchy shows the changes and asks before it pulls."
+var RESTART_NOTE = "Run " + RESTART_COMMAND + " only after the update prints \u201c" + UPDATED_LINE + "\u201d The restart loads the new version and stops a ringing alarm."
+var COPIED_TEXT = "Copied. Paste it in a terminal."
 
-// The version of manifest.json's text, "" when it cannot be read.
-function manifestVersion(text) {
-  try {
-    var version = JSON.parse(String(text)).version
-    return typeof version === "string" ? version : ""
-  } catch (e) {
-    return ""
-  }
+// The toast of a copy that failed: wl-copy's first line of error, or its
+// exit code when it said nothing, or that it never started.
+function copyFailedText(exitCode, stderr, program) {
+  var line = String(stderr || "").trim().split("\n")[0]
+  if (exitCode === null || exitCode === undefined) return "Not copied: " + program + " did not start"
+  return "Not copied: " + (line !== "" ? line : program + " exited with " + exitCode)
 }

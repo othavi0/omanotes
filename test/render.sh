@@ -69,7 +69,7 @@ ShellRoot {
   // A scene that finds fewer controls than this measured nothing.
   readonly property var minControls: ({ browse: 9, draft: 8, empty: 5, toast: 9, history: 3, blank: 6, historyblank: 3, menu: 12, trash: 4, drag: 9,
     alarms: 14, alarmdraft: 14, alarmconfirm: 14, alarmblank: 3, ringcard: 11,
-    settings: 11, settingsalarms: 8, settingshistory: 3, settingsdata: 4, settingsupdates: 4 })
+    settings: 11, settingsalarms: 8, settingshistory: 3, settingsdata: 4, settingsupdates: 3 })
   readonly property string longTitle: "Renew the domain before the card on file expires, then move the DNS records to the new registrar, check the MX entries, and write down every step so the next renewal takes five minutes instead of an afternoon"
   readonly property string outDir: Quickshell.env("OUT_DIR")
 
@@ -212,9 +212,9 @@ ShellRoot {
         var version = Quickshell.env("MANIFEST_VERSION")
         var commands = sr.find(settingsTab, /^QQuickText/).filter(function(t) { return t.item.objectName === "updateCommand" }).map(function(t) { return t.item.text })
         sr.expect(sceneName, commands.join("|") === Settings.UPDATE_COMMANDS.join("|"), "the page shows the update and the restart [" + commands.join("|") + "]")
-        sr.expect(sceneName, texts.indexOf(version) >= 0 && texts.indexOf("Copy") >= 0 && texts.indexOf("Open") >= 0,
-          "the page names the version of manifest.json (" + version + "), Copy and Open")
-        sr.expect(sceneName, sr.find(header, /^Segment$/)[0].item.options[3].dot === undefined, "the gear carries no dot")
+        sr.expect(sceneName, texts.indexOf(version) >= 0 && texts.indexOf("Copy") >= 0 && texts.indexOf("Open") < 0,
+          "the page names the version of manifest.json (" + version + ") and Copy, and opens no listing")
+        sr.expect(sceneName, texts.indexOf(Settings.RESTART_NOTE) >= 0, "the page says the restart waits for the update")
         var summary = sr.find(header, /^QQuickText$/).map(function(t) { return t.item.text })
         sr.expect(sceneName, summary.indexOf(version) >= 0, "the header names the version [" + summary.join("|") + "]")
       } else if (sceneName === "settingsalarms") {
@@ -350,7 +350,6 @@ ShellRoot {
           Layout.fillWidth: true
           db: db
           service: svc.item
-          version: settingsTab.version
           activeTab: sr.activeTab
         }
 
