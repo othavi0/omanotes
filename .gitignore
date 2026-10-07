@@ -2,3 +2,10 @@
 # hand with the default paths, which the shell would answer with a reload.
 db/bin/
 db/obj/
+
+# Agent instruction files stay out of the plugin: the marketplace refuses them in the installed tree.
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.claude/
+docs/agents/

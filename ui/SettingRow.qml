@@ -20,6 +20,7 @@ RowLayout {
         spacing: Style.spacing.xxs
 
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: root.label
             elide: Text.ElideRight
@@ -28,6 +29,7 @@ RowLayout {
             font.pixelSize: Style.font.body
         }
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             visible: root.caption !== ""
             text: root.caption

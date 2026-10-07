@@ -40,6 +40,7 @@ RowLayout {
         border.color: Style.normalBorderFor(root.foreground, Color.accent)
 
         Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: root.value + (root.unit !== "" ? " " + root.unit : "")
             color: root.foreground

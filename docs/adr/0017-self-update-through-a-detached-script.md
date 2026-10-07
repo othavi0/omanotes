@@ -1,5 +1,7 @@
 # Update the plugin through a detached script and a state file
 
+Superseded by [ADR-0021](0021-update-through-omarchy-plugin-update.md): the plugin no longer updates itself, and the Updates page shows the `omarchy plugin update` command and the restart. This record describes the self-update until then; its scripts stay in the git history.
+
 The Updates page pulls new commits of `origin/main` into the plugin folder. The shell's plugin watcher answers any write in that folder with a global reload about 150 ms later, and the reload destroys the service, every panel and every `Process` they own, sometimes in two bursts. Nothing that starts the update from inside the plugin survives to report its result, and the host gives a plugin no reload hook, no path and no update helper.
 
 That reload does not load new code. It recreates the plugin from the components the shell already compiled, since `shell.qml` clears the component cache only when `Qt.clearComponentCache` is a function, and on quickshell 0.3.1 it is not. Both the QML files and the `.pragma library` JS stay as they were. We measured it twice. An offscreen `qs` script that changed a QML file and a `.pragma library` file, then recreated the component from the same URL, printed `qml=old js=old`. On the real shell, switching the installed clone to a branch with a new migration reloaded the plugin without running the migration, and only `omarchy-restart-shell` ran it.

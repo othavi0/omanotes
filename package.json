@@ -1,25 +1,24 @@
 {
   "name": "omanotes",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
-  "description": "Omanotes Omarchy bar-widget plugin: notes + todos + history, mouse-driven, SQLite-backed with file-watcher auto-refresh.",
+  "description": "Omanotes: short notes, todos and alarms, with a history tab. Mouse-driven, SQLite-backed, with file-watcher auto-refresh",
   "scripts": {
     "validate": "omarchy plugin validate .",
-    "test": "npm run test:unit && npm run test:update && npm run test:render && npm run test:behavior && npm run test:panel && npm run test:alarm && npm run test:startup && npm run test:teardown",
+    "test": "npm run test:unit && npm run test:render && npm run test:behavior && npm run test:panel && npm run test:alarm && npm run test:startup && npm run test:teardown",
     "test:unit": "node --test test/",
-    "test:update": "test/update.sh",
     "test:render": "test/render.sh",
     "test:behavior": "test/behavior.sh",
     "test:panel": "test/panel.sh",
     "test:alarm": "test/alarm.sh",
     "test:startup": "test/startup.sh",
     "test:teardown": "test/teardown.sh",
-    "build:db": "tools/build.sh",
+    "build:db": "tools/build-in-container.sh",
     "analyze:db": "tools/analyze.sh",
     "canaries": "tools/canaries.sh",
     "sysroot": "tools/sysroot.sh",
     "verify:bin": "tools/verify-bin.sh --check",
-    "verify:bin:rebuild": "tools/verify-bin.sh --rebuild"
+    "verify:bin:rebuild": "tools/build-in-container.sh --verify"
   },
   "engines": {
     "node": ">=18"

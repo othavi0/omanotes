@@ -96,6 +96,7 @@ ColumnLayout {
             spacing: Style.spacing.md
 
             Text {
+                textFormat: Text.PlainText
                 text: root.item && ItemJs.isTodo(root.item) ? Icons.boxOff : Icons.note
                 color: Color.accent
                 font.family: Style.font.family
@@ -103,6 +104,7 @@ ColumnLayout {
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
+                textFormat: Text.PlainText
                 text: root.item && ItemJs.isTodo(root.item) ? "Todo" : "Note"
                 color: root.foreground
                 font.bold: true
@@ -120,6 +122,7 @@ ColumnLayout {
                     : Util.alpha(Color.urgent, Style.selectedFillAlpha)
                 Text {
                     id: statusText
+                    textFormat: Text.PlainText
                     anchors.centerIn: parent
                     text: root.item ? ItemJs.statusLabel(root.item) : ""
                     color: root.item && ItemJs.isReadOrCompleted(root.item) ? Util.alpha(root.foreground, Tone.secondary) : Color.urgent
@@ -139,6 +142,7 @@ ColumnLayout {
                 color: root.unsaved ? Color.urgent : Util.alpha(root.foreground, Tone.muted)
             }
             Text {
+                textFormat: Text.PlainText
                 text: root.draft
                     ? "Unsaved draft"
                     : (root.dirty

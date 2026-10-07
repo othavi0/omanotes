@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "othavi0.omanotes",
   "name": "Omanotes",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "othavi0",
   "description": "Omanotes: short notes, todos and alarms, with a history tab. Mouse-driven, SQLite-backed, with file-watcher auto-refresh",
   "kinds": [

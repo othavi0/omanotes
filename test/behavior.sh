@@ -1349,32 +1349,6 @@ logged "a new search starts the list from the top" "SCROLLED-SEARCH rows=40 top=
 # A seventh run drives the Settings tab of the real Panel, without the
 # service, as panel.sh does: every setting saves through the widget's Db.
 recent_history="$(sqlite3 "$db" "SELECT COUNT(*) FROM history")"
-# The Updates page runs the real script against a clone 22 commits behind
-# its origin, with a stub validator and notification, and launchers that
-# fail to start or start nothing.
-(
-  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
-    GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
-  git init --quiet --bare -b main "$cfg_dir/origin.git"
-  git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/dev" 2> /dev/null
-  printf '{\n  "version": "1.1.0"\n}\n' > "$cfg_dir/dev/manifest.json"
-  # What the smoke of update.sh runs before it merges.
-  mkdir "$cfg_dir/dev/bin" "$cfg_dir/dev/data"
-  cp "$worktree/bin/omanotes-db.$(uname -m)" "$cfg_dir/dev/bin/"
-  cp "$worktree/data/Db.js" "$cfg_dir/dev/data/"
-  git -C "$cfg_dir/dev" add -A && git -C "$cfg_dir/dev" commit --quiet -m "feat: first"
-  git -C "$cfg_dir/dev" push --quiet origin main
-  git clone --quiet "$cfg_dir/origin.git" "$cfg_dir/clone"
-  for n in $(seq 22); do git -C "$cfg_dir/dev" commit --quiet --allow-empty -m "feat: commit $n"; done
-  git -C "$cfg_dir/dev" push --quiet origin main
-)
-mkdir -p "$cfg_dir/bin"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/omarchy-plugin-validate"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/omarchy-notification-send"
-printf '#!/usr/bin/env bash\necho restart >> "%s/restart.log"\n' "$cfg_dir" > "$cfg_dir/bin/omarchy-restart-shell"
-printf '#!/usr/bin/env bash\necho "Failed to connect to bus: No medium found" >&2\nexit 1\n' > "$cfg_dir/bin/launch-fails"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$cfg_dir/bin/launch-lost"
-chmod +x "$cfg_dir/bin/"*
 sqlite3 "$db" "INSERT INTO history (type, title, action, ts) VALUES
   ('note', 'Aged 40', 'added', $(date +%s) - 40 * 86400), ('note', 'Aged 100', 'added', $(date +%s) - 100 * 86400)"
 cat > "$cfg_dir/shell.qml" <<'QML'
@@ -1382,8 +1356,8 @@ import QtQuick
 import QtTest
 import Quickshell
 import "data" as Data
-import "data/Update.js" as Update
 import "ui/Icons.js" as Icons
+import "ui/Settings.js" as Settings
 
 ShellRoot {
   id: sr
@@ -1392,7 +1366,6 @@ ShellRoot {
   property var panel: null
   property var header: null
   property var settingsTab: null
-  readonly property string clone: Quickshell.env("CFG_DIR") + "/clone"
   property var toast: null
   readonly property var db: testDb
 
@@ -1429,14 +1402,6 @@ ShellRoot {
     console.log(label + " days=" + db.settings.historyDays + " armed=" + (armed.length > 0) + " history=" + db.totalHistory
       + " toast=[" + toast.text + "]")
   }
-  function updates(label) {
-    var u = settingsTab.updater
-    var headline = sr.named(settingsTab, "updateHeadline")
-    var more = sr.findWhere(settingsTab, function(it) { return it.visible && typeof it.text === "string" && /^and \d+ more$/.test(it.text) })
-    console.log("UPDATES-" + label + " phase=" + u.view.phase + " running=" + u.checkProcess.running + " headline=[" + (headline ? headline.text : "")
-      + "] more=[" + (more ? more.text : "") + "] update=" + (sr.findByText(settingsTab, "Update") ? "shown" : "hidden")
-      + " toast=[" + toast.text + "]")
-  }
   function state(label) {
     var s = db.settings
     console.log(label + " tab=" + panel.activeTab + " section=" + settingsTab.section + " sound=" + s.sound + " on=" + s.soundOn
@@ -1447,7 +1412,12 @@ ShellRoot {
     function() { sr.click(sr.gear()) },
     function() { sr.state("GEAR") },
     function() { sr.click(sr.named(settingsTab, "sound:bell")) },
-    function() { sr.state("BELL") },
+    function() { sr.state("BELL"); db.setSettings({ soundFile: "relative.oga" }) },
+    function() {
+      var row = sr.named(settingsTab, "sound:custom")
+      console.log("CUSTOM-RELATIVE name=[" + row.name + "] play=" + !!sr.buttonWithIcon(row, Icons.play))
+      db.setSettings({ soundFile: "" })
+    },
     function() { sr.click(sr.buttonWithIcon(sr.named(settingsTab, "sound:service-login"), Icons.play)) },
     function() { sr.state("PLAY-WITHOUT-SERVICE") },
     function() { sr.clickAt(sr.findWhere(settingsTab, function(it) { return String(it).indexOf("PanelSlider") === 0 }), 0.4) },
@@ -1473,43 +1443,21 @@ ShellRoot {
       console.log("BACKUP toast=[" + toast.text + "] database=[" + (caption ? caption.text : "none") + "]")
     },
     function() {
-      settingsTab.updater.pluginDir = sr.clone
-      settingsTab.updater.launcher = [Quickshell.env("CFG_DIR") + "/bin/launch-fails"]
       sr.click(sr.named(settingsTab, "section:updates"))
+      sr.named(settingsTab, "updatesPage").wlCopyPath = Quickshell.env("OMANOTES_WL_COPY")
     },
-    function() { sr.click(sr.findByText(settingsTab, "Check for updates")) },
-    function() { sr.updates("AVAILABLE") },
-    function() { sr.watchDot = true; settingsTab.updater.check() },
-    function() { sr.watchDot = false },
-    function() { toast.text = ""; sr.click(sr.findByText(settingsTab, "Update")) },
-    function() { sr.updates("START-FAILED") },
+    function() { toast.text = ""; sr.click(sr.named(settingsTab, "copyUpdate")) },
     function() {
-      settingsTab.updater.launcher = [Quickshell.env("CFG_DIR") + "/bin/launch-lost"]
-      settingsTab.updater.startTimeoutMs = 2000
-      toast.text = ""
-      sr.click(sr.findByText(settingsTab, "Update"))
-      sr.updates("REQUESTED")
-      Quickshell.execDetached(["bash", settingsTab.updater.scriptPath, "check", sr.clone])
+      console.log("UPDATES header=[" + sr.findByText(header, Settings.VERSION) + "] toast=[" + toast.text + "] urgent=" + toast.urgent)
+      Quickshell.execDetached(["/usr/bin/mv", Quickshell.env("OMANOTES_WL_COPY") + "-fails.ready", Quickshell.env("OMANOTES_WL_COPY") + "-fails"])
     },
-    function() {},
-    function() { sr.updates("FOREIGN") },
-    function() {},
-    function() {},
-    function() { sr.updates("LOST") },
-    function() { Quickshell.execDetached(["git", "-C", sr.clone, "remote", "set-url", "origin", sr.clone + "-gone.git"]) },
-    function() { settingsTab.updater.check() },
-    function() { sr.updates("OFFLINE") },
+    function() { toast.text = ""; sr.click(sr.named(settingsTab, "copyUpdate")) },
     function() {
-      Quickshell.execDetached(["git", "-C", sr.clone, "remote", "set-url", "origin", Quickshell.env("CFG_DIR") + "/origin.git"])
-      settingsTab.updater.daily = true
-      settingsTab.updater.tick(settingsTab.updater.state.at + Update.RETRY_OFFLINE_MS - 60000)
-      sr.updates("RETRY-EARLY")
+      console.log("COPY-FAILED toast=[" + toast.text + "] urgent=" + toast.urgent)
+      sr.named(settingsTab, "updatesPage").wlCopyPath = Quickshell.env("OMANOTES_WL_COPY") + "-gone"
     },
-    function() { settingsTab.updater.tick(settingsTab.updater.state.at + Update.RETRY_OFFLINE_MS); sr.updates("RETRY-DUE"); settingsTab.updater.daily = false },
-    function() { sr.updates("RETRIED") },
-    function() { settingsTab.updater.launcher = []; toast.text = ""; sr.click(sr.findByText(settingsTab, "Update")) },
-    function() {},
-    function() { sr.updates("UPDATED") },
+    function() { toast.text = ""; sr.click(sr.named(settingsTab, "copyUpdate")) },
+    function() { console.log("COPY-MISSING toast=[" + toast.text + "] urgent=" + toast.urgent) },
     function() { sr.click(sr.named(settingsTab, "section:alarms")); Quickshell.execDetached(["chmod", "444", db.dbPath]) },
     function() { toast.text = ""; sr.click(sr.buttonWithIcon(sr.named(settingsTab, "ring"), Icons.plus)); sr.state("WRITE-SENT") },
     function() { sr.state("WRITE-FAILED") },
@@ -1543,18 +1491,6 @@ ShellRoot {
       item.open()
     }
   }
-  // The gear's dot once the check is seen running, after the bindings on it
-  // settle.
-  property bool watchDot: false
-  Connections {
-    target: sr.watchDot ? sr.settingsTab.updater.checkProcess : null
-    function onRunningChanged() {
-      if (!sr.settingsTab.updater.checkProcess.running) return
-      Qt.callLater(function() {
-        console.log("DOT-WHILE-CHECKING phase=" + sr.settingsTab.updater.view.phase + " dot=" + !!sr.gear().modelData.dot)
-      })
-    }
-  }
   Connections {
     target: testDb
     function onSettingsLoadedChanged() { if (!sr.started && testDb.settingsLoaded) { sr.started = true; stepTimer.start() } }
@@ -1569,10 +1505,13 @@ ShellRoot {
 }
 QML
 log_file="$cfg_dir/qs-settings.log"
-PATH="$cfg_dir/bin:$PATH" CFG_DIR="$cfg_dir" run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
+stub_wl_copy
+printf 'Failed to connect to a Wayland server\n' > "$cfg_dir/wl-copy-fails.ready"
+OMANOTES_WL_COPY="$cfg_dir/wl-copy" OMANOTES_CANARY=leak WAYLAND_DISPLAY=wayland-omanotes-test run_qs > "$log_file" 2>&1 || { cat "$log_file"; echo "qs exited non-zero"; exit 2; }
 logged "the gear opens Settings on the Alarm sound page, which reads the defaults" \
   "GEAR tab=3 section=sound sound=alarm-clock-elapsed on=true volume=100 snooze=9 ring=5 meta=\[Alarm clock\|9 / 5 min\]"
 logged "a click on a sound row picks it, and its row in the list names it" "BELL .* sound=bell .* meta=\[Bell\|9 / 5 min\]"
+logged "a custom file that is not an absolute path reads as no file, with no play button" "CUSTOM-RELATIVE name=\[Custom file…\] play=false$"
 logged "without the service a play button plays nothing and says nothing" "PLAY-WITHOUT-SERVICE .* toast=\[\]$"
 logged "a click on the volume track sets the volume there" "VOLUME .* volume=40 "
 logged "Off switches the sound off, and the list says off" "OFF .* on=false .* meta=\[off\|9 / 5 min\]"
@@ -1590,22 +1529,19 @@ logged "the second click keeps 30 days and removes the older entries at once" "K
 logged "a longer Keep that removes nothing saves on the first click" "KEEP-90 days=90 armed=false history=$recent_history toast=\[\]$"
 logged "Back up now copies the database and names the copy" "BACKUP toast=\[Saved scratchpad-$(date +%F).db\] "
 logged "the Data page shows where the database is and its size" "BACKUP .* database=\[$db · [0-9]+ KB\]$"
-logged "a check finds the 22 new commits and lists four, then how many more" \
-  "UPDATES-AVAILABLE phase=available running=false headline=\[22 new commits on origin/main\] more=\[and 18 more\] update=shown"
-logged "the gear keeps its dot while a check runs" "DOT-WHILE-CHECKING phase=checking dot=true$"
-logged "an update that systemd-run cannot start says why and offers Update again" \
-  "UPDATES-START-FAILED phase=available .* update=shown toast=\[Could not start the update: Failed to connect to bus: No medium found\]$"
-logged "an update asked for shows as updating at once, with Update gone" "UPDATES-REQUESTED phase=updating .* update=hidden toast=\[\]$"
-logged "a record the update did not write, a check's in the same second, leaves it asked for" "UPDATES-FOREIGN phase=updating .* toast=\[\]$"
-logged "an update that never writes its record is called lost and offers Update again" \
-  "UPDATES-LOST phase=available .* update=shown toast=\[The update did not start.\]$"
-logged "a check that cannot reach origin says offline with git's reason" "UPDATES-OFFLINE phase=offline running=false headline=\[Could not reach origin: fatal: "
-logged "the daily check leaves an offline record alone until an hour has passed" "UPDATES-RETRY-EARLY phase=offline running=false "
-logged "and checks again at the hour" "UPDATES-RETRY-DUE phase=[a-zA-Z]+ running=true "
-logged "which finds the new commits again" "UPDATES-RETRIED phase=available "
-logged "Update pulls the clone and says so" "UPDATES-UPDATED phase=updated .* headline=\[Updated to $(git -C "$cfg_dir/dev" rev-parse --short HEAD). The shell restarted.\]"
-if [[ "$(cat "$cfg_dir/restart.log" 2> /dev/null)" == restart ]]; then pass "and restarts the shell once, through the stub"; else fail "and restarts the shell once, through the stub"; fi
-if [[ "$(git -C "$cfg_dir/clone" rev-parse HEAD)" == "$(git -C "$cfg_dir/dev" rev-parse HEAD)" ]]; then pass "the clone is at origin/main"; else fail "the clone is at origin/main"; fi
+logged "the header names the version of manifest.json" "UPDATES header=\[QQuickText"
+logged "Copy says Copied once wl-copy is done" "UPDATES .* toast=\[Copied. Paste it in a terminal.\] urgent=false$"
+expect_text() {
+  if [[ "$2" == "$3" ]]; then pass "$1"; else fail "$1: want '$3', got '$2'"; fi
+}
+expect_text "wl-copy gets the update alone on stdin, and no restart" "$(sed -n 2p "$cfg_dir/clipboard.log")" \
+  "stdin=[omarchy plugin update othavi0.omanotes]"
+expect_text "wl-copy gets no arguments, the Wayland socket and nothing else of the shell's environment" \
+  "$(sed -n 1p "$cfg_dir/clipboard.log")" "args=0 wayland=wayland-omanotes-test runtime=$XDG_RUNTIME_DIR env=WAYLAND_DISPLAY,XDG_RUNTIME_DIR"
+expect_text "wl-copy ran once for the one copy that worked" "$(wc -l < "$cfg_dir/clipboard.log")" "2"
+logged "a wl-copy that fails shows its error, not Copied" \
+  "COPY-FAILED toast=\[Not copied: Failed to connect to a Wayland server\] urgent=true$"
+logged "a wl-copy that is not there says so" "COPY-MISSING toast=\[Not copied: $cfg_dir/wl-copy-gone did not start\] urgent=true$"
 expect "the copy holds the items of the database" "SELECT COUNT(*) FROM items" \
   "$(sqlite3 "$data_home/omarchy/scratchpad-$(date +%F).db" "SELECT COUNT(*) FROM items" 2>&1)"
 logged "an entry past the Keep can age in while the panel is closed" "AGED-WHILE-CLOSED history=$(( recent_history + 1 ))$"

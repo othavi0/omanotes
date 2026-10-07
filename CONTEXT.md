@@ -153,7 +153,7 @@ _Avoid_: query (in user-facing text)
 ### Settings
 
 **Settings**:
-The fourth tab, behind the gear: the alarm sound, the new-alarm defaults, updates, how long history is kept and the database. Every setting saves when it is clicked.
+The fourth tab, behind the gear: the alarm sound, the new-alarm defaults, the version and how to update, how long history is kept and the database. Every setting saves when it is clicked.
 _Avoid_: preferences, options, config
 
 **Defaults**:
@@ -172,16 +172,12 @@ _Avoid_: retention (in user-facing text), expiry
 A copy of the database next to it, named with the day it was made. A second backup the same day replaces the first.
 _Avoid_: export, snapshot
 
-**Check**:
-Asking origin/main whether it has commits the plugin folder lacks. The service checks once a day when Check daily is on.
-_Avoid_: poll, sync
-
 **Update**:
-Pulling those commits into the plugin folder, fast-forward only, once the new version validates in a copy outside it and its `omanotes-db` runs on this machine, then a restart. It refuses a folder with local changes, on another branch, with commits of its own or with untracked files the pull would overwrite. Files git ignores do not count: an ignored file that origin/main starts to track is overwritten, as git does.
-_Avoid_: upgrade, install
+Running `omarchy plugin update othavi0.omanotes` in a terminal and, once it prints `Updated othavi0.omanotes.`, `omarchy restart shell`. The Updates section shows both commands and copies the first; the plugin never fetches or pulls by itself (ADR-0021).
+_Avoid_: upgrade, install, self-update
 
 **Restart**:
-Stopping the Omarchy shell and starting a new one, the last step of an update. The shell reloads the plugin when the folder changes, but that reload keeps the code it already compiled, so only a restart loads the new version. When the restart fails, the user runs `omarchy restart shell`.
+Stopping the Omarchy shell and starting a new one, the last step of an update. The shell reloads the plugin when the folder changes, but that reload keeps the code it already compiled, so only a restart loads the new version.
 _Avoid_: reload (for loading new code), relaunch
 
 **Scratchpad**:

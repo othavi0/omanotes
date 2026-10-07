@@ -30,6 +30,7 @@ BorderSurface {
             spacing: Style.space(12)
 
             Text {
+                textFormat: Text.PlainText
                 text: Icons.bell
                 color: Color.urgent
                 font.family: Style.font.family
@@ -37,6 +38,7 @@ BorderSurface {
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
+                textFormat: Text.PlainText
                 text: root.view ? root.view.clock : ""
                 color: Color.popups.text
                 font.family: Style.font.family
@@ -51,6 +53,7 @@ BorderSurface {
             spacing: Style.spacing.xs
 
             Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: root.view ? root.view.title : ""
                 elide: Text.ElideRight
@@ -60,6 +63,7 @@ BorderSurface {
                 font.bold: true
             }
             Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: root.view ? root.view.subtitle : ""
                 elide: Text.ElideRight

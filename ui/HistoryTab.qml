@@ -167,6 +167,7 @@ FocusScope {
                         spacing: Style.spacing.sm
 
                         Text {
+                            textFormat: Text.PlainText
                             Layout.preferredWidth: root.colTypeW
                             text: modelData.type !== "todo" ? Icons.note
                                 : modelData.action === "completed" ? Icons.boxOn : Icons.boxOff
@@ -178,6 +179,7 @@ FocusScope {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             Layout.fillWidth: true
                             text: modelData.title
                             elide: Text.ElideRight
@@ -189,6 +191,7 @@ FocusScope {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             Layout.preferredWidth: root.colActionW
                             text: ItemJs.historyLabel(modelData)
                             color: root.actionColor(modelData.action)
@@ -198,6 +201,7 @@ FocusScope {
 
                         // An armed trash reads Confirm and grows over this column.
                         Text {
+                            textFormat: Text.PlainText
                             Layout.preferredWidth: root.colTsW
                             text: historyRow.armed ? "" : root.formatTs(modelData.ts)
                             color: Util.alpha(root.foreground, Tone.secondary)

@@ -6,9 +6,9 @@
 // binary (ADR-0018). No QML imports, so Node loads this file (ADR-0009).
 
 // The protocol this QML speaks, argv[1] of every spawn. The binary answers
-// every protocol from its Min to its Current (db/Wire.cs). The installed
-// data/update.sh reads this line from each new version before it merges, so
-// it stays a plain number assigned to PROTOCOL on one line.
+// every protocol from its Min to its Current (db/Wire.cs). test/lib/harness.sh
+// reads this line, so it stays a plain number assigned to PROTOCOL on one
+// line.
 var PROTOCOL = 2
 
 // A request over this many bytes is refused by the binary as too_large, so
@@ -136,9 +136,10 @@ function mergeAlarms(rows, pending) {
 }
 
 // The settings record, { soundOn, sound, soundFile, volume, snoozeMinutes,
-// ringMinutes, historyDays, checkUpdates }, one spec per key. It drives the
-// read, the write and the fallbacks, and the binary only checks each column
-// name against the schema (ADR-0016). The sound catalog lives in
+// ringMinutes, historyDays }, one spec per key. It drives the read, the write
+// and the fallbacks, and the binary only checks each column name against the
+// schema (ADR-0016). The schema still has check_updates, which nothing reads
+// since the plugin stopped updating itself (ADR-0021). The sound catalog lives in
 // data/Sound.js and is not checked here, so a new sound needs no migration.
 // The sound fallback repeats Sound.DEFAULT_SOUND, which this file cannot
 // import under Node; test/sound.test.mjs holds them equal.
@@ -149,8 +150,7 @@ var SETTINGS = {
   volume: { column: "volume", kind: "int", min: 0, max: 100, fallback: 100 },
   snoozeMinutes: { column: "snooze_minutes", kind: "int", min: 1, max: 180, fallback: 9 },
   ringMinutes: { column: "ring_minutes", kind: "int", min: 1, max: 60, fallback: 5 },
-  historyDays: { column: "history_days", kind: "pick", options: [0, 90, 30], fallback: 0 },
-  checkUpdates: { column: "check_updates", kind: "bool", fallback: true }
+  historyDays: { column: "history_days", kind: "pick", options: [0, 90, 30], fallback: 0 }
 }
 
 function settingValue(key, value) {

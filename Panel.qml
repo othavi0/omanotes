@@ -5,7 +5,6 @@ import QtQuick.Layouts
 import Quickshell
 import qs.Commons
 import qs.Ui
-import "data" as Data
 import "ui" as Ui
 import "ui/Tabs.js" as Tabs
 
@@ -49,18 +48,6 @@ Panel {
         root.tabAt(root.activeTab).resetFocus()
     }
 
-    // For the gear's dot and the Updates page: the service's Updater, or
-    // one of the panel's own in a shell without the service. The panel's
-    // never checks by itself.
-    readonly property QtObject updater: root.service ? root.service.updater : ownUpdater.item
-    LazyLoader {
-        id: ownUpdater
-        active: root.service === null
-        Data.Updater {
-            checkUpdates: root.db ? root.db.settings.checkUpdates : true
-        }
-    }
-
     property int activeTab: Tabs.items
     readonly property var shownTab: root.tabAt(root.activeTab)
     function tabAt(index) { return [itemsTab, alarmsTab, historyTab, settingsTab][index] }
@@ -100,7 +87,6 @@ Panel {
                 Layout.fillWidth: true
                 db: root.db
                 service: root.service
-                updater: root.updater
                 activeTab: root.activeTab
                 foreground: root.barForeground
                 onTabPicked: function(index) { root.activeTab = index }
@@ -148,7 +134,6 @@ Panel {
                     id: settingsTab
                     db: root.db
                     service: root.service
-                    updater: root.updater
                     toast: toast
                     bar: root.bar
                     foreground: root.barForeground

@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
@@ -26,7 +27,7 @@ ColumnLayout {
 
     readonly property string previewKey: root.service ? root.service.previewKey : ""
     readonly property bool soundOn: !!root.settings.soundOn
-    readonly property bool hasCustomFile: String(root.settings.soundFile || "") !== ""
+    readonly property bool hasCustomFile: Sound.customFile(root.settings) !== ""
     readonly property string noService: "Needs the Omanotes service"
 
     function play(key) {
@@ -49,7 +50,10 @@ ColumnLayout {
     // the chooser took focus still saves.
     Process {
         id: picker
-        command: ["omarchy-file-select", "--title", "Alarm sound", "--extensions", "oga ogg wav mp3 flac opus"]
+        // Omarchy's helper by its full path. It opens a window, so it keeps
+        // the shell's environment.
+        command: [(Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy") + "/bin/omarchy-file-select",
+            "--title", "Alarm sound", "--extensions", "oga ogg wav mp3 flac opus"]
         stdout: StdioCollector { id: picked; waitForEnd: true }
         onExited: function(exitCode) {
             var path = String(picked.text || "").trim().split("\n")[0]
@@ -142,6 +146,7 @@ ColumnLayout {
                 }
             }
             Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: row.name
                 elide: Text.ElideMiddle
@@ -150,6 +155,7 @@ ColumnLayout {
                 font.pixelSize: Style.font.body
             }
             Text {
+                textFormat: Text.PlainText
                 visible: row.detail !== ""
                 text: row.detail
                 color: Util.alpha(root.foreground, Tone.muted)
@@ -258,6 +264,7 @@ ColumnLayout {
             onReleased: function(v) { root.save({ volume: Math.round(v) }) }
         }
         Text {
+            textFormat: Text.PlainText
             Layout.preferredWidth: Style.space(38)
             horizontalAlignment: Text.AlignRight
             text: Math.round(volume.liveValue) + "%"

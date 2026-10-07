@@ -6,7 +6,7 @@ import { loadQmlLib } from "./lib/load-qml-lib.mjs"
 
 const T = loadQmlLib(new URL("../ui/Alarms.js", import.meta.url), [
   "WEEK_ORDER", "DAY_LETTERS", "timeText", "dayName", "daysText", "nextText", "nextInText", "nextSummary",
-  "rowDetail", "ringTitle", "snoozeLabel", "lateText", "missedText", "ringView"
+  "rowDetail", "ringTitle", "snoozeLabel", "lateText", "missedText", "missedNotifyArgv", "ringView"
 ])
 
 const MIN = 60 * 1000
@@ -112,6 +112,20 @@ test("missedText is one notification for every missed alarm", () => {
   const two = T.missedText([{ id: 2, at: at(0, 6, 10), kind: "scheduled" }, { id: 1, at: at(0, 7, 30), kind: "scheduled" }], byId, NOW)
   assert.deepEqual(two, { headline: "2 missed alarms", body: "06:10, 7 h 50 min late\n07:30 · Wake up, 6 h 30 min late" })
   assert.equal(T.missedText([], byId, NOW), null)
+})
+
+// The shell shows a notification body as StyledText, so a label is text
+// there, never markup: `<img src=...>` would load the image.
+test("the notification of missed alarms escapes the body's &, < and > and only there", () => {
+  const byId = { 1: alarm({ label: '<img src="http://x/y.png"> Tom & Jerry' }), 2: alarm({ id: 2, label: "--exec rm", hour: 6, minute: 10 }) }
+  const missed = [{ id: 1, at: at(0, 11, 48), kind: "scheduled" }, { id: 2, at: at(0, 6, 10), kind: "scheduled" }]
+  assert.deepEqual(T.missedNotifyArgv("/usr/share/omarchy/bin/omarchy-notification-send", "G", missed, byId, NOW), [
+    "/usr/share/omarchy/bin/omarchy-notification-send", "-g", "G", "2 missed alarms",
+    '07:30 · &lt;img src="http://x/y.png"&gt; Tom &amp; Jerry, 2 h 12 min late\n06:10 · --exec rm, 7 h 50 min late'
+  ])
+  assert.equal(T.missedText(missed, byId, NOW).body.split("\n")[0], '07:30 · <img src="http://x/y.png"> Tom & Jerry, 2 h 12 min late',
+    "missedText is the text, not markup")
+  assert.equal(T.missedNotifyArgv("/p", "G", [], byId, NOW), null)
 })
 
 test("ringView is what the card and the chip show, with the meter as the first event's elapsed share", () => {

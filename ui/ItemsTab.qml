@@ -428,6 +428,7 @@ FocusScope {
             Layout.fillHeight: true
 
             Text {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 text: "Your note or todo opens here."
                 color: Util.alpha(root.foreground, Tone.muted)

@@ -25,6 +25,13 @@ Item {
     property bool clockRunning: true
     property var screens: Quickshell.screens
     property Component ringWindow: null
+    // The bash and the PATH the sound runs with: fixed system paths, so a
+    // player found first in the user's PATH never plays. A test points them
+    // at its stub players.
+    property string bashPath: "/usr/bin/bash"
+    property string playerPath: "/usr/bin"
+    // Omarchy's helper by its full path, not the PATH the shell inherited.
+    property string notifySendPath: (Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy") + "/bin/omarchy-notification-send"
 
     // The ring reads the settings row and never writes it (ADR-0016). A
     // custom file that is gone plays the default inside the player script,
@@ -34,8 +41,6 @@ Item {
     readonly property string fallbackSoundFile: Sound.pathFor(Sound.DEFAULT_SOUND, null)
     // The sound Settings is testing, "" when none.
     property string previewKey: ""
-
-    readonly property QtObject updater: updates
 
     readonly property var alarms: store.alarms
     readonly property bool loaded: store.alarmsLoaded
@@ -135,7 +140,7 @@ Item {
         }
         root.previewKey = key
         root._queuedPreview = { key: key, caller: caller || null,
-            command: ["bash", "-c", root.soundScript, "omanotes-preview", String(file), String(volume)] }
+            command: [root.bashPath, "-c", root.soundScript, "omanotes-preview", String(file), String(volume)] }
         if (preview.running) preview.running = false
         else root._startQueuedPreview()
         return ""
@@ -181,9 +186,11 @@ Item {
         root.ringing = out.keep.length === 0 ? null : { startedAt: root.ringing.startedAt, events: out.keep }
     }
 
+    // It keeps the shell's environment: the notification goes over the
+    // session's D-Bus.
     function _notifyMissed(missed, byId) {
-        var text = Alarms.missedText(missed, byId, root.nowMs)
-        Quickshell.execDetached(["omarchy-notification-send", "-g", Icons.alarm, text.headline, text.body])
+        var argv = Alarms.missedNotifyArgv(root.notifySendPath, Icons.alarm, missed, byId, root.nowMs)
+        if (argv) Quickshell.execDetached(argv)
     }
 
     function _dropLostOutside() {
@@ -228,17 +235,6 @@ Item {
         onAlarmWriteFailed: function(kind, record, message, caller) { root.writeFailed(kind, record, message, caller) }
     }
 
-    // The shell's one Updater: every panel uses it, and it makes the only
-    // automatic check, so several monitors never mean several fetches. A
-    // test drives the clock and never fetches. The reload and the restart an
-    // update sets off would drop a ring, so a ring blocks it.
-    Data.Updater {
-        id: updates
-        daily: root.clockRunning && root.settings.checkUpdates
-        checkUpdates: root.settings.checkUpdates
-        blocked: root.ringing !== null
-    }
-
     SystemClock {
         id: clock
         enabled: root.clockRunning
@@ -271,6 +267,19 @@ Item {
         + 'p=(setpriv --pdeathsig TERM -- "${p[@]}"); '
         + 'while :; do "${p[@]}" || exit; '
         + 'read -rt ' + (repeatGapMs / 1000) + '; (( $? > 128 )) || exit 0; done'
+    // The players run in an environment of their own, not the shell's, which
+    // can carry LD_PRELOAD and the like: PATH, and what pw-play, paplay, mpv
+    // and ffplay need to reach the sound server. With clearEnvironment, a key
+    // set to null passes the shell's value, and one the shell lacks stays
+    // unset (Quickshell 0.3.1).
+    readonly property var playerEnvironment: ({
+        PATH: root.playerPath,
+        HOME: null,
+        XDG_RUNTIME_DIR: null,
+        PIPEWIRE_RUNTIME_DIR: null,
+        PULSE_SERVER: null,
+        DBUS_SESSION_BUS_ADDRESS: null
+    })
     readonly property int quickFailureMs: 1500
     readonly property int maxQuickFailures: 3
     property double soundStartedAt: 0
@@ -278,7 +287,7 @@ Item {
     property bool _soundRestarting: false
 
     function _ringCommand() {
-        return ["bash", "-c", root.soundScript, "omanotes-ring", Sound.soundPath(root.settings),
+        return [root.bashPath, "-c", root.soundScript, "omanotes-ring", Sound.soundPath(root.settings),
             String(root.settings.volume), root.fallbackSoundFile, "repeat"]
     }
 
@@ -291,6 +300,8 @@ Item {
 
     Process {
         id: sound
+        clearEnvironment: true
+        environment: root.playerEnvironment
         // Held open for the ring's gap, and closed when the shell is gone.
         stdinEnabled: true
         onExited: function(exitCode) {
@@ -314,6 +325,8 @@ Item {
 
     Process {
         id: preview
+        clearEnvironment: true
+        environment: root.playerEnvironment
         property string key: ""
         property var caller: null
         onExited: function(exitCode) {

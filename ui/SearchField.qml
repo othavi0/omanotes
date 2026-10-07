@@ -12,6 +12,7 @@ Field {
     rightPadding: Style.space(28)
 
     Text {
+        textFormat: Text.PlainText
         x: Style.space(10)
         anchors.verticalCenter: parent.verticalCenter
         text: Icons.search
@@ -21,6 +22,7 @@ Field {
     }
 
     Text {
+        textFormat: Text.PlainText
         visible: root.text !== ""
         anchors.right: parent.right
         anchors.rightMargin: Style.space(9)

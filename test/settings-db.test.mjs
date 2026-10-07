@@ -14,7 +14,7 @@ const Settings = loadQmlLib(new URL("../ui/Settings.js", import.meta.url), ["KEE
 
 const SETTING_DEFAULTS = {
   soundOn: true, sound: "alarm-clock-elapsed", soundFile: "", volume: 100, snoozeMinutes: 9, ringMinutes: 5,
-  historyDays: 0, checkUpdates: true
+  historyDays: 0
 }
 
 function settingsOf(path) {

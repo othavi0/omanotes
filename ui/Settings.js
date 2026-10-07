@@ -53,92 +53,41 @@ function pathText(path, home) {
 
 // What a section row shows on its right, from the same settings the page
 // edits: "Bell" or "off", "9 / 5 min". `info` carries what is not a
-// setting: { sound, bytes, version, hasUpdate }, `sound` being the name of
-// the sound the ring plays.
+// setting: { sound, bytes }, `sound` being the name of the sound the ring
+// plays.
 function sectionMeta(id, settings, info) {
   if (!settings) return ""
   if (id === "sound") return settings.soundOn ? (info ? info.sound : "") : "off"
   if (id === "alarms") return settings.snoozeMinutes + " / " + settings.ringMinutes + " min"
   if (id === "history") return keepText(settings.historyDays)
   if (id === "data") return sizeText(info ? info.bytes : 0)
-  if (id === "updates") return info && info.hasUpdate ? "new" : (info && info.version) || ""
+  if (id === "updates") return VERSION
   return ""
 }
 
-// The state file keeps whole hashes; the page shows seven characters.
-function shortHash(hash) {
-  return String(hash || "").slice(0, 7)
-}
+// The version of this code. It ships with the code, so after an update and
+// before the restart the page still names the version that runs;
+// test/settings-text.test.mjs holds it to manifest.json.
+var VERSION = "1.2.0"
 
-// "1.1.0 · main · 4e06360", the Version row.
-function versionText(local) {
-  if (!local) return ""
-  return [local.version, local.git ? local.branch : "not a git checkout", shortHash(local.head)].filter(function(p) { return p !== "" }).join(" · ")
-}
+// The plugin updates through Omarchy, not by itself (ADR-0021). The page
+// shows both commands and copies only the update: `omarchy plugin update`
+// exits 0 also when there is nothing new or the user says no, so a restart
+// chained to it would drop a ringing alarm for nothing.
+var PLUGIN_ID = "othavi0.omanotes"
+var UPDATE_COMMAND = "omarchy plugin update " + PLUGIN_ID
+var RESTART_COMMAND = "omarchy restart shell"
+var UPDATE_COMMANDS = [UPDATE_COMMAND, RESTART_COMMAND]
+var UPDATED_LINE = "Updated " + PLUGIN_ID + "."
 
-// "1.1.0 · 4e06360", the header while Settings is open.
-function versionShort(local) {
-  if (!local) return ""
-  return [local.version, shortHash(local.head)].filter(function(p) { return p !== "" }).join(" · ")
-}
+var UPDATE_CAPTION = "Copy the update and run it in a terminal. Omarchy shows the changes and asks before it pulls."
+var RESTART_NOTE = "Run " + RESTART_COMMAND + " only after the update prints \u201c" + UPDATED_LINE + "\u201d The restart loads the new version and stops a ringing alarm."
+var COPIED_TEXT = "Copied. Paste it in a terminal."
 
-function commitsText(n) {
-  return n + " new commit" + (n === 1 ? "" : "s")
-}
-
-// "Checked just now", "Checked 5 min ago", "Checked 2 h ago", "Checked 3 d ago".
-function checkedAgoText(atMs, nowMs) {
-  if (!atMs) return "Not checked yet"
-  var minutes = Math.floor(Math.max(0, nowMs - atMs) / 60000)
-  if (minutes < 1) return "Checked just now"
-  if (minutes < 60) return "Checked " + minutes + " min ago"
-  if (minutes < 24 * 60) return "Checked " + Math.floor(minutes / 60) + " h ago"
-  return "Checked " + Math.floor(minutes / (24 * 60)) + " d ago"
-}
-
-var REFUSALS = {
-  dirty: "The plugin folder has local changes, so pulling could lose them. Nothing was changed.",
-  offMain: "The plugin folder is not on main. Nothing was changed.",
-  diverged: "The plugin folder has commits that origin/main lacks. Nothing was changed.",
-  untracked: "The plugin folder has untracked files that the update would overwrite. Nothing was changed.",
-  notGit: "The plugin folder is not a git checkout of its own.",
-  noOrigin: "The plugin folder has no origin to pull from."
-}
-
-// The line the Updates section leads with, for view.phase.
-function updateHeadline(view, local) {
-  switch (view.phase) {
-  case "loading": return "Reading the plugin folder…"
-  case "none": return "This copy is not a git checkout, so it cannot update itself. Install it with omarchy plugin add to get updates."
-  case "unchecked": return "Not checked yet"
-  case "checking": return "Checking origin/main…"
-  case "upToDate": return "You have the latest version."
-  case "available": return commitsText(view.behind) + " on origin/main"
-  case "blocked":
-    if (view.error === "untracked" && view.detail)
-      return "The plugin folder has untracked files that the update would overwrite, such as " + view.detail + ". Nothing was changed."
-    return REFUSALS[view.error] || "Nothing was changed."
-  case "offline": return view.detail ? "Could not reach origin: " + view.detail : "Could not reach origin. Check the connection and try again."
-  case "updating": return "Updating to " + shortHash(view.to) + "…"
-  case "updated":
-    if (view.error === "restartFailed")
-      return "Updated to " + shortHash(view.to) + ", but the shell did not restart" + (view.detail ? ": " + view.detail.replace(/\.$/, "") : "") +
-        ". Run omarchy restart shell to load the new version."
-    return "Updated to " + shortHash(view.to) + ". The shell restarted."
-  }
-  var stayed = "so the plugin stayed at " + (local ? shortHash(local.head) : "its version")
-  if (view.error === "invalid") return "The new version did not validate, " + stayed + (view.detail ? ": " + view.detail : ".")
-  if (view.error === "mergeFailed") return "git refused the pull, " + stayed + (view.detail ? ": " + view.detail : ".")
-  if (view.error === "stopped") return "The update stopped before it finished."
-  return "The update failed" + (view.detail ? ": " + view.detail : ".")
-}
-
-// The steps of an update in progress, each done, now or todo. The panel
-// closes when the pull lands and the shell reloads the plugin, and the
-// restart then replaces the shell.
-function updateSteps(view) {
-  var steps = [{ key: "fetch", label: "Fetching origin/main" }, { key: "validate", label: "Validating the new version" },
-    { key: "pull", label: "Pulling " + commitsText(view.behind).replace(" new", "") }, { key: "restart", label: "Restarting the shell" }]
-  var at = steps.map(function(s) { return s.key }).indexOf(view.step)
-  return steps.map(function(s, i) { return { label: s.label, state: i < at ? "done" : i === at ? "now" : "todo" } })
+// The toast of a copy that failed: wl-copy's first line of error, or its
+// exit code when it said nothing, or that it never started.
+function copyFailedText(exitCode, stderr, program) {
+  var line = String(stderr || "").trim().split("\n")[0]
+  if (exitCode === null || exitCode === undefined) return "Not copied: " + program + " did not start"
+  return "Not copied: " + (line !== "" ? line : program + " exited with " + exitCode)
 }

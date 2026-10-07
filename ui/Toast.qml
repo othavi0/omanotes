@@ -51,6 +51,7 @@ Item {
 
         Text {
             id: label
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             width: Math.min(implicitWidth, root.maxWidth - 2 * root.padX)
             text: root.text

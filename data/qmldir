@@ -2,4 +2,3 @@ singleton Store Store.qml
 Lane Lane.qml
 ItemsDb ItemsDb.qml
 AlarmsDb AlarmsDb.qml
-Updater Updater.qml

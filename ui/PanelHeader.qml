@@ -12,7 +12,6 @@ RowLayout {
 
     property QtObject db: null
     property QtObject service: null
-    property QtObject updater: null
     property int activeTab: Tabs.items
     property color foreground: Color.foreground
 
@@ -32,7 +31,7 @@ RowLayout {
             { value: String(Tabs.items), label: "Items", icon: Icons.all, count: root.db ? root.db.totalNotes + root.db.totalTodos : 0 },
             { value: String(Tabs.alarms), label: "Alarms", icon: Icons.alarm, count: root.service ? root.service.onCount : 0 },
             { value: String(Tabs.history), label: "History", icon: Icons.history, count: root.db ? root.db.totalHistory : 0 },
-            { value: String(Tabs.settings), label: "", icon: Icons.cog, tooltip: "Settings", dot: !!root.updater && root.updater.showDot }
+            { value: String(Tabs.settings), label: "", icon: Icons.cog, tooltip: "Settings" }
         ]
         value: String(root.activeTab)
         foreground: root.foreground
@@ -42,7 +41,8 @@ RowLayout {
     Item { Layout.fillWidth: true }
 
     Text {
-        text: root.activeTab === Tabs.settings && root.updater ? Settings.versionShort(root.updater.local)
+        textFormat: Text.PlainText
+        text: root.activeTab === Tabs.settings ? Settings.VERSION
             : root.activeTab === Tabs.alarms && root.service ? root.service.nextSummary
             : (root.db ? root.db.unreadNotes : 0) + " unread · " + (root.db ? root.db.pendingTodos : 0) + " pending"
         color: Util.alpha(root.foreground, 0.62)

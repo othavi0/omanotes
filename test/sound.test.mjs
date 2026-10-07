@@ -36,6 +36,17 @@ test("a custom sound plays the chosen file, and a custom sound with no file play
   assert.equal(Sound.soundName(settings({ sound: "custom" })), "Alarm clock")
 })
 
+// A relative path would reach the player as an argument it could read as an
+// option, ffplay's "-autoexit" among them, and means no file the picker gave.
+test("a custom file that is not an absolute path plays and reads as the default", () => {
+  for (const soundFile of ["-autoexit", "Music/ring.ogg", "./ring.ogg", "~/ring.ogg"]) {
+    const custom = settings({ sound: "custom", soundFile })
+    assert.equal(Sound.soundPath(custom), DIR + "alarm-clock-elapsed.oga", soundFile)
+    assert.equal(Sound.pathFor("custom", custom), DIR + "alarm-clock-elapsed.oga", soundFile)
+    assert.equal(Sound.soundName(custom), "Alarm clock", soundFile)
+  }
+})
+
 test("a sound the catalog does not know, from a hand edit, plays and reads as the default", () => {
   const unknown = settings({ sound: "incoming-call" })
   assert.equal(Sound.soundPath(unknown), DIR + "alarm-clock-elapsed.oga")

@@ -20,7 +20,6 @@ FocusScope {
 
     property QtObject db: null
     property QtObject service: null
-    property QtObject updater: null
     property var toast: null
     property QtObject bar: null
     property color foreground: Color.foreground
@@ -33,9 +32,7 @@ FocusScope {
     readonly property int sectionIndex: Math.max(0, root.sectionIds.indexOf(root.section))
     readonly property var info: ({
         sound: Sound.soundName(root.settings),
-        bytes: root.db ? root.db.dbBytes : 0,
-        version: root.updater && root.updater.local ? root.updater.local.version : "",
-        hasUpdate: root.updater ? root.updater.showDot : false
+        bytes: root.db ? root.db.dbBytes : 0
     })
     readonly property var sectionIds: Settings.SECTIONS.map(function(s) { return s.id })
     readonly property var sectionIcons: ({ sound: Icons.volume, alarms: Icons.alarm, updates: Icons.update, history: Icons.history, data: Icons.database })
@@ -48,7 +45,6 @@ FocusScope {
 
     function pickSection(id) {
         confirm.cancel()
-        if (id === "updates" && root.updater) root.updater.refresh()
         root.section = id
         focusSink.forceActiveFocus()
     }
@@ -131,6 +127,7 @@ FocusScope {
                     spacing: Style.space(9)
 
                     Text {
+                        textFormat: Text.PlainText
                         text: root.sectionIcons[sectionRow.modelData.id] || ""
                         color: sectionRow.selected ? Style.selectedStateColor(root.foreground, Color.accent)
                             : Util.alpha(root.foreground, Tone.secondary)
@@ -138,6 +135,7 @@ FocusScope {
                         font.pixelSize: Style.font.icon
                     }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: sectionRow.modelData.label
                         elide: Text.ElideRight
@@ -145,14 +143,8 @@ FocusScope {
                         font.family: Style.font.family
                         font.pixelSize: Style.font.body
                     }
-                    Rectangle {
-                        visible: sectionRow.modelData.id === "updates" && root.info.hasUpdate
-                        Layout.preferredWidth: Style.space(7)
-                        Layout.preferredHeight: Style.space(7)
-                        radius: width / 2
-                        color: Color.urgent
-                    }
                     Text {
+                        textFormat: Text.PlainText
                         text: Settings.sectionMeta(sectionRow.modelData.id, root.settings, root.info)
                         color: Util.alpha(root.foreground, Tone.secondary)
                         font.family: Style.font.family
@@ -178,12 +170,14 @@ FocusScope {
                 spacing: Style.spacing.md
 
                 Text {
+                    textFormat: Text.PlainText
                     text: root.sectionIcons[root.section] || ""
                     color: Color.accent
                     font.family: Style.font.family
                     font.pixelSize: Style.font.icon
                 }
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: Settings.SECTIONS[root.sectionIndex].label
                     color: root.foreground
@@ -242,6 +236,7 @@ FocusScope {
                         }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: "Applies to new alarms. Each alarm keeps its own values."
                         wrapMode: Text.WordWrap
@@ -253,11 +248,9 @@ FocusScope {
                 }
 
                 UpdateSettings {
-                    updater: root.updater
-                    settings: root.settings
+                    objectName: "updatesPage"
                     toast: root.toast
                     foreground: root.foreground
-                    onSave: function(patch) { root.save(patch) }
                 }
 
                 ColumnLayout {
@@ -308,7 +301,7 @@ FocusScope {
                             iconText: Icons.folder
                             text: "Open folder"
                             foreground: root.foreground
-                            onClicked: if (root.db) Util.execArgv(["xdg-open", root.db.dataDir])
+                            onClicked: if (root.db) Quickshell.execDetached(["/usr/bin/xdg-open", root.db.dataDir])
                         }
                     }
                     Item { Layout.fillHeight: true }

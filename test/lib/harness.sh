@@ -51,6 +51,17 @@ stub_db() {
   done
   ln -sfn "$cfg_dir/bin" "$stub_tree/bin"
 }
+# A wl-copy for the Updates page's Copy, at $cfg_dir/wl-copy: it logs its
+# arguments, the names in the environment it was given and its stdin in clipboard.log, and fails
+# with the text of wl-copy-fails while that file exists.
+stub_wl_copy() {
+  cat > "$cfg_dir/wl-copy" <<SH
+#!$(command -v bash)
+if [[ -e "$cfg_dir/wl-copy-fails" ]]; then cat "$cfg_dir/wl-copy-fails" >&2; exit 1; fi
+{ echo "args=\$# wayland=\${WAYLAND_DISPLAY-unset} runtime=\${XDG_RUNTIME_DIR-unset} env=\$(tr '\\0' '\\n' < /proc/\$\$/environ | cut -d= -f1 | sort | paste -sd,)"; printf 'stdin=[%s]\n' "\$(cat)"; } >> "$cfg_dir/clipboard.log"
+SH
+  chmod +x "$cfg_dir/wl-copy"
+}
 # lib/stall-journal.c, built where the stub preloads it. Returns 1 with no C compiler.
 stall_journal_lib() {
   command -v cc > /dev/null || return 1
@@ -83,9 +94,7 @@ migrate_db
 
 # A plain command, so a caller that backgrounds it gets the pid of `timeout`
 # in `$!`; killing that pid then reaches qs.
-# XDG_STATE_HOME keeps the update state file of every Updater away from the
-# user's.
-qs_cmd=(env XDG_DATA_HOME="$data_home" XDG_STATE_HOME="$data_home/state" QT_QPA_PLATFORM=offscreen timeout 120 qs -p "$cfg_dir")
+qs_cmd=(env XDG_DATA_HOME="$data_home" QT_QPA_PLATFORM=offscreen timeout 120 qs -p "$cfg_dir")
 run_qs() { "${qs_cmd[@]}" "$@"; }
 
 # The kit's KeyboardPanel is a layer-shell PanelWindow, which has no backend

@@ -47,6 +47,7 @@ Rectangle {
         onAccepted: root.accepted()
 
         Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             visible: input.text === "" && !input.activeFocus
             text: "00:00"

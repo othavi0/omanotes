@@ -138,6 +138,20 @@ function missedText(missed, alarmsById, nowMs) {
   }
 }
 
+// The shell draws a notification body as StyledText, so text goes in with
+// its markup characters escaped.
+function markupEscaped(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+// The argv of omarchy-notification-send at `program` for the missed alarms,
+// or null when there are none. The body is escaped here, where it becomes
+// StyledText; it starts with a time, so it never reads as an option.
+function missedNotifyArgv(program, glyph, missed, alarmsById, nowMs) {
+  var text = missedText(missed, alarmsById, nowMs)
+  return text ? [program, "-g", glyph, text.headline, markupEscaped(text.body)] : null
+}
+
 // What the card and the chip show, or null when nothing rings. The meter is
 // the first event's elapsed share of its alarm's ring length.
 function ringView(ring, alarmsById, nowMs) {
