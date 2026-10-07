@@ -50,7 +50,7 @@ omarchy restart shell
 omarchy plugin remove othavi0.omanotes
 ```
 
-Removing the plugin keeps your data: the database `~/.local/share/omarchy/scratchpad.db`, the backups `scratchpad-<date>.db` next to it, and the `-wal`, `-shm` or `-journal` file SQLite can leave beside them. If `XDG_DATA_HOME` is set, they are in `$XDG_DATA_HOME/omarchy/` instead. `scratchpad.db` is the file omatodolist used too ([ADR-0003](docs/adr/0003-keep-the-scratchpad-name-for-data-and-ipc.md)), so if you still use omatodolist, keep it. To delete them, run this in bash or zsh. It prints each file it deletes, and does nothing when there is no backup:
+Removing the plugin keeps your data: the database `~/.local/share/omarchy/scratchpad.db`, the backups `scratchpad-<date>.db` next to it, and the `-wal`, `-shm` or `-journal` file SQLite can leave beside them. If `XDG_DATA_HOME` is set, they are in `$XDG_DATA_HOME/omarchy/` instead. `scratchpad.db` is the file omatodolist used too ([ADR-0003](docs/adr/0003-keep-the-scratchpad-name-for-data-and-ipc.md)), so if you still use omatodolist, keep it. To delete them, run this in bash or zsh. It prints each file it deletes, and deletes nothing more when there is no backup. If the folder does not exist, `find` says so and deletes nothing:
 
 ```sh
 find "${XDG_DATA_HOME:-$HOME/.local/share}/omarchy" -maxdepth 1 -name 'scratchpad*.db*' -print -delete
@@ -134,7 +134,7 @@ The database is `$XDG_DATA_HOME/omarchy/scratchpad.db` (`~/.local/share/omarchy/
 Omanotes does not use the network. Nothing in it fetches, uploads or checks for updates, and it opens no web address. What was measured:
 
 - The shipped QML and JavaScript contain no network API and no URL.
-- `omanotes-db selftest`, which creates a database on disk, migrates it, writes to it and reads it back, exits 0 inside `unshare -rn`, a namespace with no network.
+- `omanotes-db <protocol> selftest <dir>`, which creates a database on disk, migrates it, writes to it and reads it back, exits 0 inside `unshare -rn`, a namespace with no network. `<protocol>` is `PROTOCOL` in `data/Db.js`.
 - `bin/omanotes-db.x86_64` and `bin/omanotes-db.aarch64` import no `socket`, `connect`, `bind`, `sendto` or `getaddrinfo` symbol (`readelf --dyn-syms`), and the x86_64 one links only `libc`, `libm` and the loader. Its strings name `libssl` symbols, which the .NET runtime it is built with can load on demand, so this check alone does not show that the binary has no network code.
 
 The files Omanotes reads and writes:
