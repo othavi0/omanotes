@@ -1,0 +1,73 @@
+# Rebuilds bin/omanotes-db.{x86_64,aarch64} from source with the toolchain bin/BUILD.json
+# records and fails when either sha256 differs (tools/verify-bin.sh --rebuild: exit 1 on other
+# bytes, exit 2 when the toolchain here is not the recorded one).
+name: verify-bin
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: archlinux@sha256:4e77cf2ea5f410e6f8be5abf93ccf17ce2436e87a138c167208356711a405dbd
+    env:
+      # The Arch Linux Archive day whose repos hold clang 22.1.8-1, lld 22.1.8-1, llvm 22.1.8-2,
+      # glibc 2.44+r24, gcc 16.2.1+r23 and binutils 2.47-4: the toolchain of bin/BUILD.json.
+      ALA_DATE: "2026/08/24"
+      DOTNET_SDK: "10.0.401"
+      # The sha512 that releases.json of the 10.0 channel publishes for this tarball.
+      DOTNET_SDK_SHA512: "51c8b999af9e8dd9998c9edc5944e19a90788862068acd38694e098889054ce8c23d4f0c5cccfa16bf187d044562359e5ee69a9f8ad0bbe913ba90311fbce25b"
+      # A new tools/sysroot.lock needs a new release asset and this hash with it.
+      SYSROOT_TAR_SHA256: "dca1eca63e1f3c72d7818292c3d8af798b7d69a9151ed175ffa3473f85a21616"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      SYSROOT_AARCH64: /opt/sysroot-aarch64
+    steps:
+      - name: Toolchain from the Arch Linux Archive
+        run: |
+          echo "Server = https://archive.archlinux.org/repos/${ALA_DATE}/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
+          pacman -Syyuu --noconfirm
+          pacman -S --noconfirm --needed clang lld llvm compiler-rt gcc binutils glibc zlib \
+            linux-api-headers nodejs xz icu git diffutils
+          pacman -Q clang lld llvm compiler-rt gcc glibc binutils
+
+      - name: .NET SDK
+        run: |
+          curl -fsSL "https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_SDK}/dotnet-sdk-${DOTNET_SDK}-linux-x64.tar.gz" -o /tmp/dotnet-sdk.tar.gz
+          echo "${DOTNET_SDK_SHA512}  /tmp/dotnet-sdk.tar.gz" | sha512sum -c -
+          mkdir -p /opt/dotnet
+          tar -xzf /tmp/dotnet-sdk.tar.gz -C /opt/dotnet
+          rm /tmp/dotnet-sdk.tar.gz
+          echo /opt/dotnet >> "$GITHUB_PATH"
+          echo DOTNET_ROOT=/opt/dotnet >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # The 8 packages of tools/sysroot.lock as one tarball on a pre-release of this repo, tagged
+      # with the first 12 hex of sha256(tools/sysroot.lock). tools/sysroot.sh checks each package
+      # against the lock again.
+      - name: Sysroot packages (release asset)
+        run: |
+          lock="$(sha256sum tools/sysroot.lock | cut -c1-12)"
+          curl -fsSL "https://github.com/${GITHUB_REPOSITORY}/releases/download/sysroot-${lock}/sysroot-pkgs.tar" -o /tmp/sysroot-pkgs.tar
+          echo "${SYSROOT_TAR_SHA256}  /tmp/sysroot-pkgs.tar" | sha256sum -c -
+          mkdir -p /opt/sysroot-pkgs
+          tar -xf /tmp/sysroot-pkgs.tar -C /opt/sysroot-pkgs
+          rm /tmp/sysroot-pkgs.tar
+
+      - name: Sysroot
+        run: tools/sysroot.sh /opt/sysroot-pkgs
+
+      - name: Rebuild and compare bytes
+        run: tools/verify-bin.sh --rebuild
