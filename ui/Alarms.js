@@ -122,14 +122,15 @@ function lateText(ms) {
   return spanText(ms) + " late"
 }
 
-// The one notification for every alarm a tick found too late to ring.
+// The one notification for every alarm a tick found too late to ring. Each
+// line names the alarm by its time only: the body goes out as an argument,
+// which every local user can read, so a label never goes in it.
 function missedText(missed, alarmsById, nowMs) {
   if (!missed || missed.length === 0) return null
   var lines = missed.map(function(event) {
     var alarm = alarmOf(alarmsById, event.id)
     var d = new Date(event.at)
     var line = alarm ? clockOf(alarm) : timeText(d.getHours(), d.getMinutes())
-    if (alarm && alarm.label !== "") line += " · " + alarm.label
     return line + ", " + lateText(nowMs - event.at)
   })
   return {
