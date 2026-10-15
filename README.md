@@ -84,7 +84,7 @@ Open the panel, pick **Alarms** and press **+ Alarm**, or choose Alarm in the Ne
 
 The bar chip shows the next alarm: `07:30` when it is today, `Sat 07:30` on another day, and the snooze time after a snooze. When an alarm is due, a card drops under the bar on every screen, the chip turns to a bell with the alarm's label (its time when it has no label, or a count when several ring), and a sound loops. Snooze or Stop it on the card, or click the chip. If you do nothing, the alarm snoozes itself after its ring length, up to 3 times. The panel stays closed and the card takes no keyboard focus.
 
-An alarm found more than 10 minutes late, after the computer slept, does not ring. You get one notification that lists every missed alarm.
+An alarm found more than 10 minutes late, after the computer slept, does not ring. You get one notification that lists every missed alarm by its time and how late it is. The notification leaves out the label: Omanotes sends it through a program's arguments, which other users of the computer can read.
 
 The sound is one of the freedesktop sounds in `/usr/share/sounds/freedesktop/stereo/` or a file you pick, set in Settings, played by the first of `pw-play`, `paplay`, `mpv` and `ffplay` that is installed. A picked file that is gone plays the default alarm clock. When nothing can play it, the alarm rings silently and the journal says so.
 
