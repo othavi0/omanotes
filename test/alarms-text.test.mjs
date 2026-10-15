@@ -105,26 +105,24 @@ test("lateText is how late, in the largest two units", () => {
   assert.equal(T.lateText(30 * 1000), "0 min late")
 })
 
-test("missedText is one notification for every missed alarm", () => {
+// The body goes to omarchy-notification-send as an argument, and every local
+// user can read a process's arguments, so a label never goes in it.
+test("missedText is one notification for every missed alarm, by time and without its label", () => {
   const byId = { 1: alarm(), 2: alarm({ id: 2, label: "", hour: 6, minute: 10 }) }
   const one = T.missedText([{ id: 1, at: at(0, 11, 48), kind: "scheduled" }], byId, NOW)
-  assert.deepEqual(one, { headline: "Missed alarm", body: "07:30 · Wake up, 2 h 12 min late" })
+  assert.deepEqual(one, { headline: "Missed alarm", body: "07:30, 2 h 12 min late" })
   const two = T.missedText([{ id: 2, at: at(0, 6, 10), kind: "scheduled" }, { id: 1, at: at(0, 7, 30), kind: "scheduled" }], byId, NOW)
-  assert.deepEqual(two, { headline: "2 missed alarms", body: "06:10, 7 h 50 min late\n07:30 · Wake up, 6 h 30 min late" })
+  assert.deepEqual(two, { headline: "2 missed alarms", body: "06:10, 7 h 50 min late\n07:30, 6 h 30 min late" })
   assert.equal(T.missedText([], byId, NOW), null)
 })
 
-// The shell shows a notification body as StyledText, so a label is text
-// there, never markup: `<img src=...>` would load the image.
-test("the notification of missed alarms escapes the body's &, < and > and only there", () => {
+test("the argv of the missed alarms notification carries no label", () => {
   const byId = { 1: alarm({ label: '<img src="http://x/y.png"> Tom & Jerry' }), 2: alarm({ id: 2, label: "--exec rm", hour: 6, minute: 10 }) }
   const missed = [{ id: 1, at: at(0, 11, 48), kind: "scheduled" }, { id: 2, at: at(0, 6, 10), kind: "scheduled" }]
   assert.deepEqual(T.missedNotifyArgv("/usr/share/omarchy/bin/omarchy-notification-send", "G", missed, byId, NOW), [
     "/usr/share/omarchy/bin/omarchy-notification-send", "-g", "G", "2 missed alarms",
-    '07:30 · &lt;img src="http://x/y.png"&gt; Tom &amp; Jerry, 2 h 12 min late\n06:10 · --exec rm, 7 h 50 min late'
+    "07:30, 2 h 12 min late\n06:10, 7 h 50 min late"
   ])
-  assert.equal(T.missedText(missed, byId, NOW).body.split("\n")[0], '07:30 · <img src="http://x/y.png"> Tom & Jerry, 2 h 12 min late',
-    "missedText is the text, not markup")
   assert.equal(T.missedNotifyArgv("/p", "G", [], byId, NOW), null)
 })
 
